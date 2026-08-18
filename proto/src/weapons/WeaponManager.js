@@ -1,0 +1,36 @@
+import Weapon from './Weapon.js';
+
+/**
+ * Dono do cooldown e dos stat mods (dano/alcance/cooldown) que vêm do
+ * RunState. Player só chama tryAttack(); toda a matemática de upgrade
+ * fica isolada aqui — é o ponto de extensão pra múltiplas armas depois.
+ */
+export default class WeaponManager {
+  /**
+   * @param {Phaser.Scene} scene
+   * @param {Phaser.Physics.Arcade.Group} enemyGroup
+   * @param {Array} weaponDefs - data/weapons.json
+   * @param {import('../roguelike/RunState.js').default} runState
+   */
+  constructor(scene, enemyGroup, weaponDefs, runState) {
+    this.scene = scene;
+    this.enemyGroup = enemyGroup;
+    this.runState = runState;
+    this.currentWeapon = new Weapon(weaponDefs[0]); // protótipo: uma arma só
+    this.lastAttackMs = 0;
+  }
+
+  tryAttack(player) {
+    const now = this.scene.time.now;
+    const cooldown =
+      this.currentWeapon.def.cooldownMs * (1 - this.runState.cooldownMultiplier);
+
+    if (now - this.lastAttackMs < cooldown) return;
+    this.lastAttackMs = now;
+
+    this.currentWeapon.fire(this.scene, player, this.enemyGroup, {
+      damageMultiplier: this.runState.damageMultiplier,
+      rangeMultiplier: this.runState.rangeMultiplier
+    });
+  }
+}
