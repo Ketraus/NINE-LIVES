@@ -4,3 +4,4 @@ O Evolução "Colosso" deve ter um aumento de 150% de vida, -50% de Velocidade d
 Cartas Únicas estão respondendo corretamente, Drone, Impacto e Corte Duplo estão funcionando Corretamente. 
 Adicionar explicação do uso e implementação de ambas nas próximas versões de NINE LIVES*//
 
+Existem pastas repetidas, src repetido dentro de src...
