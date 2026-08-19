@@ -11,8 +11,6 @@
  *  - 'enemy-died'             ({ x, y, xpReward })
  *  - 'xp-changed'             ({ xp, xpToNext, level })
  *  - 'level-up'               ({ options: Upgrade[] })
- *  - 'evolution-ready'        ({ evolution }) — carta base completou as cópias e evoluiu
- *  - 'ability-unlocked'       ({ abilityId, def }) — carta exclusiva escolhida
  *  - 'run-restart'            ()
  */
 class EventBus extends Phaser.Events.EventEmitter {}

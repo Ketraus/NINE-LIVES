@@ -5,8 +5,8 @@ export default [
     "sprite": "enemy",
     "hp": 20,
     "speed": 60,
-    "contactDamage": 8,
-    "contactCooldownMs": 700,
+    "contactDamage": 6,
+    "contactCooldownMs": 900,
     "xpReward": 5,
     "color": 15680580
   }

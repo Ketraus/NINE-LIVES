@@ -1,12 +1,11 @@
 import Enemy from './Enemy.js';
 
-const SPAWN_INTERVAL_MS = 2800;
-const MIN_DIST_FROM_PLAYER = 160;
-const MAX_ALIVE = 14; // trava a quantidade simultânea pra não virar enxame incontrolável
+const SPAWN_INTERVAL_MS = 2200;
+const MIN_DIST_FROM_PLAYER = 140;
 
 /**
  * Spawna inimigos periodicamente dentro dos limites do mapa.
- * Hoje só usa um tipo ("grunt"); a leitura de enemies.js já deixa
+ * Hoje só usa um tipo ("grunt"); a leitura de enemies.json já deixa
  * pronto suportar múltiplos tipos/waves no futuro sem mudar a API.
  */
 export default class EnemySpawner {
@@ -14,7 +13,7 @@ export default class EnemySpawner {
    * @param {Phaser.Scene} scene
    * @param {import('../../maps/MapManager.js').default} mapManager
    * @param {Player} player
-   * @param {Array} enemyDefs - conteúdo de data/enemies.js
+   * @param {Array} enemyDefs - conteúdo de data/enemies.json
    */
   constructor(scene, mapManager, player, enemyDefs) {
     this.scene = scene;
@@ -41,9 +40,6 @@ export default class EnemySpawner {
   }
 
   spawnOne() {
-    // enxame sob controle: se já tem gente demais viva, pula esse ciclo
-    if (this.group.countActive(true) >= MAX_ALIVE) return null;
-
     const def = Phaser.Utils.Array.GetRandom(this.enemyDefs);
     const pos = this._findSpawnPosition();
     const enemy = new Enemy(this.scene, pos.x, pos.y, def);

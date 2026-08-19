@@ -3,7 +3,6 @@ import MapManager from '../maps/MapManager.js';
 import Player from '../entities/Player.js';
 import EnemySpawner from '../entities/enemies/EnemySpawner.js';
 import WeaponManager from '../weapons/WeaponManager.js';
-import AbilityManager from '../abilities/AbilityManager.js';
 import DamageSystem from '../combat/DamageSystem.js';
 import RunState from '../roguelike/RunState.js';
 import RunManager from '../roguelike/RunManager.js';
@@ -35,7 +34,6 @@ export default class GameScene extends Phaser.Scene {
     this._buildPlayer();
     this._buildEnemies();
     this._buildWeapon();
-    this._buildAbilities();
     this._buildPickups();
     this._buildUI();
     this._buildCollisions();
@@ -50,7 +48,6 @@ export default class GameScene extends Phaser.Scene {
     if (this.isGameOver || this.isPaused) return;
     this.player.update();
     this.enemySpawner.updateAll();
-    this.abilityManager.update(this.time.now);
   }
 
   // ---------- construção ----------
@@ -91,16 +88,6 @@ export default class GameScene extends Phaser.Scene {
     this.player.setWeaponManager(this.weaponManager);
   }
 
-  /**
-   * AbilityManager escuta 'ability-unlocked' (emitido por RunManager quando
-   * uma carta exclusiva é escolhida) e cuida das habilidades autônomas
-   * (soco em área, drone). Precisa existir antes de qualquer carta poder
-   * ser oferecida, então entra logo após a arma.
-   */
-  _buildAbilities() {
-    this.abilityManager = new AbilityManager(this, this.player, this.enemySpawner.group);
-  }
-
   _buildPickups() {
     this.xpOrbGroup = this.physics.add.group();
     this.runManager = new RunManager(this.runState, this.player, upgradesData);
@@ -112,19 +99,15 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _buildCollisions() {
-    // inimigo encosta no jogador -> dano de contato (+ contra-ataque de
-    // espinhos, se o hit realmente aconteceu — não durante i-frames)
+    // inimigo encosta no jogador -> dano de contato
     this.physics.add.overlap(this.player, this.enemySpawner.group, (player, enemy) => {
-      const hit = DamageSystem.applyContactDamage(
+      DamageSystem.applyContactDamage(
         enemy,
         player,
         enemy.def.contactDamage,
         enemy.def.contactCooldownMs,
         this.time.now
       );
-      if (hit && this.runState.thornsDamage > 0) {
-        DamageSystem.applyWeaponHit(enemy, this.runState.thornsDamage);
-      }
     });
 
     // jogador encosta em orb de xp -> coleta

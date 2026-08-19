@@ -6,43 +6,30 @@
 export default class DamageSystem {
   /**
    * Dano de contato com cooldown por-alvo (evita tirar vida todo frame
-   * enquanto os corpos ficam sobrepostos) + invulnerabilidade global
-   * opcional no alvo (evita ser atingido por vários inimigos ao mesmo
-   * tempo e perder metade da vida num único frame).
+   * enquanto os corpos ficam sobrepostos).
    * @param {Phaser.Physics.Arcade.Sprite} attacker
-   * @param {Phaser.Physics.Arcade.Sprite} target - precisa ter target.healthSystem;
-   *   se tiver target.invulnerableMs, ganha i-frames após ser atingido
+   * @param {Phaser.Physics.Arcade.Sprite} target - precisa ter target.healthSystem
    * @param {number} damage
    * @param {number} cooldownMs
    * @param {number} nowMs
-   * @returns {boolean} true se o dano foi de fato aplicado
    */
   static applyContactDamage(attacker, target, damage, cooldownMs, nowMs) {
-    if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
-    if (target.invulnerableUntil && nowMs < target.invulnerableUntil) return false;
+    if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return;
 
     const lastHitKey = `_lastHit_${attacker.id || attacker.name || 'atk'}`;
     const lastHit = target[lastHitKey] || 0;
-    if (nowMs - lastHit < cooldownMs) return false;
+    if (nowMs - lastHit < cooldownMs) return;
 
     target[lastHitKey] = nowMs;
     target.healthSystem.takeDamage(damage);
-
-    if (target.invulnerableMs) {
-      target.invulnerableUntil = nowMs + target.invulnerableMs;
-    }
-
-    return true;
   }
 
   /**
    * Dano direto de um ataque de arma (sem cooldown próprio — quem
    * controla a cadência é o WeaponManager).
-   * @returns {boolean} true se o dano foi de fato aplicado (alvo vivo/ativo)
    */
   static applyWeaponHit(target, damage) {
-    if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
+    if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return;
     target.healthSystem.takeDamage(damage);
-    return true;
   }
 }
