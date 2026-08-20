@@ -92,6 +92,74 @@ no Tiled (em qualquer Object Layer) e chamar
 `mapManager.getObjectPoint('Objects', 'NomeDoObjeto')` de onde for
 usar.
 
+### Usando mais de um tileset
+O código já suporta N tilesets na mesma Tile Layer (`Ground` ou
+`Walls` podem misturar tiles de tilesets diferentes — o Phaser resolve
+sozinho qual tileset cada tile pertence). Pra adicionar um novo:
+
+1. **No Tiled**: Map → New Tileset, aponte pra imagem nova (ex.:
+   `props.png`), e em Name coloque algo único (ex.: `props`) —
+   diferente do nome de qualquer outro tileset já usado no mapa. Depois
+   é só pintar tiles dele normalmente nas layers `Ground`/`Walls`.
+2. **Em `src/scenes/PreloadScene.js`**: adicione uma linha carregando a
+   imagem, com uma chave única:
+   ```js
+   this.load.image('props', 'assets/maps/props.png');
+   ```
+3. **Em `src/maps/MapManager.js`**: acrescente uma entrada na lista
+   `TILESETS` no topo do arquivo:
+   ```js
+   const TILESETS = [
+     { imageKey: 'tileset', nameInTiled: 'tileset' },
+     { imageKey: 'props', nameInTiled: 'props' }
+   ];
+   ```
+4. Exporte o mapa de novo (File → Export As → `assets/maps/map.json`)
+   por cima do antigo.
+
+Se o `nameInTiled` não bater exatamente com o Name configurado no
+Tiled (passo 1), o jogo já avisa no console qual tileset não foi
+encontrado — não precisa ficar adivinhando.
+
+## Cartas: evolução vs. habilidade exclusiva
+Duas mecânicas diferentes convivem em `data/upgrades.js`, ambas
+disparadas por `RunManager` e mostradas por `LevelUpUI`:
+
+### Cartas de evolução (`category: "evolution"`)
+Uma carta "base" (ex.: `hp_up` / Vitalidade) pode ter um campo
+`evolvesInto` apontando pro `id` de uma carta com `category: "evolution"`
+(ex.: `hp_up_evo_colosso` / COLOSSO). Fluxo:
+1. Cada vez que o jogador escolhe a carta base, `RunManager.chooseUpgrade()`
+   aplica o efeito dela **normalmente** (o estado das cópias anteriores
+   nunca é apagado — os bônus acumulam).
+2. Quando a contagem de cópias bate `EVOLUTION_STACK_THRESHOLD` (hoje 3,
+   constante no topo de `RunManager.js`), a evolução é emitida via evento
+   `'evolution-ready'` e a `LevelUpUI` mostra **só ela**, em destaque
+   dourado, nunca misturada com as 3 opções normais de level-up.
+3. A evolução só entra em vigor quando o jogador clica pra confirmar
+   (`confirmEvolution()`) — ela tem sua própria lista de `effects`
+   (pode dar vários bônus de uma vez: vida, tamanho, velocidade etc.) que
+   somam em cima do que a carta base já deu.
+4. Depois de confirmada, a carta base some do pool de ofertas (ver
+   `RunManager._getAvailableUpgrades()` — checa `ownedUpgradeIds`).
+
+Pra criar uma evolução nova: adicione `evolvesInto` na carta base e uma
+entrada nova com `category: "evolution"` + `effects: [...]`. Se algum
+efeito precisar mexer direto no Player/scene (não só um número em
+`RunState`), adicione um `case` em `RunManager._applyRuntimeEffect()`.
+
+### Cartas exclusivas / habilidade desbloqueável (`type: "unlockAbility"`)
+Cartas como `fists_slam` (Impacto), `katana_double` (Corte Duplo) e
+`pistol_drone` (Drone) têm `weaponId` (só aparecem pra quem escolheu
+aquela arma na `WeaponSelectScene`) e `type: "unlockAbility"`. Ao serem
+escolhidas, `RunState` só registra o `abilityId` em `unlockedAbilities`
+e `RunManager` emite `'ability-unlocked'`; quem dá vida à habilidade de
+fato é o `AbilityManager` (soco/drone) ouvindo esse evento, ou — no caso
+específico da katana — `Weapon.js` lendo `runState.unlockedAbilities`
+direto. Diferente das cartas de evolução, cada uma só pode ser tirada
+uma vez (`RunManager._getAvailableUpgrades()` filtra as já
+desbloqueadas) e não têm cópias/stacks.
+
 ## Balanceamento
 `data/enemies.js`, `data/weapons.js` e `data/upgrades.js` são módulos
 JS que só exportam um objeto (`export default {...}`) — edite os
@@ -106,9 +174,20 @@ arquivo precisa mudar.
 
 ### Dificuldade / combate
 - `src/entities/enemies/EnemySpawner.js`: `SPAWN_INTERVAL_MS` (intervalo
-  entre spawns), `MIN_DIST_FROM_PLAYER` (distância mínima de spawn) e
-  `MAX_ALIVE` (teto de inimigos vivos ao mesmo tempo — sem isso o mapa
+  entre spawns), `SPAWN_MARGIN_BEYOND_VIEW` (quanto além da borda da
+  câmera um inimigo precisa nascer pra garantir que nasce fora da visão)
+  e `MAX_ALIVE` (teto de inimigos vivos ao mesmo tempo — sem isso o mapa
   enche e vira enxame incontrolável).
+  **O spawn é relativo à câmera, não ao mapa inteiro**: todo inimigo
+  nasce num ângulo aleatório ao redor do jogador, fora da área que a
+  câmera está mostrando no momento (`_findSpawnPosition()`). Isso é o
+  que permite deixar o mapa absurdamente maior sem precisar mexer em
+  nada aqui — não importa o tamanho do mapa, os inimigos sempre nascem
+  "logo fora da tela", nunca a quilômetros de distância do jogador (o
+  que aconteceria se o spawn sorteasse qualquer ponto do mapa inteiro,
+  como era antes). Se o mapa ficar muito maior, o que pode valer a pena
+  ajustar é `MAX_ALIVE` pra cima (mapa grande com poucos inimigos
+  simultâneos pode parecer vazio ao correr por ele).
 - `src/entities/Player.js`: `INVULNERABLE_MS` — janela de
   invulnerabilidade (i-frames) depois de tomar qualquer dano de
   contato. Sem i-frame, ficar cercado por vários inimigos ao mesmo

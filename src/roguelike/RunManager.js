@@ -76,21 +76,25 @@ export default class RunManager {
 
   /**
    * Chamado pela LevelUpUI quando o jogador escolhe uma das 3 cartas
-   * normais. Se esta escolha for a Nª cópia da mesma carta (N =
-   * EVOLUTION_STACK_THRESHOLD) e ela tiver `evolvesInto`, a carta normal é
-   * substituída pela evolução: o efeito de base NÃO é aplicado agora — só
-   * fica registada a cópia, e a UI mostra a evolução sozinha em destaque
-   * pra confirmação. O efeito de fato entra em confirmEvolution().
+   * normais. O efeito da carta É SEMPRE aplicado normalmente (o estado das
+   * cópias anteriores nunca é apagado — elas continuam valendo). Se esta
+   * escolha completou o número de cópias exigido (N = EVOLUTION_STACK_
+   * THRESHOLD) e a carta tiver `evolvesInto`, a evolução é oferecida
+   * *em cima* do que já foi aplicado, forçada sozinha em destaque pra
+   * confirmação — o efeito da evolução em si só entra em confirmEvolution().
+   * @returns {boolean} true se esta escolha disparou uma evolução pendente
+   * (usado pela LevelUpUI pra saber se deve manter a tela aberta em vez de
+   * fechar, já que showEvolution() acabou de reconstruir o overlay).
    */
   chooseUpgrade(upgrade) {
+    this._applyUpgrade(upgrade);
+
     const evolution = this._findPendingEvolution(upgrade);
     if (evolution) {
-      this.runState.registerPick(upgrade.id);
       EventBus.emit('evolution-ready', { evolution });
-      return;
+      return true;
     }
-
-    this._applyUpgrade(upgrade);
+    return false;
   }
 
   /** Chamado pela LevelUpUI quando o jogador confirma a carta de evolução. */
@@ -99,13 +103,15 @@ export default class RunManager {
   }
 
   /**
-   * @returns {object|null} a entrada de evolução correspondente se esta
-   * escolha completa o número de cópias exigido, senão null.
+   * @returns {object|null} a entrada de evolução correspondente se a carta
+   * acabou de completar (exatamente) o número de cópias exigido, senão
+   * null. Chamado DEPOIS de _applyUpgrade, então upgradeCounts já reflete
+   * esta escolha.
    */
   _findPendingEvolution(upgrade) {
     if (!upgrade.evolvesInto) return null;
-    const picksSoFar = this.runState.upgradeCounts[upgrade.id] || 0;
-    if (picksSoFar + 1 < EVOLUTION_STACK_THRESHOLD) return null;
+    const picks = this.runState.upgradeCounts[upgrade.id] || 0;
+    if (picks !== EVOLUTION_STACK_THRESHOLD) return null;
     return this.upgradeDefs.find((u) => u.id === upgrade.evolvesInto) || null;
   }
 
@@ -154,6 +160,84 @@ export default class RunManager {
       default:
         break;
     }
+  }
+
+  /**
+   * Usado só pelo DevConsole (F9, ver src/systems/DevConsole.js). Dá uma
+   * carta específica por id, reaproveitando as MESMAS regras de
+   * exclusividade por arma que o level-up normal usa — nunca deixa pegar
+   * carta de outra classe. Cartas "unlockAbility" só fazem sentido 1x
+   * (quantidade é ignorada pra elas). Evoluções não podem ser pedidas
+   * direto (só a carta base, 3x, exatamente como no jogo normal) — se a
+   * quantidade pedida completar o limiar, ela evolui sozinha no meio do
+   * loop e o resto da quantidade pedida é descartado (a carta base some
+   * do pool depois de evoluir, igual ao fluxo normal de RunManager).
+   * @returns {{ ok: boolean, message: string }}
+   */
+  cheatGiveCard(cardId, quantity = 1) {
+    const upgrade = this.upgradeDefs.find((u) => u.id === cardId);
+    if (!upgrade) {
+      return { ok: false, message: `Carta "${cardId}" não existe. Digite "list" pra ver os ids.` };
+    }
+    if (upgrade.category === 'evolution') {
+      return {
+        ok: false,
+        message: `"${upgrade.name}" é uma evolução, não dá pra pegar direto — dê a carta base "${upgrade.evolvesFrom}" 3x.`
+      };
+    }
+    if (upgrade.weaponId && upgrade.weaponId !== this.runState.weaponId) {
+      return {
+        ok: false,
+        message: `"${upgrade.name}" é exclusiva de ${upgrade.weaponId}, e você está com ${this.runState.weaponId}.`
+      };
+    }
+
+    const isUnlockAbility = upgrade.type === 'unlockAbility';
+    if (isUnlockAbility && this.runState.unlockedAbilities.has(upgrade.abilityId)) {
+      return { ok: false, message: `Você já tem "${upgrade.name}".` };
+    }
+
+    const requested = isUnlockAbility ? 1 : Math.max(1, Math.floor(quantity));
+    let applied = 0;
+    let evolvedInto = null;
+
+    for (let i = 0; i < requested; i++) {
+      this._applyUpgrade(upgrade);
+      applied += 1;
+      const evolution = this._findPendingEvolution(upgrade);
+      if (evolution) {
+        this._applyUpgrade(evolution);
+        evolvedInto = evolution.name;
+        break;
+      }
+    }
+
+    let message = `+${applied}x "${upgrade.name}"`;
+    if (evolvedInto) {
+      message += ` → evoluiu para "${evolvedInto}"`;
+      if (applied < requested) message += ` (parou aí, o resto do pedido foi ignorado)`;
+    }
+    return { ok: true, message };
+  }
+
+  /**
+   * Usado só pelo DevConsole ("list"). Cartas base + as exclusivas da
+   * arma atual, marcando as já obtidas/evoluídas — a mesma visão que
+   * RunManager usaria pra montar o pool de ofertas normais.
+   */
+  cheatListCards() {
+    return this.upgradeDefs
+      .filter((u) => u.category !== 'evolution')
+      .filter((u) => !u.weaponId || u.weaponId === this.runState.weaponId)
+      .map((u) => {
+        let tag = '';
+        if (u.type === 'unlockAbility' && this.runState.unlockedAbilities.has(u.abilityId)) {
+          tag = ' [já tem]';
+        } else if (u.evolvesInto && this.runState.ownedUpgradeIds.has(u.evolvesInto)) {
+          tag = ' [já evoluiu]';
+        }
+        return `${u.id} — ${u.name}${tag}`;
+      });
   }
 
   registerKill() {

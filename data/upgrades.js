@@ -97,14 +97,14 @@ export default [
   {
     "id": "hp_up_evo_colosso",
     "name": "COLOSSO",
-    "description": "+150% de vida máxima. O corpo cresce — e fica mais lento.",
+    "description": "+150% de vida máxima, -50% de velocidade de movimento, +100% de tamanho do corpo.",
     "category": "evolution",
     "evolvesFrom": "hp_up",
     "type": "evolution",
     "effects": [
       { "type": "maxHpPercentBonus", "value": 1.5 },
-      { "type": "sizeMultiplier", "value": 0.4 },
-      { "type": "speedMultiplier", "value": -0.3 }
+      { "type": "sizeMultiplier", "value": 1.0 },
+      { "type": "speedMultiplier", "value": -0.5 }
     ]
   }
 ]

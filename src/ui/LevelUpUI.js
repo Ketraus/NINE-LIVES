@@ -179,8 +179,17 @@ export default class LevelUpUI {
   }
 
   _choose(upgrade) {
-    this.runManager.chooseUpgrade(upgrade);
-    this._close();
+    // chooseUpgrade() pode, de forma síncrona, emitir 'evolution-ready' e
+    // portanto chamar showEvolution() (que já reabre o overlay com a carta
+    // de evolução). Esse era o bug: fechar aqui incondicionalmente destruía
+    // a carta de evolução um instante depois dela aparecer, então o
+    // jogador nunca via/clicava nela e a evolução nunca era confirmada.
+    // Só fecha se NÃO houver evolução pendente — showEvolution() cuida do
+    // resto e quem fecha, ao confirmar, é _chooseEvolution().
+    const evolutionTriggered = this.runManager.chooseUpgrade(upgrade);
+    if (!evolutionTriggered) {
+      this._close();
+    }
   }
 
   _chooseEvolution(evolution) {

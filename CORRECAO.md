@@ -1,7 +1,56 @@
-/** Problema encontrado na evolução de cartas, assim que o jogador pega 3 cartas do mesmo tipo "Vitalidade" deveria estar vindo a evolução "Colosso", mas ele fica com o estado anterior salvo, ou seja, limite de vida de 140 como se só houvessem 2 cartas de vitalidade escolhidas, é necessário correção na próxima atualização. 
-Detalhe: Assim que o jogador pega 3 cartas do mesmo tipo, como por exemplo "Vitalidade" deve vir a cartas "Colosso" ela NÃO APAGA o estado das outras cartas, então o jogador vai possuir os 60% a mais de vida das outras 3 cartas e +150% da vida total do Colosso. 
-O Evolução "Colosso" deve ter um aumento de 150% de vida, -50% de Velocidade de Movimento +100% o tamanho do personagem. 
-Cartas Únicas estão respondendo corretamente, Drone, Impacto e Corte Duplo estão funcionando Corretamente. 
-Adicionar explicação do uso e implementação de ambas nas próximas versões de NINE LIVES*//
+## RESOLVIDO
 
-Existem pastas repetidas, src repetido dentro de src...
+**Bug (evolução de cartas não aplicava / vida ficava travada em 140):**
+causa raiz era `LevelUpUI._choose()` — ao escolher a 3ª cópia de
+"Vitalidade", `RunManager.chooseUpgrade()` emitia `'evolution-ready'` de
+forma síncrona, o que já reconstruía o overlay com a carta "COLOSSO" em
+destaque, mas logo em seguida `_choose()` chamava `this._close()`
+incondicionalmente — fechando/destruindo a carta um instante depois dela
+aparecer. O jogador nunca via nem clicava nela, então `confirmEvolution()`
+nunca era chamado e o efeito da evolução nunca entrava. Corrigido em
+`src/ui/LevelUpUI.js` (só fecha o overlay se `chooseUpgrade()` não
+disparou uma evolução) e `src/roguelike/RunManager.js` (`chooseUpgrade`
+agora retorna `true`/`false` avisando se há evolução pendente).
+
+**Stacking das cópias antes da evolução:** também corrigido — antes, a
+3ª cópia da carta base tinha o efeito propositalmente pulado (só
+registrava a cópia, sem aplicar). Agora `chooseUpgrade()` sempre aplica
+o efeito da carta normalmente, para toda cópia, e só *depois* verifica
+se completou o número de cópias pra oferecer a evolução. Ou seja: as 3
+cópias de Vitalidade (+20% cada = +60%) somam normalmente, e COLOSSO
+soma seus próprios +150% em cima — nada é apagado.
+
+**Valores do COLOSSO:** ajustados para bater com o pedido — +150% de
+vida máxima, -50% de velocidade de movimento, +100% de tamanho do
+personagem (`data/upgrades.js`).
+
+**Cartas únicas (Drone, Impacto, Corte Duplo):** já estavam corretas,
+nenhuma mudança necessária. Ver seção "Cartas: evolução vs. habilidade
+exclusiva" no `README.md` para a explicação de como cada sistema
+funciona e como estender os dois.
+
+**Pastas repetidas (`src` dentro de `src`):** removida. Era uma cópia
+antiga e desatualizada (faltavam `abilities/` e `weapons/RangedWeapon.js`
+que só existem na cópia usada de verdade). `index.html` só carrega
+`./src/main.js`, então a pasta aninhada `src/src` não era usada pelo
+jogo — só ocupava espaço e podia confundir edições futuras.
+
+---
+
+## RESOLVIDO (2ª rodada — colisão travando/dano de longe no modo Colosso)
+
+Causa: `Player.applySize()` chamava `body.setCircle(raio * scale, offsetX *
+scale, offsetY * scale)` — ou seja, já mandava o raio/offset **pré-
+multiplicados** pela escala. Só que o Arcade Physics do Phaser trata o
+raio/offset passados pra `setCircle()` como valores "de origem" (sem
+escala) e aplica a escala atual do sprite **automaticamente** por conta
+própria a cada frame. Resultado: a escala era aplicada duas vezes — o
+raio de colisão real acabava crescendo com o quadrado do fator de escala
+(ex.: sprite 2x maior → hitbox ~4x maior), bem maior que o sprite visível.
+Por isso o Colosso "travava" em paredes que visualmente ainda não tinha
+tocado e tomava/dava dano com inimigos ainda longe.
+
+Corrigido em `src/entities/Player.js`: `applySize()` agora chama
+`setCircle()` sempre com os valores base (sem multiplicar por `scale`) —
+o `setScale(scale)` já é suficiente pra crescer a colisão junto com o
+sprite, do jeito que o Phaser espera.

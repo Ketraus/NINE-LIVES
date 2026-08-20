@@ -9,31 +9,40 @@ export default class TiledLoader {
   /**
    * @param {Phaser.Scene} scene
    * @param {string} mapKey - chave usada no this.load.tilemapTiledJSON
-   * @param {string} tilesetImageKey - chave da imagem do tileset carregada
-   * @param {string} tilesetNameInTiled - nome do tileset conforme definido
-   *   no Tiled (Map > Tileset Properties > Name) — precisa bater exatamente
+   * @param {{imageKey:string, nameInTiled:string}[]} tilesetConfigs - um
+   *   item por tileset usado no mapa. imageKey é a chave carregada no
+   *   PreloadScene (this.load.image); nameInTiled precisa bater
+   *   exatamente com Map > Tileset Properties > Name daquele tileset
+   *   no Tiled. Um mapa com tiles de 2+ tilesets diferentes na mesma
+   *   layer precisa de uma entrada aqui pra cada um — ver MapManager.js.
    * @param {{ground:string, walls:string}} layerNames - nomes das Tile
    *   Layers no Tiled
    */
-  static build(scene, mapKey, tilesetImageKey, tilesetNameInTiled, layerNames) {
+  static build(scene, mapKey, tilesetConfigs, layerNames) {
     const map = scene.make.tilemap({ key: mapKey });
 
-    const tileset = map.addTilesetImage(tilesetNameInTiled, tilesetImageKey);
-    if (!tileset) {
-      throw new Error(
-        `[TiledLoader] Tileset "${tilesetNameInTiled}" não encontrado no mapa "${mapKey}". ` +
-          'No Tiled: Map > Tileset Properties > Name precisa ser exatamente esse valor.'
-      );
-    }
+    const tilesets = tilesetConfigs.map(({ imageKey, nameInTiled }) => {
+      const tileset = map.addTilesetImage(nameInTiled, imageKey);
+      if (!tileset) {
+        throw new Error(
+          `[TiledLoader] Tileset "${nameInTiled}" não encontrado no mapa "${mapKey}". ` +
+            'No Tiled: Map > Tileset Properties > Name precisa ser exatamente esse valor.'
+        );
+      }
+      return tileset;
+    });
 
-    const groundLayer = TiledLoader._createLayer(map, tileset, layerNames.ground);
-    const wallsLayer = TiledLoader._createLayer(map, tileset, layerNames.walls);
+    // createLayer aceita um array de tilesets — necessário sempre que a
+    // layer usa tiles vindos de mais de um tileset (o Phaser resolve
+    // sozinho qual tileset cada gid pertence)
+    const groundLayer = TiledLoader._createLayer(map, tilesets, layerNames.ground);
+    const wallsLayer = TiledLoader._createLayer(map, tilesets, layerNames.walls);
 
     return { map, groundLayer, wallsLayer };
   }
 
-  static _createLayer(map, tileset, layerName) {
-    const layer = map.createLayer(layerName, tileset, 0, 0);
+  static _createLayer(map, tilesets, layerName) {
+    const layer = map.createLayer(layerName, tilesets, 0, 0);
     if (!layer) {
       throw new Error(
         `[TiledLoader] Tile Layer "${layerName}" não encontrada no mapa. ` +

@@ -9,6 +9,7 @@ import RunState from '../roguelike/RunState.js';
 import RunManager from '../roguelike/RunManager.js';
 import HUD from '../ui/HUD.js';
 import LevelUpUI from '../ui/LevelUpUI.js';
+import DevConsole from '../systems/DevConsole.js';
 
 import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
@@ -109,6 +110,8 @@ export default class GameScene extends Phaser.Scene {
   _buildUI() {
     this.hud = new HUD(this);
     this.levelUpUI = new LevelUpUI(this, this.runManager);
+    // console de hack (F9) — dá cartas por comando, ver src/systems/DevConsole.js
+    this.devConsole = new DevConsole(this, this.runManager);
   }
 
   _buildCollisions() {

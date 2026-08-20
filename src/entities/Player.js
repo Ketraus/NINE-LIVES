@@ -67,17 +67,25 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
    * Recalcula escala visual + corpo de colisão a partir de
    * runState.sizeMultiplier (0 = tamanho normal). Chamado pelo RunManager
    * sempre que um efeito "sizeMultiplier" é aplicado (hoje só a evolução
-   * COLOSSO usa isto). Reaproveita o raio/offset "base" guardados no
-   * construtor, escalados, pra não perder a colisão circular ao crescer.
+   * COLOSSO usa isto).
+   *
+   * IMPORTANTE: body.setCircle(radius, offsetX, offsetY) espera raio e
+   * offset em pixels "de origem" (SEM escala) — o Arcade Physics aplica a
+   * escala atual do sprite por conta própria a cada frame (ver
+   * Body.updateBounds()/Body.radius nos docs do Phaser: "this is the
+   * unscaled radius... the true radius is equal to halfWidth"). Passar
+   * `_baseRadius * scale` aqui (como era antes) fazia o Phaser escalar de
+   * novo por cima, resultando num raio de colisão MUITO maior que o
+   * sprite visível — daí o jogador "travando" em paredes que ainda não
+   * tinha tocado e tomando dano de inimigos ainda longe. Por isso agora
+   * só passamos os valores base (sem multiplicar por scale): o
+   * setScale(scale) já é suficiente pra crescer a colisão junto com o
+   * sprite.
    */
   applySize(sizeMultiplier) {
     const scale = 1 + sizeMultiplier;
     this.setScale(scale);
-    this.body.setCircle(
-      this._baseRadius * scale,
-      this._baseOffsetX * scale,
-      this._baseOffsetY * scale
-    );
+    this.body.setCircle(this._baseRadius, this._baseOffsetX, this._baseOffsetY);
   }
 
   get speed() {

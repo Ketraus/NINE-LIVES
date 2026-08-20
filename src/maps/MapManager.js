@@ -1,11 +1,22 @@
 import TiledLoader from './TiledLoader.js';
 
 // Tudo que depende de nomes definidos no Tiled fica centralizado aqui.
-// Renomeou uma layer ou o tileset no editor? Só mexe nessas 6 linhas —
-// nenhum outro arquivo do jogo referencia esses nomes diretamente.
+// Renomeou uma layer ou tileset no editor? Só mexe aqui — nenhum outro
+// arquivo do jogo referencia esses nomes diretamente.
 const MAP_KEY = 'map';
-const TILESET_IMAGE_KEY = 'tileset';
-const TILESET_NAME_IN_TILED = 'tileset'; // Map > Tileset Properties > Name
+
+// Um item por tileset usado no mapa. imageKey precisa ter sido carregado
+// no PreloadScene.js (this.load.image); nameInTiled precisa bater
+// EXATAMENTE com Map > Tileset Properties > Name daquele tileset no
+// Tiled. Pra adicionar um segundo tileset (ex.: props/decoração):
+//   1. No Tiled: Map > New Tileset, aponte pra nova imagem, dê um Name
+//      único (ex.: "props") — diferente do nome dos outros tilesets.
+//   2. No PreloadScene.js: this.load.image('props', 'assets/maps/props.png')
+//   3. Aqui embaixo: acrescente { imageKey: 'props', nameInTiled: 'props' }
+// Pronto — dá pra usar tiles dos dois tilesets na mesma layer (Ground ou
+// Walls), o Phaser resolve sozinho qual tileset cada tile pertence.
+const TILESETS = [{ imageKey: 'tileset', nameInTiled: 'tileset' }];
+
 const LAYER_NAMES = { ground: 'Ground', walls: 'Walls' };
 const OBJECT_LAYER_NAME = 'Objects';
 const PLAYER_SPAWN_OBJECT_NAME = 'PlayerSpawn';
@@ -29,8 +40,7 @@ export default class MapManager {
     const { map, groundLayer, wallsLayer } = TiledLoader.build(
       this.scene,
       MAP_KEY,
-      TILESET_IMAGE_KEY,
-      TILESET_NAME_IN_TILED,
+      TILESETS,
       LAYER_NAMES
     );
     this.map = map;
