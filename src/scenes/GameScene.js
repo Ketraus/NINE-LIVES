@@ -61,8 +61,8 @@ export default class GameScene extends Phaser.Scene {
    * Emite o tempo de run decorrido (em segundos inteiros) só quando ele
    * muda, pra HUD desenhar o contador — sem dar a HUD acesso direto ao
    * SpawnDirector (ela só escuta EventBus, ver ui/HUD.js). Congela ao
-   * morrer; continua contando durante o level-up, igual ao spawn (que
-   * também não pausa nesse momento — ver SpawnDirector).
+   * morrer; também congela durante a tela de escolha de carta (ver
+   * SpawnDirector.pause/resume, chamados em 'levelup-opened'/'-closed').
    */
   _updateRunTimer() {
     if (this.isGameOver) return;
@@ -97,6 +97,11 @@ export default class GameScene extends Phaser.Scene {
 
   _buildEnemies() {
     this.enemySpawner = new EnemySpawner(this, this.mapManager, this.player, enemiesData);
+    // Inimigos colidem entre si (mas continuam atravessáveis pelo jogador —
+    // aquilo é overlap, não collider, ver _buildCollisions) pra não ficarem
+    // empilhados uns dentro dos outros; a física arcade já separa sozinha
+    // corpos que se sobrepõem quando existe um collider entre eles.
+    this.physics.add.collider(this.enemySpawner.group, this.enemySpawner.group);
     // SpawnDirector cronometra a run e decide quando/quantos inimigos pedir;
     // EnemySpawner só sabe criar (ver src/roguelike/SpawnDirector.js)
     this.spawnDirector = new SpawnDirector(this, this.enemySpawner);
@@ -172,9 +177,11 @@ export default class GameScene extends Phaser.Scene {
 
     EventBus.on('levelup-opened', () => {
       this.isPaused = true;
+      this.spawnDirector.pause();
     });
     EventBus.on('levelup-closed', () => {
       this.isPaused = false;
+      this.spawnDirector.resume();
     });
   }
 

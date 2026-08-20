@@ -32,13 +32,22 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     });
   }
 
-  /** Persegue o alvo (o jogador) em linha reta. IA simples de propósito — é o protótipo. */
+  /**
+   * Persegue o alvo (o jogador) em linha reta. IA simples de propósito — é
+   * o protótipo. Matemática feita na mão (em vez de Phaser.Math.Vector2)
+   * pra não alocar um objeto novo por inimigo a cada frame — com poucos
+   * inimigos isso não importa nada, mas em enxames grandes (dezenas+) esse
+   * lixo extra de memória é o tipo de coisa que pesa mais em celular do
+   * que no PC, por causa da garbage collection.
+   */
   chase(target) {
     if (!this.active || this.healthSystem.isDead()) return;
-    const dir = new Phaser.Math.Vector2(target.x - this.x, target.y - this.y);
-    if (dir.lengthSq() === 0) return;
-    dir.normalize();
-    this.setVelocity(dir.x * this.def.speed, dir.y * this.def.speed);
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq === 0) return;
+    const dist = Math.sqrt(distSq);
+    this.setVelocity((dx / dist) * this.def.speed, (dy / dist) * this.def.speed);
   }
 
   die() {
