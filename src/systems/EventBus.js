@@ -10,6 +10,7 @@
  *  - 'player-died'            ()
  *  - 'enemy-died'             ({ x, y, xpReward })
  *  - 'xp-changed'             ({ xp, xpToNext, level })
+ *  - 'run-time-changed'       ({ seconds }) — tempo decorrido da run, emitido a cada segundo (ver GameScene._updateRunTimer)
  *  - 'level-up'               ({ options: Upgrade[] })
  *  - 'evolution-ready'        ({ evolution }) — carta base completou as cópias e evoluiu
  *  - 'ability-unlocked'       ({ abilityId, def }) — carta exclusiva escolhida

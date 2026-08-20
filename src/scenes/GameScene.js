@@ -7,6 +7,7 @@ import AbilityManager from '../abilities/AbilityManager.js';
 import DamageSystem from '../combat/DamageSystem.js';
 import RunState from '../roguelike/RunState.js';
 import RunManager from '../roguelike/RunManager.js';
+import SpawnDirector from '../roguelike/SpawnDirector.js';
 import HUD from '../ui/HUD.js';
 import LevelUpUI from '../ui/LevelUpUI.js';
 import DevConsole from '../systems/DevConsole.js';
@@ -42,16 +43,34 @@ export default class GameScene extends Phaser.Scene {
     this._buildCollisions();
     this._buildInput();
 
-    this.events.once('shutdown', () => this.enemySpawner?.stop());
+    this.events.once('shutdown', () => this.spawnDirector?.stop());
 
     EventBus.emit('run-restart');
   }
 
   update() {
+    this._updateRunTimer();
+
     if (this.isGameOver || this.isPaused) return;
     this.player.update();
     this.enemySpawner.updateAll();
     this.abilityManager.update(this.time.now);
+  }
+
+  /**
+   * Emite o tempo de run decorrido (em segundos inteiros) só quando ele
+   * muda, pra HUD desenhar o contador — sem dar a HUD acesso direto ao
+   * SpawnDirector (ela só escuta EventBus, ver ui/HUD.js). Congela ao
+   * morrer; continua contando durante o level-up, igual ao spawn (que
+   * também não pausa nesse momento — ver SpawnDirector).
+   */
+  _updateRunTimer() {
+    if (this.isGameOver) return;
+    const seconds = Math.floor(this.spawnDirector.getElapsedMs() / 1000);
+    if (seconds !== this._lastRunTimeSeconds) {
+      this._lastRunTimeSeconds = seconds;
+      EventBus.emit('run-time-changed', { seconds });
+    }
   }
 
   // ---------- construção ----------
@@ -78,7 +97,11 @@ export default class GameScene extends Phaser.Scene {
 
   _buildEnemies() {
     this.enemySpawner = new EnemySpawner(this, this.mapManager, this.player, enemiesData);
-    this.enemySpawner.start();
+    // SpawnDirector cronometra a run e decide quando/quantos inimigos pedir;
+    // EnemySpawner só sabe criar (ver src/roguelike/SpawnDirector.js)
+    this.spawnDirector = new SpawnDirector(this, this.enemySpawner);
+    this._lastRunTimeSeconds = -1;
+    this.spawnDirector.start();
   }
 
   _buildWeapon() {
@@ -144,7 +167,7 @@ export default class GameScene extends Phaser.Scene {
 
     EventBus.on('player-died', () => {
       this.isGameOver = true;
-      this.enemySpawner.stop();
+      this.spawnDirector.stop();
     });
 
     EventBus.on('levelup-opened', () => {

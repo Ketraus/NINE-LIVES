@@ -1,6 +1,5 @@
 import Enemy from './Enemy.js';
 
-const SPAWN_INTERVAL_MS = 2800;
 const MAX_ALIVE = 14; // trava a quantidade simultânea pra não virar enxame incontrolável
 // Quanto além da borda da câmera o inimigo precisa nascer pra garantir que
 // nasce "fora da visão" (nunca literalmente colado na borda, senão dá pra
@@ -8,12 +7,15 @@ const MAX_ALIVE = 14; // trava a quantidade simultânea pra não virar enxame in
 const SPAWN_MARGIN_BEYOND_VIEW = 80;
 
 /**
- * Spawna inimigos periodicamente ao redor do jogador, sempre fora do que
- * a câmera está mostrando no momento — não em qualquer ponto do mapa.
- * Isso é o que permite o mapa ser gigante sem os inimigos nascerem longe
- * demais pra chegar perto do jogador (spawn "em qualquer lugar do mapa"
- * só funciona bem em mapas pequenos, do tamanho da tela). Hoje só usa um
- * tipo ("grunt"); a leitura de enemies.js já deixa pronto suportar
+ * Responsável só por CRIAR inimigos: escolhe o tipo, acha uma posição fora
+ * da visão da câmera e instancia. Não decide quando nem quantos spawnar —
+ * isso é papel do SpawnDirector (ver src/roguelike/SpawnDirector.js), que
+ * chama spawnOne() quantas vezes quiser, quando quiser. Spawna sempre fora
+ * do que a câmera está mostrando no momento — não em qualquer ponto do
+ * mapa. Isso é o que permite o mapa ser gigante sem os inimigos nascerem
+ * longe demais pra chegar perto do jogador (spawn "em qualquer lugar do
+ * mapa" só funciona bem em mapas pequenos, do tamanho da tela). Hoje só
+ * usa um tipo ("grunt"); a leitura de enemies.js já deixa pronto suportar
  * múltiplos tipos/waves no futuro sem mudar a API.
  */
 export default class EnemySpawner {
@@ -30,23 +32,14 @@ export default class EnemySpawner {
     this.enemyDefs = enemyDefs;
 
     this.group = scene.physics.add.group({ runChildUpdate: false });
-    this.timerEvent = null;
   }
 
-  start() {
-    this.timerEvent = this.scene.time.addEvent({
-      delay: SPAWN_INTERVAL_MS,
-      loop: true,
-      callback: () => this.spawnOne()
-    });
-    // primeiro inimigo imediato pra não deixar a cena vazia
-    this.spawnOne();
-  }
-
-  stop() {
-    this.timerEvent?.remove();
-  }
-
+  /**
+   * Cria um inimigo agora, se houver espaço (respeita MAX_ALIVE). Chamado
+   * pelo SpawnDirector — quantas vezes e com que frequência é decisão dele,
+   * não deste método.
+   * @returns {Enemy|null}
+   */
   spawnOne() {
     // enxame sob controle: se já tem gente demais viva, pula esse ciclo
     if (this.group.countActive(true) >= MAX_ALIVE) return null;

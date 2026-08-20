@@ -13,6 +13,7 @@ export default class HUD {
     this._buildHealthBar();
     this._buildXpBar();
     this._buildKillCounter();
+    this._buildRunTimer();
     this._buildGameOverText();
     this._bindEvents();
   }
@@ -59,6 +60,14 @@ export default class HUD {
       .setDepth(100);
   }
 
+  _buildRunTimer() {
+    this.timeText = this.scene.add
+      .text(this.scene.scale.width / 2, 16, '00:00', { fontSize: '14px', color: '#ffffff' })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(100);
+  }
+
   _buildGameOverText() {
     this.gameOverGroup = this.scene.add.container(0, 0).setDepth(200).setVisible(false);
     const cx = this.scene.scale.width / 2;
@@ -95,6 +104,10 @@ export default class HUD {
       this.killText.setText(`Abates: ${this._kills}`);
     });
 
+    EventBus.on('run-time-changed', ({ seconds }) => {
+      this.timeText.setText(HUD._formatTime(seconds));
+    });
+
     EventBus.on('player-died', () => {
       this.gameOverGroup.setVisible(true);
     });
@@ -103,7 +116,15 @@ export default class HUD {
       this.gameOverGroup.setVisible(false);
       this._kills = 0;
       this.killText.setText('Abates: 0');
+      this.timeText.setText('00:00');
     });
+  }
+
+  /** @param {number} totalSeconds @returns {string} "mm:ss" */
+  static _formatTime(totalSeconds) {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
   // Sem destroy() aqui de propósito: nada chamava esse método (ele nunca
