@@ -223,3 +223,7 @@ Este projeto foi convertido para rodar sem build (sem Vite/npm):
   via `publicDir`).
 - `vite.config.js` e `package.json` foram removidos por não serem
   mais necessários.
+
+  https://opengameart.org/content/dungeon-crawl-32x32-tiles
+
+  
