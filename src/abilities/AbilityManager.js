@@ -1,6 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 import SlamAbility from './SlamAbility.js';
 import DroneAbility from './DroneAbility.js';
+import AllyDogAbility from './AllyDogAbility.js';
 
 /**
  * Ponto de extensão central pras habilidades exclusivas de arma (as cartas
@@ -17,7 +18,8 @@ import DroneAbility from './DroneAbility.js';
  */
 const ABILITY_CLASSES = {
   slam: SlamAbility,
-  drone: DroneAbility
+  drone: DroneAbility,
+  allyDog: AllyDogAbility
 };
 
 export default class AbilityManager {

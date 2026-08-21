@@ -27,7 +27,7 @@ export default class SlamAbility {
     enemyGroup.children.iterate((enemy) => {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
-      if (dist <= this.def.radius) DamageSystem.applyWeaponHit(enemy, this.def.damage);
+      if (dist <= this.def.radius) DamageSystem.applyWeaponHit(enemy, this.def.damage, player);
     });
     this._showFx(scene, player);
   }

@@ -7,6 +7,13 @@ import { BASE_MAX_HP } from '../entities/Player.js';
 // em vez de uma constante global.
 const EVOLUTION_STACK_THRESHOLD = 3;
 
+// Peso de sorteio por raridade — usado só pra decidir QUAIS das cartas
+// disponíveis aparecem entre as 3 opções do level-up (ver
+// _pickWeightedUpgrades). Quanto menor o peso, mais rara a carta é de
+// aparecer; não é uma probabilidade absoluta, é relativa às outras cartas
+// ainda disponíveis no sorteio.
+const RARITY_WEIGHTS = { common: 70, rare: 25, epic: 5 };
+
 /**
  * Dono do FLUXO de progressão. RunState guarda os números; RunManager
  * decide o que acontece quando eles mudam (subir de nível -> pausar e
@@ -43,8 +50,44 @@ export default class RunManager {
 
   _triggerLevelUp() {
     const pool = this._getAvailableUpgrades();
-    const options = Phaser.Utils.Array.Shuffle([...pool]).slice(0, 3);
+    const options = this._pickWeightedUpgrades(pool, 3);
     EventBus.emit('level-up', { options });
+  }
+
+  /**
+   * Sorteia `count` cartas sem repetir, ponderando pela raridade
+   * (RARITY_WEIGHTS): a cada rodada, o peso de cada candidata restante
+   * define a chance dela ser a escolhida, e ela sai do grupo antes da
+   * próxima rodada — assim uma carta épica pode aparecer mais de uma vez
+   * entre as 3 opções em runs diferentes, mas com bem menos frequência
+   * que uma comum ou rara.
+   */
+  _pickWeightedUpgrades(pool, count) {
+    const remaining = [...pool];
+    const picks = [];
+
+    while (remaining.length > 0 && picks.length < count) {
+      const totalWeight = remaining.reduce((sum, u) => sum + this._rarityWeight(u), 0);
+      let roll = Phaser.Math.FloatBetween(0, totalWeight);
+      let chosenIndex = remaining.length - 1;
+
+      for (let i = 0; i < remaining.length; i++) {
+        roll -= this._rarityWeight(remaining[i]);
+        if (roll <= 0) {
+          chosenIndex = i;
+          break;
+        }
+      }
+
+      picks.push(remaining[chosenIndex]);
+      remaining.splice(chosenIndex, 1);
+    }
+
+    return picks;
+  }
+
+  _rarityWeight(upgrade) {
+    return RARITY_WEIGHTS[upgrade.rarity] ?? RARITY_WEIGHTS.common;
   }
 
   /**
@@ -69,6 +112,10 @@ export default class RunManager {
       if (upgrade.type === 'unlockAbility' && this.runState.unlockedAbilities.has(upgrade.abilityId)) {
         return false;
       }
+      // cartas marcadas `unique` (ex.: "Arsenal Expandido") só podem ser
+      // tiradas uma vez, igual às unlockAbility, mas sem precisar do
+      // conceito de habilidade — basta já constar em ownedUpgradeIds.
+      if (upgrade.unique && this.runState.ownedUpgradeIds.has(upgrade.id)) return false;
       if (upgrade.evolvesInto && this.runState.ownedUpgradeIds.has(upgrade.evolvesInto)) return false;
       return true;
     });
@@ -191,6 +238,9 @@ export default class RunManager {
         message: `"${upgrade.name}" é exclusiva de ${upgrade.weaponId}, e você está com ${this.runState.weaponId}.`
       };
     }
+    if (upgrade.unique && this.runState.ownedUpgradeIds.has(upgrade.id)) {
+      return { ok: false, message: `Você já tem "${upgrade.name}" (só pode ser obtida uma vez).` };
+    }
 
     const isUnlockAbility = upgrade.type === 'unlockAbility';
     if (isUnlockAbility && this.runState.unlockedAbilities.has(upgrade.abilityId)) {
@@ -233,10 +283,13 @@ export default class RunManager {
         let tag = '';
         if (u.type === 'unlockAbility' && this.runState.unlockedAbilities.has(u.abilityId)) {
           tag = ' [já tem]';
+        } else if (u.unique && this.runState.ownedUpgradeIds.has(u.id)) {
+          tag = ' [já tem]';
         } else if (u.evolvesInto && this.runState.ownedUpgradeIds.has(u.evolvesInto)) {
           tag = ' [já evoluiu]';
         }
-        return `${u.id} — ${u.name}${tag}`;
+        const rarityIcon = { common: '⚪', rare: '🔵', epic: '🟣' }[u.rarity] ?? '⚪';
+        return `${rarityIcon} ${u.id} — ${u.name}${tag}`;
       });
   }
 

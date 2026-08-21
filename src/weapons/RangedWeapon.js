@@ -30,7 +30,7 @@ export default class RangedWeapon {
     const target = this._findNearestEnemy(player, enemyGroup, range);
     if (!target) return false; // sem alvo à vista: não atira, não gasta cooldown
 
-    this._ensureBulletGroup(scene, enemyGroup);
+    this._ensureBulletGroup(scene, player, enemyGroup);
 
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();
@@ -53,11 +53,11 @@ export default class RangedWeapon {
   }
 
   /** Overlap bala x inimigos, e colisão bala x paredes, registrados uma única vez (não a cada tiro). */
-  _ensureBulletGroup(scene, enemyGroup) {
+  _ensureBulletGroup(scene, player, enemyGroup) {
     if (this.bulletGroup) return;
     this.bulletGroup = scene.physics.add.group();
     scene.physics.add.overlap(this.bulletGroup, enemyGroup, (bullet, enemy) => {
-      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'));
+      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player);
       bullet.destroy();
     });
     // reaproveita o mapManager que a GameScene já monta — bala não deve

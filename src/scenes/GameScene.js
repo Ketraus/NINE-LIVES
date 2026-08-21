@@ -154,7 +154,7 @@ export default class GameScene extends Phaser.Scene {
         this.time.now
       );
       if (hit && this.runState.thornsDamage > 0) {
-        DamageSystem.applyWeaponHit(enemy, this.runState.thornsDamage);
+        DamageSystem.applyWeaponHit(enemy, this.runState.thornsDamage, player);
       }
     });
 

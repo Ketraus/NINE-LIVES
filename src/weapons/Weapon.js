@@ -65,7 +65,7 @@ export default class Weapon {
       const normalizedAngle = Math.min(angleBetween, Phaser.Math.PI2 - angleBetween);
       if (normalizedAngle <= halfArc) {
         if (!this._hasLineOfSight(scene, player, enemy)) return;
-        this._applyHit(scene, enemy, damage);
+        this._applyHit(scene, enemy, damage, player);
       }
     });
   }
@@ -95,7 +95,7 @@ export default class Weapon {
       if (perpDist > halfWidth) return;
 
       if (!this._hasLineOfSight(scene, player, enemy)) return;
-      this._applyHit(scene, enemy, damage);
+      this._applyHit(scene, enemy, damage, player);
     });
   }
 
@@ -122,8 +122,8 @@ export default class Weapon {
   }
 
   /** Aplica o dano e, se o golpe realmente acertou, dispara a reação visual de impacto. */
-  _applyHit(scene, enemy, damage) {
-    const hit = DamageSystem.applyWeaponHit(enemy, damage);
+  _applyHit(scene, enemy, damage, player) {
+    const hit = DamageSystem.applyWeaponHit(enemy, damage, player);
     if (hit) this._showHitReaction(scene, enemy);
   }
 

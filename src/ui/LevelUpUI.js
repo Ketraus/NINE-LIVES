@@ -4,6 +4,12 @@ const CARD_W = 160;
 const CARD_H = 200;
 const GAP = 20;
 
+// Visual da raridade (ver campo independente `rarity` em data/upgrades.js):
+// cor do contorno/nome da carta + ícone/rótulo mostrados no topo dela.
+const RARITY_COLORS = { common: 0xe6e6e6, rare: 0x4fd1ff, epic: 0xb26bff };
+const RARITY_ICONS = { common: '⚪', rare: '🔵', epic: '🟣' };
+const RARITY_LABELS = { common: 'COMUM', rare: 'RARA', epic: 'ÉPICA' };
+
 /**
  * Mostra as cartas de progressão, pausa a física enquanto escolhe, aplica
  * a escolha via RunManager e despausa. Dois modos, dois eventos:
@@ -92,7 +98,9 @@ export default class LevelUpUI {
   _buildCard(x, y, upgrade) {
     const group = this.scene.add.container(x, y);
     const isExclusive = upgrade.category === 'exclusive';
-    const accentColor = isExclusive ? 0xffb347 : 0x4fd1ff;
+    const rarity = upgrade.rarity || 'common';
+    const accentColor = RARITY_COLORS[rarity] ?? RARITY_COLORS.common;
+    const accentHex = `#${accentColor.toString(16).padStart(6, '0')}`;
 
     const bg = this.scene.add
       .rectangle(0, 0, CARD_W, CARD_H, 0x22252e, 0.95)
@@ -103,7 +111,7 @@ export default class LevelUpUI {
     const name = this.scene.add
       .text(0, -CARD_H / 2 + 30, upgrade.name, {
         fontSize: '16px',
-        color: isExclusive ? '#ffb347' : '#4fd1ff'
+        color: accentHex
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
@@ -118,15 +126,19 @@ export default class LevelUpUI {
       .setOrigin(0.5)
       .setScrollFactor(0);
 
-    const children = [bg, name, desc];
+    // topo da carta: raridade sempre visível (ícone + rótulo); cartas
+    // exclusivas de arma ganham o sufixo "· EXCLUSIVA" na mesma linha em
+    // vez de uma segunda tag, pra não disputar espaço vertical com o nome
+    const rarityLabel = RARITY_LABELS[rarity] ?? RARITY_LABELS.common;
+    const tagText = isExclusive
+      ? `${RARITY_ICONS[rarity]} ${rarityLabel} · EXCLUSIVA`
+      : `${RARITY_ICONS[rarity]} ${rarityLabel}`;
+    const tag = this.scene.add
+      .text(0, -CARD_H / 2 + 12, tagText, { fontSize: '10px', color: accentHex })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
 
-    if (isExclusive) {
-      const tag = this.scene.add
-        .text(0, -CARD_H / 2 + 12, 'EXCLUSIVA', { fontSize: '10px', color: '#ffb347' })
-        .setOrigin(0.5)
-        .setScrollFactor(0);
-      children.push(tag);
-    }
+    const children = [bg, name, desc, tag];
 
     bg.on('pointerover', () => bg.setStrokeStyle(2, 0xffffff));
     bg.on('pointerout', () => bg.setStrokeStyle(2, accentColor));

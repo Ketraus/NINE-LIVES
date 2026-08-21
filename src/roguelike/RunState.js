@@ -28,6 +28,13 @@ export default class RunState {
     this.maxHpPercentBonus = 0; // fração da vida BASE, ex 0.2 = +20% (ver Player.BASE_MAX_HP)
     this.sizeMultiplier = 0; // fração de crescimento do sprite, ex 0.4 = +40% de tamanho
     this.thornsDamage = 2; // dano de contra-ataque ao ser atingido (base pequena, upgradável)
+    this.lifestealFraction = 0; // fração do dano causado pelo jogador convertida em cura (carta "Sanguessuga")
+
+    // bônus ao limite máximo de cartas que o jogador pode carregar (carta
+    // "Arsenal Expandido"). Ainda não existe um sistema de limite de cartas
+    // no jogo (hoje não há teto pra quantas cartas você pode ter) — este
+    // campo só registra o bônus, pronto pra quando esse limite existir.
+    this.maxCardSlotsBonus = 0;
 
     // ids de habilidades exclusivas desbloqueadas (ex.: 'slam', 'doubleStrike',
     // 'drone') — cartas do tipo "unlockAbility" só podem ser tiradas uma vez,
@@ -115,6 +122,12 @@ export default class RunState {
         break;
       case 'thornsDamage':
         this.thornsDamage += effect.value;
+        break;
+      case 'lifestealFraction':
+        this.lifestealFraction += effect.value;
+        break;
+      case 'maxCardSlotsBonus':
+        this.maxCardSlotsBonus += effect.value;
         break;
       case 'unlockAbility':
         this.unlockedAbilities.add(effect.abilityId);

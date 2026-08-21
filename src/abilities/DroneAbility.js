@@ -46,7 +46,7 @@ export default class DroneAbility {
 
     this.bulletGroup = scene.physics.add.group();
     scene.physics.add.overlap(this.bulletGroup, enemyGroup, (bullet, enemy) => {
-      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'));
+      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player);
       bullet.destroy();
     });
     // bala do drone também não deve atravessar parede
