@@ -65,7 +65,7 @@ export default class Weapon {
       const normalizedAngle = Math.min(angleBetween, Phaser.Math.PI2 - angleBetween);
       if (normalizedAngle <= halfArc) {
         if (!this._hasLineOfSight(scene, player, enemy)) return;
-        this._applyHit(scene, enemy, damage, player);
+        this._applyHit(scene, enemy, damage, player, aim);
       }
     });
   }
@@ -95,7 +95,7 @@ export default class Weapon {
       if (perpDist > halfWidth) return;
 
       if (!this._hasLineOfSight(scene, player, enemy)) return;
-      this._applyHit(scene, enemy, damage, player);
+      this._applyHit(scene, enemy, damage, player, aim);
     });
   }
 
@@ -121,25 +121,24 @@ export default class Weapon {
     return true;
   }
 
-  /** Aplica o dano e, se o golpe realmente acertou, dispara a reação visual de impacto. */
-  _applyHit(scene, enemy, damage, player) {
-    const hit = DamageSystem.applyWeaponHit(enemy, damage, player);
-    if (hit) this._showHitReaction(scene, enemy);
-  }
-
   /**
-   * Flash branco rápido no inimigo atingido — dá sensação de impacto em
-   * qualquer arma melee. Punhos, além disso, tremem levemente a câmera
-   * (def.cameraShake) pra reforçar o "peso" do soco.
+   * Aplica o dano e, se o golpe realmente acertou, dispara o empurrão
+   * (knockback) na direção `aim` do golpe — ver campo `knockback` em
+   * data/weapons.js — e o tremor de câmera específico da arma, se houver
+   * (def.cameraShake, hoje só nos punhos). O flash/"pop" de impacto no
+   * inimigo em si é centralizado em DamageSystem.applyWeaponHit (ver
+   * Enemy.playHitReaction), então toda arma/habilidade ganha o mesmo
+   * feedback sem precisar chamar nada daqui.
    */
-  _showHitReaction(scene, enemy) {
-    if (!enemy.active) return;
-    enemy.setTintFill(0xffffff);
-    scene.time.delayedCall(70, () => {
-      if (enemy.active) enemy.setTint(enemy.def.color);
-    });
-    if (this.def.cameraShake) {
-      scene.cameras.main.shake(60, this.def.cameraShake);
+  _applyHit(scene, enemy, damage, player, aim) {
+    const hit = DamageSystem.applyWeaponHit(enemy, damage, player);
+    if (hit) {
+      if (this.def.cameraShake) {
+        scene.cameras.main.shake(60, this.def.cameraShake);
+      }
+      if (this.def.knockback) {
+        enemy.applyKnockback(aim.x, aim.y, this.def.knockback, scene.time.now);
+      }
     }
   }
 

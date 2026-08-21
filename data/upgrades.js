@@ -55,6 +55,15 @@ export default [
     "type": "thornsDamage",
     "value": 4
   },
+  {
+    "id": "armor_up",
+    "name": "Blindagem",
+    "description": "-10% de dano recebido por cópia",
+    "category": "base",
+    "rarity": "common",
+    "type": "damageReductionFraction",
+    "value": 0.1
+  },
 
   // ---------- cartas base épicas: raras de aparecer, qualquer classe pode
   // receber (ver RunManager._pickWeightedUpgrades pro peso de sorteio) ----------

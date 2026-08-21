@@ -11,7 +11,8 @@ export default [
     "cooldownMs": 200,
     "fxTint": 0xffb199,
     "fxDurationMs": 100,
-    "cameraShake": 0.0025
+    "cameraShake": 0.0025,
+    "knockback": 420
   },
   {
     "id": "katana",
@@ -24,7 +25,8 @@ export default [
     "lineWidth": 30,
     "cooldownMs": 650,
     "fxTint": 0xcfe8ff,
-    "fxDurationMs": 240
+    "fxDurationMs": 240,
+    "knockback": 240
   },
   {
     "id": "pistol",
@@ -35,7 +37,8 @@ export default [
     "range": 220,
     "cooldownMs": 480,
     "projectileSpeed": 380,
-    "projectileTint": 0xfff07a
+    "projectileTint": 0xfff07a,
+    "knockback": 110
   }
 ]
 ;

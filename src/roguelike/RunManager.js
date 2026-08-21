@@ -7,8 +7,13 @@ import { BASE_MAX_HP } from '../entities/Player.js';
 // em vez de uma constante global.
 const EVOLUTION_STACK_THRESHOLD = 3;
 
+// Quantas opções normais de carta o level-up mostra por padrão. A carta
+// "Arsenal Expandido" (maxCardSlotsBonus em RunState) soma a este número —
+// pegar a carta faz o PRÓXIMO level-up (e os seguintes) oferecer +1 opção.
+const BASE_LEVEL_UP_OPTIONS = 3;
+
 // Peso de sorteio por raridade — usado só pra decidir QUAIS das cartas
-// disponíveis aparecem entre as 3 opções do level-up (ver
+// disponíveis aparecem entre as opções do level-up (ver
 // _pickWeightedUpgrades). Quanto menor o peso, mais rara a carta é de
 // aparecer; não é uma probabilidade absoluta, é relativa às outras cartas
 // ainda disponíveis no sorteio.
@@ -50,7 +55,10 @@ export default class RunManager {
 
   _triggerLevelUp() {
     const pool = this._getAvailableUpgrades();
-    const options = this._pickWeightedUpgrades(pool, 3);
+    // "Arsenal Expandido" soma ao número base de opções mostradas — ver
+    // BASE_LEVEL_UP_OPTIONS e RunState.maxCardSlotsBonus.
+    const optionCount = BASE_LEVEL_UP_OPTIONS + this.runState.maxCardSlotsBonus;
+    const options = this._pickWeightedUpgrades(pool, optionCount);
     EventBus.emit('level-up', { options });
   }
 

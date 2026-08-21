@@ -29,11 +29,12 @@ export default class RunState {
     this.sizeMultiplier = 0; // fração de crescimento do sprite, ex 0.4 = +40% de tamanho
     this.thornsDamage = 2; // dano de contra-ataque ao ser atingido (base pequena, upgradável)
     this.lifestealFraction = 0; // fração do dano causado pelo jogador convertida em cura (carta "Sanguessuga")
+    this.damageReductionFraction = 0; // fração do dano recebido que é ignorada (carta "Blindagem"), acumula normalmente por cópia
 
-    // bônus ao limite máximo de cartas que o jogador pode carregar (carta
-    // "Arsenal Expandido"). Ainda não existe um sistema de limite de cartas
-    // no jogo (hoje não há teto pra quantas cartas você pode ter) — este
-    // campo só registra o bônus, pronto pra quando esse limite existir.
+    // bônus ao número de opções de carta mostradas em cada level-up (carta
+    // "Arsenal Expandido": pegar ela faz o PRÓXIMO level-up em diante
+    // oferecer +1 opção). Consultado por RunManager._triggerLevelUp
+    // (BASE_LEVEL_UP_OPTIONS + este valor).
     this.maxCardSlotsBonus = 0;
 
     // ids de habilidades exclusivas desbloqueadas (ex.: 'slam', 'doubleStrike',
@@ -125,6 +126,11 @@ export default class RunState {
         break;
       case 'lifestealFraction':
         this.lifestealFraction += effect.value;
+        break;
+      case 'damageReductionFraction':
+        // cap em 0.9 pelo mesmo motivo do cooldownMultiplier: várias cópias
+        // empilhadas não podem chegar a 100%+ e tornar o dano recebido nulo/negativo
+        this.damageReductionFraction = Math.min(0.9, this.damageReductionFraction + effect.value);
         break;
       case 'maxCardSlotsBonus':
         this.maxCardSlotsBonus += effect.value;

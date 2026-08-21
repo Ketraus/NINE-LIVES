@@ -100,9 +100,9 @@ export default class EnemySpawner {
   }
 
   /** Chamado no update da GameScene: faz todos perseguirem o jogador. */
-  updateAll() {
+  updateAll(nowMs) {
     this.group.children.iterate((enemy) => {
-      enemy?.chase(this.player);
+      enemy?.chase(this.player, nowMs);
     });
   }
 }

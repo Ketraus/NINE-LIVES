@@ -45,6 +45,10 @@ export default class RangedWeapon {
     bullet.body.setAllowGravity(false);
     bullet.setVelocity(dir.x * speed, dir.y * speed);
     bullet.setData('damage', damage);
+    // guardado pra empurrar o inimigo na hora do impacto (ver knockback
+    // em _ensureBulletGroup) — mesma direção que a bala está viajando
+    bullet.setData('dirX', dir.x);
+    bullet.setData('dirY', dir.y);
 
     // projétil não deve viver pra sempre caso erre todo mundo
     scene.time.delayedCall(DEFAULT_PROJECTILE_LIFETIME_MS, () => bullet.destroy());
@@ -57,7 +61,10 @@ export default class RangedWeapon {
     if (this.bulletGroup) return;
     this.bulletGroup = scene.physics.add.group();
     scene.physics.add.overlap(this.bulletGroup, enemyGroup, (bullet, enemy) => {
-      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player);
+      const hit = DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player);
+      if (hit && this.def.knockback) {
+        enemy.applyKnockback(bullet.getData('dirX'), bullet.getData('dirY'), this.def.knockback, scene.time.now);
+      }
       bullet.destroy();
     });
     // reaproveita o mapManager que a GameScene já monta — bala não deve

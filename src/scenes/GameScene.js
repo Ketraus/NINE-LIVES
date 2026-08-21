@@ -53,7 +53,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.isGameOver || this.isPaused) return;
     this.player.update();
-    this.enemySpawner.updateAll();
+    this.enemySpawner.updateAll(this.time.now);
     this.abilityManager.update(this.time.now);
   }
 

@@ -26,7 +26,8 @@ export default class DamageSystem {
     if (nowMs - lastHit < cooldownMs) return false;
 
     target[lastHitKey] = nowMs;
-    target.healthSystem.takeDamage(damage);
+    target.healthSystem.takeDamage(this._applyDamageReduction(target, damage));
+    target.playHitReaction?.();
 
     if (target.invulnerableMs) {
       target.invulnerableUntil = nowMs + target.invulnerableMs;
@@ -42,7 +43,21 @@ export default class DamageSystem {
    */
   static applyWeaponHit(target, damage) {
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
-    target.healthSystem.takeDamage(damage);
+    target.healthSystem.takeDamage(this._applyDamageReduction(target, damage));
+    target.playHitReaction?.();
     return true;
+  }
+
+  /**
+   * Reduz o dano recebido por `target.runState.damageReductionFraction`
+   * (carta "Blindagem", -10% por cópia, acumulado em RunState). Só o
+   * Player tem `runState`, então inimigos passam por aqui sem nenhum
+   * efeito — mantém as duas funções de dano como o único ponto de
+   * extensão pra futuras resistências/fraquezas.
+   */
+  static _applyDamageReduction(target, damage) {
+    const reduction = target?.runState?.damageReductionFraction;
+    if (!reduction) return damage;
+    return damage * (1 - reduction);
   }
 }
