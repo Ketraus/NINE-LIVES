@@ -2,7 +2,7 @@ export default [
   // ---------- cartas base: qualquer classe pode receber ----------
   {
     "id": "dmg_up",
-    "name": "Fúria",
+    "name": "Overclock",
     "description": "+20% de dano de ataque",
     "category": "base",
     "type": "damageMultiplier",
@@ -10,7 +10,7 @@ export default [
   },
   {
     "id": "speed_up",
-    "name": "Passos Leves",
+    "name": "Patas Turbo",
     "description": "+15% de velocidade de movimento",
     "category": "base",
     "type": "speedMultiplier",
@@ -18,7 +18,7 @@ export default [
   },
   {
     "id": "hp_up",
-    "name": "Vitalidade",
+    "name": "Nove Vidas",
     "description": "+20% de vida máxima (e cura)",
     "category": "base",
     "type": "maxHpPercentBonus",
@@ -27,7 +27,7 @@ export default [
   },
   {
     "id": "cooldown_down",
-    "name": "Reflexos",
+    "name": "Reflexo Felino",
     "description": "-15% no tempo de recarga do ataque",
     "category": "base",
     "type": "cooldownMultiplier",
@@ -35,7 +35,7 @@ export default [
   },
   {
     "id": "range_up",
-    "name": "Alcance",
+    "name": "Visão Aguçada",
     "description": "+20% no alcance do ataque",
     "category": "base",
     "type": "rangeMultiplier",
@@ -43,7 +43,7 @@ export default [
   },
   {
     "id": "thorns_up",
-    "name": "Espinhos",
+    "name": "Pelo Condutor",
     "description": "+4 de dano de contra-ataque ao ser atingido",
     "category": "base",
     "type": "thornsDamage",
@@ -57,7 +57,7 @@ export default [
   // ser oferecida uma vez (RunManager filtra pelas já desbloqueadas).
   {
     "id": "fists_slam",
-    "name": "👊 Impacto do Chão",
+    "name": "Pancada Sísmica",
     "description": "A cada poucos segundos, um golpe forte em área ao seu redor.",
     "category": "exclusive",
     "weaponId": "fists",
@@ -69,7 +69,7 @@ export default [
   },
   {
     "id": "katana_double",
-    "name": "⚔️ Corte Duplo",
+    "name": "Corte Duplo",
     "description": "Seus ataques de katana golpeiam para os dois lados de uma vez.",
     "category": "exclusive",
     "weaponId": "katana",
@@ -78,7 +78,7 @@ export default [
   },
   {
     "id": "pistol_drone",
-    "name": "🔫 Drone de Apoio",
+    "name": "GatoDrone",
     "description": "Um drone acompanha você e dispara sozinho nos inimigos (ataque mais lento).",
     "category": "exclusive",
     "weaponId": "pistol",
