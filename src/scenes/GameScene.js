@@ -164,10 +164,11 @@ export default class GameScene extends Phaser.Scene {
       orb.destroy();
     });
 
-    // inimigo morre -> registra abate e dropa orb de xp
-    EventBus.on('enemy-died', ({ x, y, xpReward }) => {
+    // inimigo morre -> registra abate, dropa orb de xp e explode em FX
+    EventBus.on('enemy-died', ({ x, y, xpReward, color }) => {
       this.runManager.registerKill();
       this._spawnXpOrb(x, y, xpReward);
+      this._spawnDeathFx(x, y, color);
     });
 
     EventBus.on('player-died', () => {
@@ -201,5 +202,49 @@ export default class GameScene extends Phaser.Scene {
     const radius = orb.width / 2 + XP_ORB_PICKUP_RANGE_HINT;
     orb.body.setCircle(radius, orb.width / 2 - radius, orb.height / 2 - radius);
     this.xpOrbGroup.add(orb);
+  }
+
+  /**
+   * "Explosão" de morte do inimigo: um flash branco central + estilhaços
+   * (reaproveitando a textura 'hit_fx', mesma da reação de hit — sem
+   * asset novo) voando pra fora na cor do inimigo, some rápido. Só
+   * visual, não mexe em XP/dano/nada de gameplay — chamado junto com
+   * _spawnXpOrb no listener de 'enemy-died' acima.
+   */
+  _spawnDeathFx(x, y, color) {
+    // flash central: "pop" rápido que dá o estalo do impacto final
+    const flash = this.add.image(x, y, 'hit_fx').setDepth(21).setScale(0.7).setAlpha(0.95).setTint(0xffffff);
+    this.tweens.add({
+      targets: flash,
+      scale: flash.scale * 2.4,
+      alpha: 0,
+      duration: 160,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    // estilhaços voando em várias direções, na cor do inimigo que morreu
+    const shardCount = 7;
+    for (let i = 0; i < shardCount; i++) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const dist = Phaser.Math.Between(20, 46);
+      const shard = this.add
+        .image(x, y, 'hit_fx')
+        .setDepth(20)
+        .setScale(Phaser.Math.FloatBetween(0.22, 0.4))
+        .setRotation(angle)
+        .setTint(color ?? 0xffffff);
+
+      this.tweens.add({
+        targets: shard,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        scale: shard.scale * 0.3,
+        duration: Phaser.Math.Between(220, 320),
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy()
+      });
+    }
   }
 }

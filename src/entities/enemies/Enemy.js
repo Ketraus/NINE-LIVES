@@ -116,7 +116,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   die() {
     if (!this.active) return;
     this.scene.tweens.killTweensOf(this);
-    EventBus.emit('enemy-died', { x: this.x, y: this.y, xpReward: this.def.xpReward });
+    // `color` vai junto só pra quem quiser desenhar algo na cor do
+    // inimigo (ver GameScene._spawnDeathFx) — o Enemy já não existe mais
+    // no momento em que quem escuta o evento for usar isso.
+    EventBus.emit('enemy-died', { x: this.x, y: this.y, xpReward: this.def.xpReward, color: this.def.color });
     this.destroy();
   }
 }
