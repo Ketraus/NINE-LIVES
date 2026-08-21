@@ -16,7 +16,7 @@ export default class RunState {
   reset() {
     this.level = 1;
     this.xp = 0;
-    this.xpToNext = 20;
+    this.xpToNext = 12;
     this.kills = 0;
 
     // multiplicadores/bônus que upgrades (cartas) alteram
@@ -66,7 +66,7 @@ export default class RunState {
     if (this.xp >= this.xpToNext) {
       this.xp -= this.xpToNext;
       this.level += 1;
-      this.xpToNext = Math.round(this.xpToNext * 1.35);
+      this.xpToNext = Math.round(this.xpToNext * 1.2);
       return true;
     }
     return false;

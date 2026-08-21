@@ -7,7 +7,7 @@ export default [
     "speed": 60,
     "contactDamage": 6,
     "contactCooldownMs": 900,
-    "xpReward": 5,
+    "xpReward": 8,
     "color": 15680580
   }
 ]

@@ -17,6 +17,8 @@ import weaponsData from '../../data/weapons.js';
 import upgradesData from '../../data/upgrades.js';
 
 const XP_ORB_PICKUP_RANGE_HINT = 4; // margem extra no corpo físico do orb
+const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
+const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -55,6 +57,25 @@ export default class GameScene extends Phaser.Scene {
     this.player.update();
     this.enemySpawner.updateAll(this.time.now);
     this.abilityManager.update(this.time.now);
+    this._updateXpOrbMagnet();
+  }
+
+  /**
+   * "Ímã" de XP: todo orb dentro de XP_ORB_MAGNET_RANGE do jogador passa a
+   * voar em direção a ele (em vez de esperar o jogador encostar). Overlap
+   * de coleta continua o mesmo (ver _buildCollisions) — isto só move o
+   * orb pra perto, quem recolhe é o overlap de sempre.
+   */
+  _updateXpOrbMagnet() {
+    this.xpOrbGroup.children.each((orb) => {
+      const distance = Phaser.Math.Distance.Between(orb.x, orb.y, this.player.x, this.player.y);
+      if (distance <= XP_ORB_MAGNET_RANGE) {
+        this.physics.moveToObject(orb, this.player, XP_ORB_MAGNET_SPEED);
+      } else if (orb.body.velocity.x !== 0 || orb.body.velocity.y !== 0) {
+        // saiu do alcance (ex.: jogador se afastou rápido) -> para de voar
+        orb.setVelocity(0, 0);
+      }
+    });
   }
 
   /**
