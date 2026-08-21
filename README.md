@@ -52,6 +52,57 @@ A arma escolhida fica em `runState.weaponId` (não é resetada por
 pra filtrar upgrades por arma no futuro; hoje devolve o pool inteiro
 sem filtrar nada.
 
+## Estrutura de assets
+Pastas prontas pra ir recebendo os assets reais do NINE LIVES — sem
+nenhum sistema novo, só organização. Cada pasta abaixo já existe no
+projeto (as vazias têm um `.gitkeep` só pra não sumirem do zip/git,
+pode apagar o `.gitkeep` assim que colocar o primeiro arquivo de
+verdade ali dentro):
+
+- **`assets/maps/`** — tilesets e mapas exportados do Tiled (`.png` dos
+  tilesets + `.json` do mapa). Já em uso (`map.json`, `tileset.png`) —
+  ver seção "Editando o mapa no Tiled" logo abaixo.
+- **`assets/sprites/`** — sprites individuais e spritesheets de
+  personagens/inimigos/itens (`player.png`, `enemy.png`, `xp_orb.png`
+  etc.). Já em uso.
+- **`assets/fx/`** *(nova)* — efeitos visuais: partículas, flashes de
+  impacto, rastros de projétil, explosões etc. Hoje só existe um efeito
+  (`hit_fx.png`) e ele ainda está em `assets/sprites/` por não ter tido
+  onde ir antes — pode ficar onde está (não precisa migrar) ou mudar
+  pra cá quando integrar os efeitos de verdade; se mudar, lembre de
+  atualizar o caminho em `PreloadScene.js`.
+- **`assets/sfx/`** *(nova)* — efeitos sonoros (som de tiro, corte,
+  passos, dano, morte, coleta de XP etc.).
+- **`assets/music/`** *(nova)* — músicas/trilha sonora (menu, gameplay,
+  etc.).
+- **`assets/ui/`** *(nova)* — fontes customizadas e assets de interface
+  (ícones, painéis, molduras de carta, botões). Hoje toda a UI usa a
+  fonte padrão do navegador via `fontSize`/`color` direto no código
+  (`HUD.js`, `LevelUpUI.js`, `WeaponSelectScene.js`, `MainMenuScene.js`)
+  — sem fonte customizada carregada ainda.
+- **`data/animations.js`** *(novo)* — mesmo padrão de `data/weapons.js`
+  e `data/enemies.js`: um array vazio, comentado, pronto pra receber as
+  definições de animação (`this.anims.create`) quando os spritesheets
+  animados chegarem. Ainda não é importado por nada.
+
+**Como referenciar um asset novo depois de colocá-lo na pasta certa**
+(sem mudar nada agora — só o fluxo de sempre do projeto):
+- Imagens, spritesheets, tilesets e áudio: adicionam uma linha em
+  `src/scenes/PreloadScene.js` (`this.load.image(...)`,
+  `this.load.spritesheet(...)`, `this.load.audio(...)`), do mesmo jeito
+  que `player`/`enemy`/`tileset` já são carregados ali.
+- Fonte customizada: também entra no `PreloadScene.js`
+  (`this.load.font(...)` ou `this.load.bitmapFont(...)`, dependendo do
+  formato da fonte).
+- Animações: depois de carregar o spritesheet no `PreloadScene.js`,
+  preenche uma entrada em `data/animations.js` e chama
+  `this.anims.create(...)` em algum lugar que rode uma vez só (ex.: no
+  `create()` do `PreloadScene` ou do `BootScene`) — ainda não existe
+  esse ponto no código, é o próximo passo natural quando os
+  spritesheets animados chegarem.
+- Mapas/tilesets novos: já documentado abaixo, em "Usando mais de um
+  tileset".
+
 ## Editando o mapa no Tiled
 `assets/maps/map.json` é um mapa Tiled válido (formato JSON, tileset
 embutido em `assets/maps/tileset.png`, 32x32 por tile). Pode abrir
