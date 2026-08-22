@@ -1,10 +1,17 @@
 import DamageSystem from '../combat/DamageSystem.js';
 
-const OFFSET_X = 30;
-const OFFSET_Y = -30;
 const FOLLOW_LERP = 0.15; // suaviza o "voo" do drone atrás do jogador
 const BULLET_LIFETIME_MS = 1200;
 const DEFAULT_PROJECTILE_SPEED = 320;
+
+// Posição de escolta de cada cópia relativa ao jogador — até 3 drones
+// (carta GatoDrone, maxStacks: 3 em data/upgrades.js) orbitam em pontos
+// diferentes em vez de ficar todos empilhados no mesmo pixel.
+const FORMATION_OFFSETS = [
+  { x: 30, y: -30 },
+  { x: -34, y: -26 },
+  { x: 0, y: -46 }
+];
 
 /**
  * Habilidade exclusiva da Pistola (carta "pistol_drone"): um sprite que
@@ -16,12 +23,17 @@ const DEFAULT_PROJECTILE_SPEED = 320;
  * Mesma interface que SlamAbility (update(time, player, enemyGroup, scene)).
  */
 export default class DroneAbility {
-  /** @param {object} def - entrada de data/upgrades.js (type: "unlockAbility") */
-  constructor(def) {
+  /**
+   * @param {object} def - entrada de data/upgrades.js (type: "unlockAbility")
+   * @param {number} [formationIndex] - 0 pro 1º drone, 1 pro 2º, etc.
+   *   (ver AbilityManager._unlock) — define o offset de escolta usado.
+   */
+  constructor(def, formationIndex = 0) {
     this.def = def;
     this.lastMs = 0;
     this.sprite = null;
     this.bulletGroup = null;
+    this.offset = FORMATION_OFFSETS[formationIndex % FORMATION_OFFSETS.length];
   }
 
   update(time, player, enemyGroup, scene) {
@@ -39,7 +51,7 @@ export default class DroneAbility {
 
   _create(scene, player, enemyGroup) {
     this.sprite = scene.add
-      .image(player.x + OFFSET_X, player.y + OFFSET_Y, 'xp_orb')
+      .image(player.x + this.offset.x, player.y + this.offset.y, 'xp_orb')
       .setDepth(16)
       .setTint(0x7af0ff)
       .setScale(1.1);
@@ -54,8 +66,8 @@ export default class DroneAbility {
   }
 
   _follow(player) {
-    this.sprite.x = Phaser.Math.Linear(this.sprite.x, player.x + OFFSET_X, FOLLOW_LERP);
-    this.sprite.y = Phaser.Math.Linear(this.sprite.y, player.y + OFFSET_Y, FOLLOW_LERP);
+    this.sprite.x = Phaser.Math.Linear(this.sprite.x, player.x + this.offset.x, FOLLOW_LERP);
+    this.sprite.y = Phaser.Math.Linear(this.sprite.y, player.y + this.offset.y, FOLLOW_LERP);
   }
 
   _findNearestEnemy(enemyGroup) {

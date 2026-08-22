@@ -70,28 +70,30 @@ export default [
   {
     "id": "arsenal_expandido",
     "name": "Arsenal Expandido",
-    "description": "+1 ao limite máximo de cartas.",
+    "description": "+1 ao limite máximo de cartas por cópia (máx. 3 cópias).",
     "category": "base",
     "rarity": "epic",
-    "unique": true,
+    "maxStacks": 3,
     "type": "maxCardSlotsBonus",
     "value": 1
   },
   {
     "id": "lifesteal_up",
     "name": "Sanguessuga",
-    "description": "9% do dano causado pelo jogador é convertido em HP.",
+    "description": "5% do dano causado pelo jogador é convertido em HP (máx. 3 cópias).",
     "category": "base",
     "rarity": "epic",
+    "maxStacks": 3,
     "type": "lifestealFraction",
-    "value": 0.09
+    "value": 0.05
   },
   {
     "id": "dog_purify",
     "name": "Purificação",
-    "description": "Ao ser obtida, um cachorro infectado é purificado e se torna seu aliado: segue você e ataca outros inimigos.",
+    "description": "Ao ser obtida, um cachorro infectado é purificado e se torna seu aliado: segue você e ataca outros inimigos. Cada cópia soma +1 cachorro aliado (máx. 3).",
     "category": "base",
     "rarity": "epic",
+    "maxStacks": 3,
     "type": "unlockAbility",
     "abilityId": "allyDog",
     "speed": 150,
@@ -132,10 +134,11 @@ export default [
   {
     "id": "pistol_drone",
     "name": "GatoDrone",
-    "description": "Um drone acompanha você e dispara sozinho nos inimigos (ataque mais lento).",
+    "description": "Um drone acompanha você e dispara sozinho nos inimigos (ataque mais lento). Cada cópia soma +1 drone (máx. 3).",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "pistol",
+    "maxStacks": 3,
     "type": "unlockAbility",
     "abilityId": "drone",
     "cooldownMs": 900,

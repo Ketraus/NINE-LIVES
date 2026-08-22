@@ -19,6 +19,10 @@ const BASE_LEVEL_UP_OPTIONS = 3;
 // ainda disponíveis no sorteio.
 const RARITY_WEIGHTS = { common: 70, rare: 25, epic: 5 };
 
+// Toda carta épica (rarity: 'epic') que não declarar seu próprio
+// `maxStacks` cai neste teto por padrão (ver _maxStacksFor).
+const EPIC_STACK_LIMIT = 3;
+
 /**
  * Dono do FLUXO de progressão. RunState guarda os números; RunManager
  * decide o que acontece quando eles mudam (subir de nível -> pausar e
@@ -101,13 +105,18 @@ export default class RunManager {
   /**
    * Cartas "base" (sem weaponId) valem pra qualquer classe. Cartas
    * "exclusive" só entram no pool se `weaponId` bater com a arma escolhida
-   * na WeaponSelectScene, e cartas do tipo "unlockAbility" já tiradas somem
-   * do pool (não fazem sentido stackar, ao contrário das cartas base).
-   * Cartas "evolution" nunca aparecem aqui — elas são forçadas sozinhas via
-   * evento 'evolution-ready' (ver _findPendingEvolution), nunca misturadas
-   * com as 3 opções normais. Uma vez evoluída, a carta base original some
-   * do pool (não faz sentido continuar oferecendo Vitalidade depois de
-   * virar COLOSSO).
+   * na WeaponSelectScene. Cartas "evolution" nunca aparecem aqui — elas
+   * são forçadas sozinhas via evento 'evolution-ready' (ver
+   * _findPendingEvolution), nunca misturadas com as 3 opções normais. Uma
+   * vez evoluída, a carta base original some do pool (não faz sentido
+   * continuar oferecendo Vitalidade depois de virar COLOSSO).
+   *
+   * Toda carta tem um teto de cópias (ver _maxStacksFor) — uma vez
+   * atingido, some do pool. É esse teto (e não mais um caso especial por
+   * tipo) que trata `unique` (1x), `unlockAbility` sem `maxStacks` (1x,
+   * ex.: Pancada Sísmica, Corte Duplo) e cartas com `maxStacks` explícito
+   * (ex.: Purificação e GatoDrone agora empilham até 3x, cada cópia soma
+   * mais um cachorro/drone — ver AbilityManager._unlock).
    *
    * Ponto de extensão: uma arma nova só precisa de novas entradas em
    * data/upgrades.js com o `weaponId` certo — nada aqui muda. O mesmo vale
@@ -117,16 +126,29 @@ export default class RunManager {
     return this.upgradeDefs.filter((upgrade) => {
       if (upgrade.category === 'evolution') return false;
       if (upgrade.weaponId && upgrade.weaponId !== this.runState.weaponId) return false;
-      if (upgrade.type === 'unlockAbility' && this.runState.unlockedAbilities.has(upgrade.abilityId)) {
-        return false;
-      }
-      // cartas marcadas `unique` (ex.: "Arsenal Expandido") só podem ser
-      // tiradas uma vez, igual às unlockAbility, mas sem precisar do
-      // conceito de habilidade — basta já constar em ownedUpgradeIds.
-      if (upgrade.unique && this.runState.ownedUpgradeIds.has(upgrade.id)) return false;
       if (upgrade.evolvesInto && this.runState.ownedUpgradeIds.has(upgrade.evolvesInto)) return false;
+      const owned = this.runState.upgradeCounts[upgrade.id] || 0;
+      if (owned >= this._maxStacksFor(upgrade)) return false;
       return true;
     });
+  }
+
+  /**
+   * Quantas cópias de uma carta o jogador pode ter no total, antes dela
+   * sumir do pool de ofertas. Ordem de prioridade:
+   *  1. `maxStacks` explícito em data/upgrades.js — vence sempre que
+   *     presente (ex.: Purificação e GatoDrone: 3).
+   *  2. `unlockAbility` sem `maxStacks` — 1x por padrão (habilidades
+   *     exclusivas de arma que não foram pensadas pra empilhar, ex.:
+   *     Pancada Sísmica, Corte Duplo).
+   *  3. raridade `epic` sem `maxStacks` — EPIC_STACK_LIMIT (3).
+   *  4. qualquer outra carta base comum/rara — sem teto (Infinity).
+   */
+  _maxStacksFor(upgrade) {
+    if (upgrade.maxStacks) return upgrade.maxStacks;
+    if (upgrade.type === 'unlockAbility') return 1;
+    if (upgrade.rarity === 'epic') return EPIC_STACK_LIMIT;
+    return Infinity;
   }
 
   /**
@@ -246,20 +268,20 @@ export default class RunManager {
         message: `"${upgrade.name}" é exclusiva de ${upgrade.weaponId}, e você está com ${this.runState.weaponId}.`
       };
     }
-    if (upgrade.unique && this.runState.ownedUpgradeIds.has(upgrade.id)) {
-      return { ok: false, message: `Você já tem "${upgrade.name}" (só pode ser obtida uma vez).` };
+
+    const maxStacks = this._maxStacksFor(upgrade);
+    const owned = this.runState.upgradeCounts[upgrade.id] || 0;
+    if (owned >= maxStacks) {
+      return { ok: false, message: `Você já tem o máximo de "${upgrade.name}" (${owned}/${maxStacks}).` };
     }
 
-    const isUnlockAbility = upgrade.type === 'unlockAbility';
-    if (isUnlockAbility && this.runState.unlockedAbilities.has(upgrade.abilityId)) {
-      return { ok: false, message: `Você já tem "${upgrade.name}".` };
-    }
-
-    const requested = isUnlockAbility ? 1 : Math.max(1, Math.floor(quantity));
+    const requested = Math.max(1, Math.floor(quantity));
+    const room = Number.isFinite(maxStacks) ? maxStacks - owned : requested;
+    const toApply = Math.min(requested, room);
     let applied = 0;
     let evolvedInto = null;
 
-    for (let i = 0; i < requested; i++) {
+    for (let i = 0; i < toApply; i++) {
       this._applyUpgrade(upgrade);
       applied += 1;
       const evolution = this._findPendingEvolution(upgrade);
@@ -274,27 +296,30 @@ export default class RunManager {
     if (evolvedInto) {
       message += ` → evoluiu para "${evolvedInto}"`;
       if (applied < requested) message += ` (parou aí, o resto do pedido foi ignorado)`;
+    } else if (requested > applied) {
+      message += ` (limitado ao máximo de ${maxStacks}x, resto do pedido foi ignorado)`;
     }
     return { ok: true, message };
   }
 
   /**
    * Usado só pelo DevConsole ("list"). Cartas base + as exclusivas da
-   * arma atual, marcando as já obtidas/evoluídas — a mesma visão que
-   * RunManager usaria pra montar o pool de ofertas normais.
+   * arma atual, marcando quantas cópias já foram tiradas (e o teto de
+   * cada uma, ver _maxStacksFor) — a mesma visão que RunManager usaria
+   * pra montar o pool de ofertas normais.
    */
   cheatListCards() {
     return this.upgradeDefs
       .filter((u) => u.category !== 'evolution')
       .filter((u) => !u.weaponId || u.weaponId === this.runState.weaponId)
       .map((u) => {
+        const owned = this.runState.upgradeCounts[u.id] || 0;
+        const maxStacks = this._maxStacksFor(u);
         let tag = '';
-        if (u.type === 'unlockAbility' && this.runState.unlockedAbilities.has(u.abilityId)) {
-          tag = ' [já tem]';
-        } else if (u.unique && this.runState.ownedUpgradeIds.has(u.id)) {
-          tag = ' [já tem]';
-        } else if (u.evolvesInto && this.runState.ownedUpgradeIds.has(u.evolvesInto)) {
+        if (u.evolvesInto && this.runState.ownedUpgradeIds.has(u.evolvesInto)) {
           tag = ' [já evoluiu]';
+        } else if (owned > 0) {
+          tag = Number.isFinite(maxStacks) ? ` [${owned}/${maxStacks}]` : ` [${owned}x]`;
         }
         const rarityIcon = { common: '⚪', rare: '🔵', epic: '🟣' }[u.rarity] ?? '⚪';
         return `${rarityIcon} ${u.id} — ${u.name}${tag}`;

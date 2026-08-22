@@ -40,7 +40,13 @@ export default class AbilityManager {
   _unlock(abilityId, def) {
     const AbilityClass = ABILITY_CLASSES[abilityId];
     if (!AbilityClass) return; // ex.: doubleStrike, tratado direto em Weapon.js
-    this.active.push(new AbilityClass(def));
+    // índice de quantas instâncias desta MESMA habilidade já existem —
+    // repassado pra a classe poder se posicionar numa formação (ver
+    // AllyDogAbility/DroneAbility), em vez de todas nascerem empilhadas
+    // exatamente no mesmo pixel quando uma carta empilha (ex.: Purificação
+    // e GatoDrone agora vão até 3 cópias, ver data/upgrades.js maxStacks).
+    const formationIndex = this.active.filter((a) => a instanceof AbilityClass).length;
+    this.active.push(new AbilityClass(def, formationIndex));
   }
 
   /** Chamado todo frame pela GameScene, junto com player.update(). */

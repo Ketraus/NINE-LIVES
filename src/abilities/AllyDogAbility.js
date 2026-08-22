@@ -1,9 +1,16 @@
 import DamageSystem from '../combat/DamageSystem.js';
 import AllyDog from '../entities/AllyDog.js';
 
-const FOLLOW_OFFSET_X = -26;
-const FOLLOW_OFFSET_Y = 20;
 const FOLLOW_STOP_DIST = 50; // não fica colado no jogador, dá um respiro visual
+
+// Posição de "escolta" de cada cópia relativa ao jogador — até 3 cachorros
+// (carta Purificação, maxStacks: 3 em data/upgrades.js) se espalham em vez
+// de ficar todos empilhados no mesmo pixel atrás do jogador.
+const FORMATION_OFFSETS = [
+  { x: -26, y: 20 },
+  { x: -44, y: -8 },
+  { x: -4, y: 34 }
+];
 
 /**
  * Habilidade da carta base épica "Purificação" (dog_purify): nasce um
@@ -24,10 +31,15 @@ const FOLLOW_STOP_DIST = 50; // não fica colado no jogador, dá um respiro visu
  * jogador antes desta carta existir).
  */
 export default class AllyDogAbility {
-  /** @param {object} def - entrada de data/upgrades.js (type: "unlockAbility") */
-  constructor(def) {
+  /**
+   * @param {object} def - entrada de data/upgrades.js (type: "unlockAbility")
+   * @param {number} [formationIndex] - 0 pro 1º cachorro, 1 pro 2º, etc.
+   *   (ver AbilityManager._unlock) — define o offset de escolta usado.
+   */
+  constructor(def, formationIndex = 0) {
     this.def = def;
     this.dog = null;
+    this.offset = FORMATION_OFFSETS[formationIndex % FORMATION_OFFSETS.length];
   }
 
   update(time, player, enemyGroup, scene) {
@@ -63,8 +75,8 @@ export default class AllyDogAbility {
   }
 
   _followPlayer(player) {
-    const targetX = player.x + FOLLOW_OFFSET_X;
-    const targetY = player.y + FOLLOW_OFFSET_Y;
+    const targetX = player.x + this.offset.x;
+    const targetY = player.y + this.offset.y;
     const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, targetX, targetY);
     if (dist <= FOLLOW_STOP_DIST) {
       this.dog.stop();

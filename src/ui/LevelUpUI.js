@@ -3,6 +3,13 @@ import EventBus from '../systems/EventBus.js';
 const CARD_W = 160;
 const CARD_H = 200;
 const GAP = 20;
+const ROW_GAP = 24;
+// Máximo de cartas por linha antes de quebrar pra próxima — com
+// BASE_LEVEL_UP_OPTIONS (3) + até +3 de "Arsenal Expandido" empilhado
+// (ver RunManager), o level-up pode oferecer até 6 cartas de uma vez;
+// numa linha só isso não cabe na tela (704px de largura), então a partir
+// de CARDS_PER_ROW+1 opções o layout vira grade em vez de fila única.
+const CARDS_PER_ROW = 3;
 
 // Visual da raridade (ver campo independente `rarity` em data/upgrades.js):
 // cor do contorno/nome da carta + ícone/rótulo mostrados no topo dela.
@@ -39,11 +46,19 @@ export default class LevelUpUI {
 
     const cx = this.scene.scale.width / 2;
     const cy = this.scene.scale.height / 2;
-    const totalW = options.length * CARD_W + (options.length - 1) * GAP;
-    const startX = cx - totalW / 2 + CARD_W / 2;
+
+    // quebra as opções em linhas de até CARDS_PER_ROW cartas, pra não
+    // estourar a largura da tela quando o level-up oferece mais de 3
+    // (ver comentário de CARDS_PER_ROW acima)
+    const rows = [];
+    for (let i = 0; i < options.length; i += CARDS_PER_ROW) {
+      rows.push(options.slice(i, i + CARDS_PER_ROW));
+    }
+    const totalH = rows.length * CARD_H + (rows.length - 1) * ROW_GAP;
+    const startY = cy - totalH / 2 + CARD_H / 2;
 
     const title = this.scene.add
-      .text(cx, cy - CARD_H / 2 - 30, 'SUBIU DE NÍVEL — escolha um upgrade', {
+      .text(cx, startY - CARD_H / 2 - 30, 'SUBIU DE NÍVEL — escolha um upgrade', {
         fontSize: '16px',
         color: '#ffffff'
       })
@@ -51,9 +66,14 @@ export default class LevelUpUI {
       .setScrollFactor(0);
     this.container.add(title);
 
-    options.forEach((upgrade, i) => {
-      const x = startX + i * (CARD_W + GAP);
-      this.container.add(this._buildCard(x, cy, upgrade));
+    rows.forEach((row, rowIndex) => {
+      const rowY = startY + rowIndex * (CARD_H + ROW_GAP);
+      const totalW = row.length * CARD_W + (row.length - 1) * GAP;
+      const startX = cx - totalW / 2 + CARD_W / 2;
+      row.forEach((upgrade, i) => {
+        const x = startX + i * (CARD_W + GAP);
+        this.container.add(this._buildCard(x, rowY, upgrade));
+      });
     });
 
     this.container.setVisible(true);

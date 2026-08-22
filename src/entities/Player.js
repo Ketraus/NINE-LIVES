@@ -3,7 +3,7 @@ import EventBus from '../systems/EventBus.js';
 
 const BASE_SPEED = 160;
 export const BASE_MAX_HP = 100;
-const INVULNERABLE_MS = 500; // i-frames após tomar dano — evita ser "trancado" por vários inimigos ao mesmo tempo
+const INVULNERABLE_MS = 350; // i-frames após tomar dano — evita ser "trancado" por vários inimigos ao mesmo tempo
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
   /**
