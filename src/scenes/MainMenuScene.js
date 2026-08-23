@@ -8,7 +8,7 @@ export default class MainMenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     this.add
-      .text(width / 2, height / 2 - 40, 'PROTÓTIPO ROGUELIKE', {
+      .text(width / 2, height / 2 - 40, 'NINE LIVES', {
         fontSize: '28px',
         color: '#ffffff'
       })

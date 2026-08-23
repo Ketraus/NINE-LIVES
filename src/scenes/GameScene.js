@@ -113,6 +113,14 @@ export default class GameScene extends Phaser.Scene {
     const spawn = this.mapManager.getPlayerSpawn();
     this.player = new Player(this, spawn.x, spawn.y, this.runState);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+    // startFollow() só define o alvo; o scroll real da câmera (e portanto
+    // cameras.main.worldView) só se atualiza no próximo passo de render.
+    // Sem isso, o primeiro lote de inimigos (spawnado ainda dentro de
+    // create(), antes de qualquer render) calcularia "fora da câmera" com
+    // base numa worldView desatualizada (ainda no canto do mapa), fazendo
+    // inimigos nascerem coladinhos no jogador. centerOn() força o scroll a
+    // já nascer centralizado no jogador, de forma síncrona.
+    this.cameras.main.centerOn(spawn.x, spawn.y);
     this.mapManager.addCollider(this.player);
   }
 

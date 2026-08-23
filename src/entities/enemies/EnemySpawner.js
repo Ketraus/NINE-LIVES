@@ -41,6 +41,11 @@ export default class EnemySpawner {
     this.maxAlive = value;
   }
 
+  /** @returns {number} quantos inimigos estão vivos agora. */
+  getAliveCount() {
+    return this.group.countActive(true);
+  }
+
   /**
    * Cria um inimigo agora, se houver espaço (respeita maxAlive). Chamado
    * pelo SpawnDirector — quantas vezes e com que frequência é decisão dele,
@@ -73,7 +78,7 @@ export default class EnemySpawner {
   _findSpawnPosition() {
     const bounds = this.mapManager.getWorldBounds();
     const margin = 64; // nunca nasce colado na borda do mapa
-    const view = this.scene.cameras.main.worldView;
+    const view = this._currentCameraView();
     // metade da diagonal da câmera + margem: distância mínima do jogador
     // que garante nascer fora da tela não importa o ângulo sorteado
     const minDist = Math.hypot(view.width, view.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW;
@@ -100,6 +105,24 @@ export default class EnemySpawner {
       x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * fallbackDist, margin, bounds.width - margin),
       y: Phaser.Math.Clamp(this.player.y + Math.sin(angle) * fallbackDist, margin, bounds.height - margin)
     };
+  }
+
+  /**
+   * Retângulo da área visível da câmera agora, calculado na mão a partir
+   * de scrollX/scrollY/zoom — NÃO usa `camera.worldView`. `worldView` é um
+   * retângulo cacheado que o Phaser só recalcula dentro do preRender() do
+   * ciclo de render da câmera; se a gente ler ele durante o create() da
+   * cena (ex.: no primeiro lote de spawn, antes do primeiro frame
+   * renderizar), ele ainda reflete a posição ANTERIOR da câmera, não a
+   * atual — foi exatamente isso que causava inimigos nascendo colados no
+   * jogador logo no início, mesmo com a câmera já centralizada via
+   * `centerOn()`. Calculando na mão, o retângulo bate com o scroll atual
+   * em qualquer momento, sem depender do timing de renderização.
+   */
+  _currentCameraView() {
+    const cam = this.scene.cameras.main;
+    const zoom = cam.zoom || 1;
+    return new Phaser.Geom.Rectangle(cam.scrollX, cam.scrollY, cam.width / zoom, cam.height / zoom);
   }
 
   /** Chamado no update da GameScene: faz todos perseguirem o jogador. */
