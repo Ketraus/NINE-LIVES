@@ -8,15 +8,15 @@ const INITIAL_INTERVAL_MS = 2800; // igual ao intervalo fixo que existia antes
 const MIN_INTERVAL_MS = 900; // piso: nunca spawna mais rápido que isso
 const INTERVAL_STEP_MS = 200; // quanto o intervalo encolhe por degrau
 
-const INITIAL_BATCH = 1; // quantos inimigos por leva no início da run
-const MAX_BATCH = 5; // teto de inimigos por leva (o teto de vivos abaixo ainda se aplica em cima disso)
+const INITIAL_BATCH = 5; // quantos inimigos por leva no início da run
+const MAX_BATCH = 8; // teto de inimigos por leva (o teto de vivos abaixo ainda se aplica em cima disso)
 const STEPS_PER_BATCH_INCREASE = 3; // a cada 3 degraus, +1 inimigo por leva
 
 // Teto de inimigos vivos ao mesmo tempo: cresce linearmente com o tempo de
-// run, começando baixo (mesmo valor fixo que existia antes) e terminando
-// alto (estilo enxame de Vampire Survivors) só depois de alguns minutos —
-// é o que garante que o 1º minuto não vira uma tela cheia de inimigos.
-const MAX_ALIVE_START = 14; // igual ao antigo valor fixo do EnemySpawner
+// run, começando já com vários (mas só Grunt disponível nesse início, ver
+// data/enemies.js `minSpawnTimeMs` — por isso continua fácil) e terminando
+// alto (estilo enxame de Vampire Survivors) só depois de alguns minutos.
+const MAX_ALIVE_START = 30; // vários inimigos já visíveis desde o início
 const MAX_ALIVE_TARGET = 100; // teto final, alcançado em MAX_ALIVE_RAMP_MS
 const MAX_ALIVE_RAMP_MS = 5 * 60 * 1000; // 5 minutos pra ir de START até TARGET
 
@@ -113,7 +113,7 @@ export default class SpawnDirector {
 
     const amount = this._currentBatchSize();
     for (let i = 0; i < amount; i++) {
-      this.enemySpawner.spawnOne();
+      this.enemySpawner.spawnOne(this.getElapsedMs());
     }
   }
 

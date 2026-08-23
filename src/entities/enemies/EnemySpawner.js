@@ -45,13 +45,16 @@ export default class EnemySpawner {
    * Cria um inimigo agora, se houver espaço (respeita maxAlive). Chamado
    * pelo SpawnDirector — quantas vezes e com que frequência é decisão dele,
    * não deste método.
+   * @param {number} [nowMs] - tempo decorrido de run (SpawnDirector.getElapsedMs());
+   *   usado só pra filtrar tipos com `def.minSpawnTimeMs` ainda não liberado
    * @returns {Enemy|null}
    */
-  spawnOne() {
+  spawnOne(nowMs = 0) {
     // enxame sob controle: se já tem gente demais viva, pula esse ciclo
     if (this.group.countActive(true) >= this.maxAlive) return null;
 
-    const def = Phaser.Utils.Array.GetRandom(this.enemyDefs);
+    const availableDefs = this.enemyDefs.filter((def) => !def.minSpawnTimeMs || nowMs >= def.minSpawnTimeMs);
+    const def = Phaser.Utils.Array.GetRandom(availableDefs.length > 0 ? availableDefs : this.enemyDefs);
     const pos = this._findSpawnPosition();
     const enemy = new Enemy(this.scene, pos.x, pos.y, def);
     this.group.add(enemy);
