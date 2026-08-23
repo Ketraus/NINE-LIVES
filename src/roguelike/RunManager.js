@@ -1,11 +1,11 @@
 import EventBus from '../systems/EventBus.js';
 import { BASE_MAX_HP } from '../entities/Player.js';
 
-// Regra atual: obter a MESMA carta base 3 vezes evolui ela. Único número
+// Regra atual: obter a MESMA carta base 5 vezes evolui ela. Único número
 // mágico do sistema — se um dia cada carta precisar de um número diferente
 // de cópias, isto vira um campo em data/upgrades.js (ex.: `evolvesAtStacks`)
 // em vez de uma constante global.
-const EVOLUTION_STACK_THRESHOLD = 3;
+const EVOLUTION_STACK_THRESHOLD = 5;
 
 // Quantas opções normais de carta o level-up mostra por padrão. A carta
 // "Arsenal Expandido" (maxCardSlotsBonus em RunState) soma a este número —
@@ -189,7 +189,21 @@ export default class RunManager {
     if (!upgrade.evolvesInto) return null;
     const picks = this.runState.upgradeCounts[upgrade.id] || 0;
     if (picks !== EVOLUTION_STACK_THRESHOLD) return null;
-    return this.upgradeDefs.find((u) => u.id === upgrade.evolvesInto) || null;
+    const evolution = this.upgradeDefs.find((u) => u.id === upgrade.evolvesInto);
+    return evolution ? this._resolveEvolutionName(evolution) : null;
+  }
+
+  /**
+   * Algumas evoluções (ex.: `dmg_up_evo_overcharge` / Overclock) valem pra
+   * qualquer arma mas mudam de nome conforme a arma escolhida na run —
+   * mesmo `id`/`effects`, só o texto muda. `namesByWeapon` em
+   * data/upgrades.js mapeia weaponId -> nome; se a entrada não tiver esse
+   * campo (ex.: COLOSSO), devolve a evolução como está, sem cópia.
+   */
+  _resolveEvolutionName(evolution) {
+    if (!evolution.namesByWeapon) return evolution;
+    const name = evolution.namesByWeapon[this.runState.weaponId] ?? evolution.name;
+    return { ...evolution, name };
   }
 
   /**
@@ -245,9 +259,10 @@ export default class RunManager {
    * exclusividade por arma que o level-up normal usa — nunca deixa pegar
    * carta de outra classe. Cartas "unlockAbility" só fazem sentido 1x
    * (quantidade é ignorada pra elas). Evoluções não podem ser pedidas
-   * direto (só a carta base, 3x, exatamente como no jogo normal) — se a
-   * quantidade pedida completar o limiar, ela evolui sozinha no meio do
-   * loop e o resto da quantidade pedida é descartado (a carta base some
+   * direto (só a carta base, EVOLUTION_STACK_THRESHOLD vezes, exatamente
+   * como no jogo normal) — se a quantidade pedida completar o limiar, ela
+   * evolui sozinha no meio do loop e o resto da quantidade pedida é
+   * descartado (a carta base some
    * do pool depois de evoluir, igual ao fluxo normal de RunManager).
    * @returns {{ ok: boolean, message: string }}
    */
@@ -259,7 +274,7 @@ export default class RunManager {
     if (upgrade.category === 'evolution') {
       return {
         ok: false,
-        message: `"${upgrade.name}" é uma evolução, não dá pra pegar direto — dê a carta base "${upgrade.evolvesFrom}" 3x.`
+        message: `"${upgrade.name}" é uma evolução, não dá pra pegar direto — dê a carta base "${upgrade.evolvesFrom}" ${EVOLUTION_STACK_THRESHOLD}x.`
       };
     }
     if (upgrade.weaponId && upgrade.weaponId !== this.runState.weaponId) {

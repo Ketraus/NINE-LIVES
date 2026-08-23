@@ -61,7 +61,7 @@ export default class RangedWeapon {
     if (this.bulletGroup) return;
     this.bulletGroup = scene.physics.add.group();
     scene.physics.add.overlap(this.bulletGroup, enemyGroup, (bullet, enemy) => {
-      const hit = DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player);
+      const hit = DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player, scene.time.now);
       if (hit && this.def.knockback) {
         enemy.applyKnockback(bullet.getData('dirX'), bullet.getData('dirY'), this.def.knockback, scene.time.now);
       }

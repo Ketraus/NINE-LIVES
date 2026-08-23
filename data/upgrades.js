@@ -7,7 +7,8 @@ export default [
     "category": "base",
     "rarity": "common",
     "type": "damageMultiplier",
-    "value": 0.2
+    "value": 0.2,
+    "evolvesInto": "dmg_up_evo_overcharge"
   },
   {
     "id": "speed_up",
@@ -149,8 +150,8 @@ export default [
 
   // ---------- evoluções: nunca aparecem entre as 3 opções normais, só ----------
   // sozinhas via evento 'evolution-ready' quando a carta base (`evolvesFrom`)
-  // completa 3 cópias (ver RunManager). `effects` é uma lista porque uma
-  // evolução costuma dar mais de um bônus de uma vez.
+  // completa EVOLUTION_STACK_THRESHOLD cópias (ver RunManager). `effects` é
+  // uma lista porque uma evolução costuma dar mais de um bônus de uma vez.
   {
     "id": "hp_up_evo_colosso",
     "name": "COLOSSO",
@@ -163,6 +164,27 @@ export default [
       { "type": "maxHpPercentBonus", "value": 1.5 },
       { "type": "sizeMultiplier", "value": 1.0 },
       { "type": "speedMultiplier", "value": -0.5 }
+    ]
+  },
+  {
+    "id": "dmg_up_evo_overcharge",
+    "name": "Overcharge",
+    "description": "20% de chance de paralisar o inimigo por 800ms ao acertar.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "dmg_up",
+    "type": "evolution",
+    // mesmo id/efeito pra qualquer arma — só o nome muda conforme a arma
+    // escolhida na run (ver RunManager._resolveEvolutionName). Sem entrada
+    // pra uma arma nova aqui, cai no `name` acima ("Overcharge") como
+    // fallback.
+    "namesByWeapon": {
+      "fists": "Impacto Paralisante",
+      "katana": "Corte Neural",
+      "pistol": "Munição EM"
+    },
+    "effects": [
+      { "type": "paralyzeOnHit", "chance": 0.2, "durationMs": 800 }
     ]
   }
 ]

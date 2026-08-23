@@ -183,7 +183,7 @@ Uma carta "base" (ex.: `hp_up` / Vitalidade) pode ter um campo
 1. Cada vez que o jogador escolhe a carta base, `RunManager.chooseUpgrade()`
    aplica o efeito dela **normalmente** (o estado das cópias anteriores
    nunca é apagado — os bônus acumulam).
-2. Quando a contagem de cópias bate `EVOLUTION_STACK_THRESHOLD` (hoje 3,
+2. Quando a contagem de cópias bate `EVOLUTION_STACK_THRESHOLD` (hoje 5,
    constante no topo de `RunManager.js`), a evolução é emitida via evento
    `'evolution-ready'` e a `LevelUpUI` mostra **só ela**, em destaque
    dourado, nunca misturada com as 3 opções normais de level-up.
@@ -198,6 +198,32 @@ Pra criar uma evolução nova: adicione `evolvesInto` na carta base e uma
 entrada nova com `category: "evolution"` + `effects: [...]`. Se algum
 efeito precisar mexer direto no Player/scene (não só um número em
 `RunState`), adicione um `case` em `RunManager._applyRuntimeEffect()`.
+
+Uma evolução também pode ter `namesByWeapon` (mapa `weaponId -> nome`)
+quando ela vale pra qualquer arma mas deve se chamar diferente conforme a
+arma da run — mesmo `id`/`effects` o tempo todo, só o texto mostrado na
+carta muda (`RunManager._resolveEvolutionName`). Exemplo: `dmg_up_evo_
+overcharge` (evolução do Overclock) aparece como "Impacto Paralisante"
+com Punhos, "Corte Neural" com Katana e "Munição EM" com Pistola.
+
+### Overcharge (evolução do Overclock — paralisia ao acertar)
+`dmg_up` (Overclock) evolui, após 5 cópias, pra `dmg_up_evo_overcharge`:
+20% de chance de paralisar o inimigo por 300ms a cada acerto de arma
+(soco, corte de katana ou tiro — não conta contra-ataque de espinhos,
+Pancada Sísmica nem GatoDrone, ver abaixo). Fluxo:
+- `RunState.paralyzeOnHitChance`/`paralyzeOnHitDurationMs` guardam o
+  bônus (efeito `paralyzeOnHit` em `RunState._applyEffect`).
+- `DamageSystem.applyWeaponHit(target, damage, source, nowMs)` ganhou um
+  4º parâmetro opcional `nowMs` — quando presente, `_applyParalyze` rola
+  a chance de `source.runState.paralyzeOnHitChance` e, se acertar, seta
+  `target.paralyzedUntil = nowMs + duração`. Só `Weapon.js` (soco/katana)
+  e `RangedWeapon.js` (pistola) passam `nowMs`; as outras chamadas de
+  `applyWeaponHit` (espinhos em `GameScene.js`, `SlamAbility.js`,
+  `DroneAbility.js`) continuam sem passar, então nunca procam paralisia —
+  de propósito, é só o dano das 3 armas base que ganha o efeito.
+- `Enemy.paralyzedUntil` (0 = nunca paralisado) é checado em `chase()`:
+  enquanto `nowMs < paralyzedUntil`, o inimigo zera a velocity e não
+  persegue (continua tomando dano normalmente).
 
 ### Cartas exclusivas / habilidade desbloqueável (`type: "unlockAbility"`)
 Cartas como `fists_slam` (Impacto), `katana_double` (Corte Duplo) e

@@ -54,3 +54,39 @@ Corrigido em `src/entities/Player.js`: `applySize()` agora chama
 `setCircle()` sempre com os valores base (sem multiplicar por `scale`) —
 o `setScale(scale)` já é suficiente pra crescer a colisão junto com o
 sprite, do jeito que o Phaser espera.
+
+---
+
+## IMPLEMENTADO — Evolução da carta Overclock (Overcharge)
+
+**Pedido:** evolução da carta base `dmg_up` (Overclock) após 5 cópias,
+com 20% de chance de paralisar o inimigo por 300ms ao acertar, e nome
+variando conforme a arma (Punhos: "Impacto Paralisante", Katana: "Corte
+Neural", Pistola: "Munição EM").
+
+**`EVOLUTION_STACK_THRESHOLD`:** alterado de 3 para 5 em
+`src/roguelike/RunManager.js`. Como é uma constante global (não por
+carta), isso também aumenta pra 5 o limiar da evolução já existente
+(COLOSSO, evolução de `hp_up`) — não dava pra mudar só a da Overclock
+sem transformar o limiar num campo por carta, o que seria mais mudança
+de sistema do que o pedido. Mensagens que citavam "3x" no `cheatGiveCard`
+e nos comentários foram atualizadas pra usar a constante.
+
+**Nome por arma sem duplicar a carta:** `data/upgrades.js` ganhou uma
+única entrada `dmg_up_evo_overcharge` com um novo campo `namesByWeapon`
+(mapa `weaponId -> nome`). `RunManager._resolveEvolutionName()` troca o
+`name` exibido pela `LevelUpUI` de acordo com `runState.weaponId` no
+momento em que a evolução fica pendente — mesmo `id`/`effects` sempre,
+só o texto muda. Nenhuma mudança em `LevelUpUI.js` foi necessária.
+
+**Paralisia:** implementada de forma centralizada em
+`DamageSystem.applyWeaponHit` (novo 4º parâmetro opcional `nowMs`) em vez
+de duplicada em cada arma — `Weapon.js` e `RangedWeapon.js` (as três
+armas base: soco, katana, pistola) passam `scene.time.now`; as demais
+chamadas de `applyWeaponHit` (contra-ataque de espinhos em
+`GameScene.js`, Pancada Sísmica, GatoDrone) não foram tocadas e por isso
+não rolam paralisia — só o dano direto das 3 armas evolui com a
+Overclock, como pedido. `Enemy.js` ganhou `this.paralyzedUntil = 0` no
+construtor e uma checagem no início de `chase()`: enquanto paralisado, o
+inimigo zera a velocity e não persegue (mas continua tomando dano/
+knockback normalmente).

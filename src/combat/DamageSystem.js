@@ -45,13 +45,18 @@ export default class DamageSystem {
    *   source.healthSystem e source.runState.lifestealFraction > 0 (carta
    *   "Sanguessuga"), uma fração do dano é curada de volta (ver
    *   _applyLifesteal). Passar undefined mantém o comportamento de sempre.
+   * @param {number} [nowMs] - scene.time.now; só necessário pra rolar a
+   *   paralisia da evolução "Overcharge" (ver _applyParalyze) — sem ele
+   *   (chamadores que não passam, ex.: espinhos/Pancada Sísmica/GatoDrone)
+   *   a paralisia simplesmente não é checada, resto do dano funciona igual.
    * @returns {boolean} true se o dano foi de fato aplicado (alvo vivo/ativo)
    */
-  static applyWeaponHit(target, damage, source) {
+  static applyWeaponHit(target, damage, source, nowMs) {
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     target.healthSystem.takeDamage(this._applyDamageReduction(target, damage));
     target.playHitReaction?.();
     this._applyLifesteal(source, damage);
+    this._applyParalyze(target, source, nowMs);
     return true;
   }
 
@@ -65,6 +70,21 @@ export default class DamageSystem {
     const fraction = source?.runState?.lifestealFraction;
     if (!fraction || !source.healthSystem || source.healthSystem.isDead()) return;
     source.healthSystem.heal(damage * fraction);
+  }
+
+  /**
+   * Rola a chance de paralisar `target` (carta "Overcharge" — evolução do
+   * Overclock/dmg_up, ver RunState.paralyzeOnHitChance). Só faz algo se
+   * `source.runState.paralyzeOnHitChance` > 0, `nowMs` foi passado, e o
+   * alvo suporta paralisia (Enemy.js inicializa `paralyzedUntil`; se não
+   * existir, este método não inventa a propriedade em cima de outra coisa).
+   */
+  static _applyParalyze(target, source, nowMs) {
+    const chance = source?.runState?.paralyzeOnHitChance;
+    if (!chance || nowMs === undefined) return;
+    if (target.paralyzedUntil === undefined) return;
+    if (Math.random() >= chance) return;
+    target.paralyzedUntil = nowMs + source.runState.paralyzeOnHitDurationMs;
   }
 
   /**

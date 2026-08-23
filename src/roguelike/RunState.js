@@ -30,6 +30,8 @@ export default class RunState {
     this.thornsDamage = 2; // dano de contra-ataque ao ser atingido (base pequena, upgradável)
     this.lifestealFraction = 0; // fração do dano causado pelo jogador convertida em cura (carta "Sanguessuga")
     this.damageReductionFraction = 0; // fração do dano recebido que é ignorada (carta "Blindagem"), acumula normalmente por cópia
+    this.paralyzeOnHitChance = 0; // chance (0-1) de paralisar o inimigo ao acertar (evolução "Overcharge" do Overclock)
+    this.paralyzeOnHitDurationMs = 0; // duração da paralisia quando ela procar (ver DamageSystem._applyParalyze)
 
     // bônus ao número de opções de carta mostradas em cada level-up (carta
     // "Arsenal Expandido": pegar ela faz o PRÓXIMO level-up em diante
@@ -137,6 +139,12 @@ export default class RunState {
         break;
       case 'unlockAbility':
         this.unlockedAbilities.add(effect.abilityId);
+        break;
+      case 'paralyzeOnHit':
+        // acumula igual às outras frações (thorns, lifesteal etc.) caso um
+        // dia exista mais de uma fonte; hoje só a evolução "Overcharge" seta
+        this.paralyzeOnHitChance += effect.chance ?? 0;
+        this.paralyzeOnHitDurationMs = Math.max(this.paralyzeOnHitDurationMs, effect.durationMs ?? 0);
         break;
       default:
         break;

@@ -74,6 +74,9 @@ export default class Weapon {
    * Faixa reta na direção do olhar (só "pra frente", igual ao arco, mas
    * em formato de linha) — acerta tudo que estiver dentro do alcance e
    * perto o suficiente do eixo de mira (lineWidth). Usado pela katana.
+   * É um retângulo, não um leque/explosão: a largura não varia com a
+   * distância, então continua lendo como "corte reto atravessando a
+   * fileira", só que mais longo/largo que antes pra pegar mais gente.
    */
   _fireLine(scene, player, enemyGroup, aim, range, damage) {
     const halfWidth = (this.def.lineWidth ?? 26) / 2;
@@ -131,7 +134,7 @@ export default class Weapon {
    * feedback sem precisar chamar nada daqui.
    */
   _applyHit(scene, enemy, damage, player, aim) {
-    const hit = DamageSystem.applyWeaponHit(enemy, damage, player);
+    const hit = DamageSystem.applyWeaponHit(enemy, damage, player, scene.time.now);
     if (hit) {
       if (this.def.cameraShake) {
         scene.cameras.main.shake(60, this.def.cameraShake);

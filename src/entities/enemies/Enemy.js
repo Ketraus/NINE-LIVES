@@ -3,6 +3,11 @@ import EventBus from '../../systems/EventBus.js';
 
 let nextInstanceId = 1;
 
+// Tint aplicado enquanto o inimigo está paralisado (carta "Overcharge" —
+// evolução do Overclock). Azul escuro pra ficar claramente diferente do
+// flash branco de "levei dano" e da cor normal de cada inimigo.
+const PARALYZE_TINT = 0x1a1a66;
+
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
    * @param {Phaser.Scene} scene
@@ -35,6 +40,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // velocity — é o que deixa o empurrão de knockback (ver applyKnockback)
     // realmente visível em vez de ser cancelado no frame seguinte
     this.knockbackUntil = 0;
+
+    // até este timestamp (scene.time.now), o inimigo está paralisado (carta
+    // "Overcharge" — evolução do Overclock, ver DamageSystem._applyParalyze)
+    // e chase() não o move. 0 = nunca paralisado.
+    this.paralyzedUntil = 0;
+    // espelha se PARALYZE_TINT está aplicado agora — evita ficar chamando
+    // setTint todo frame à toa enquanto paralisado (ver chase())
+    this._paralyzeTintActive = false;
   }
 
   /**
@@ -45,12 +58,29 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * lixo extra de memória é o tipo de coisa que pesa mais em celular do
    * que no PC, por causa da garbage collection.
    * @param {Player} target
-   * @param {number} [nowMs] - scene.time.now; usado só pra saber se ainda
-   *   está "voando" de um knockback recente (ver applyKnockback)
+   * @param {number} [nowMs] - scene.time.now; usado pra saber se ainda está
+   *   "voando" de um knockback recente (ver applyKnockback) ou paralisado
+   *   (ver `paralyzedUntil` e DamageSystem._applyParalyze)
    */
   chase(target, nowMs = 0) {
     if (!this.active || this.healthSystem.isDead()) return;
+
+    // tint de paralisia: liga/desliga independente do knockback, pra ficar
+    // visível mesmo nos primeiros instantes em que os dois se sobrepõem
+    // (ex.: soco que paralisa também empurra). Só chama setTint na
+    // TRANSIÇÃO de estado — não todo frame — pra não brigar com o flash
+    // branco de playHitReaction() sem necessidade.
+    const isParalyzed = nowMs < this.paralyzedUntil;
+    if (isParalyzed !== this._paralyzeTintActive) {
+      this._paralyzeTintActive = isParalyzed;
+      this.setTint(isParalyzed ? PARALYZE_TINT : this.def.color);
+    }
+
     if (nowMs < this.knockbackUntil) return; // ainda sendo empurrado, não sobrescreve a velocity
+    if (isParalyzed) {
+      this.setVelocity(0, 0); // paralisado: para no lugar, não persegue
+      return;
+    }
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const distSq = dx * dx + dy * dy;
@@ -89,10 +119,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   playHitReaction() {
     if (!this.active) return;
 
-    // flash branco rápido (volta pra cor normal do inimigo, não pra "sem tint")
+    // flash branco rápido (volta pra cor normal do inimigo — ou pro tint de
+    // paralisia, se ainda estiver paralisado quando o timer disparar, ex.:
+    // um segundo golpe que renova a paralisia enquanto ela já estava ativa)
     this.setTintFill(0xffffff);
     this.scene.time.delayedCall(70, () => {
-      if (this.active) this.setTint(this.def.color);
+      if (!this.active) return;
+      const stillParalyzed = this.scene.time.now < this.paralyzedUntil;
+      this.setTint(stillParalyzed ? PARALYZE_TINT : this.def.color);
     });
 
     // "pop" de impacto: estica/encolhe rápido e volta ao normal — sensação
