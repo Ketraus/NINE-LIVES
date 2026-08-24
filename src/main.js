@@ -1,3 +1,3 @@
 import { gameConfig } from './config/gameConfig.js';
 
-new Phaser.Game(gameConfig);
+window.__nineLivesGame = new Phaser.Game(gameConfig);

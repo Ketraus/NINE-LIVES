@@ -2,14 +2,74 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="manifest" href="manifest.json" />
+  <!-- iOS Safari ignora manifest.json e a API de Fullscreen; "Adicionar à
+       Tela de Início" (Compartilhar > Adicionar à Tela de Início) é o
+       único jeito de abrir sem a barra do navegador lá, e só funciona com
+       estas duas tags abaixo. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <title>Nine Lives</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #111; overflow: hidden; }
-    #game-container { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; }
-    canvas { image-rendering: pixelated; }
+    html, body { margin: 0; padding: 0; background: #111; overflow: hidden; touch-action: none; }
+    #game-container { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; touch-action: none; }
+    canvas { image-rendering: pixelated; touch-action: none; }
 
-    /* Console de hack (F9) — ver src/systems/DevConsole.js */
+    /* Jogo é pensado pra tela horizontal (base 704x512). Em celular
+       (pointer grosso = dedo) girado pra retrato, some com o jogo e pede
+       pra girar em vez de espremer tudo — travar a orientação de fato via
+       JS (screen.orientation.lock) não é confiável entre navegadores
+       (Safari/iOS não suporta), então isto é o jeito robusto de resolver. */
+    #rotate-overlay { display: none; }
+    @media (pointer: coarse) and (orientation: portrait) {
+      #game-container { display: none; }
+      #rotate-overlay {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100vw;
+        height: 100vh;
+        color: #fff;
+        font-family: sans-serif;
+        text-align: center;
+        gap: 12px;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      #rotate-overlay .icon { font-size: 48px; animation: rotate-hint 1.6s ease-in-out infinite; }
+      @keyframes rotate-hint {
+        0%, 100% { transform: rotate(0deg); }
+        50% { transform: rotate(-90deg); }
+      }
+    }
+
+    /* Botão de tela cheia: só em celular (pointer grosso), fixo no canto.
+       O toque no menu já tenta pedir fullscreen sozinho, mas em alguns
+       navegadores esse pedido "emprestado" de outro toque é recusado —
+       este botão é um gesto direto e explícito, mais confiável. */
+    #fullscreen-btn { display: none; }
+    @media (pointer: coarse) {
+      #fullscreen-btn {
+        display: block;
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        z-index: 50;
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        background: rgba(0, 0, 0, 0.45);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        font-size: 16px;
+        line-height: 34px;
+        text-align: center;
+        padding: 0;
+      }
+    }
     #dev-console {
       position: fixed;
       left: 50%;
@@ -63,6 +123,13 @@
 <body>
   <div id="game-container"></div>
 
+  <div id="rotate-overlay">
+    <div class="icon">📱</div>
+    <div>Gire seu celular para jogar na horizontal</div>
+  </div>
+
+  <button id="fullscreen-btn" title="Tela cheia">⛶</button>
+
   <div id="dev-console" class="hidden">
     <div id="dev-console-header">HACK CONSOLE — F9 pra fechar</div>
     <div id="dev-console-output"></div>
@@ -70,5 +137,32 @@
   </div>
 
   <script type="module" src="./src/main.js"></script>
+  <script>
+    // Enquanto o aviso de "gire o celular" está visível, o jogo (canvas)
+    // fica com display:none via CSS, mas o loop do Phaser continuaria
+    // rodando escondido (inimigos andando, cronômetro contando) — aqui só
+    // pausa/retoma esse loop junto com a troca de orientação.
+    var portraitQuery = window.matchMedia('(pointer: coarse) and (orientation: portrait)');
+    function syncGameLoopWithOrientation(isPortrait) {
+      var game = window.__nineLivesGame;
+      if (!game) return;
+      if (isPortrait) game.loop.sleep();
+      else game.loop.wake();
+    }
+    portraitQuery.addEventListener('change', (e) => syncGameLoopWithOrientation(e.matches));
+    window.addEventListener('load', () => syncGameLoopWithOrientation(portraitQuery.matches));
+
+    // botão fixo de tela cheia (ver #fullscreen-btn acima) — gesto direto
+    // do usuário, não depende do toque de outra tela. Sem suporte (iOS
+    // Safari fora do modo "Adicionar à Tela de Início"), só não faz nada.
+    var fsBtn = document.getElementById('fullscreen-btn');
+    fsBtn.addEventListener('click', () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.();
+      } else {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+    });
+  </script>
 </body>
 </html>

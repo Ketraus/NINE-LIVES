@@ -11,13 +11,47 @@ export default class HUD {
   /** @param {Phaser.Scene} scene */
   constructor(scene) {
     this.scene = scene;
+
+    // Container único pra todo o HUD "fixo na tela" — ver _applyZoomCompensation
+    // logo abaixo pra entender por que ele existe.
+    this.uiContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(0);
+
     this._buildHealthBar();
     this._buildShieldBar();
     this._buildXpBar();
     this._buildKillCounter();
     this._buildRunTimer();
     this._buildGameOverText();
+
+    // gameOverGroup é um container à parte (ver _buildGameOverText), então
+    // recebe a mesma correção separadamente.
+    this._applyZoomCompensation(this.uiContainer);
+    this._applyZoomCompensation(this.gameOverGroup);
+
     this._bindEvents();
+  }
+
+  /**
+   * BUG (zoom no celular): GameScene dá setZoom(1.4) na câmera em telas
+   * touch (ver GameScene._buildPlayer). setScrollFactor(0) só faz o objeto
+   * ignorar o SCROLL da câmera — o ZOOM continua se aplicando normalmente a
+   * ele, como a qualquer outro objeto renderizado por ela. Resultado: um
+   * ícone desenhado em coordenada de tela (16, 16) deixa de aparecer em
+   * (16, 16) e passa a aparecer deslocado pra fora da área visível,
+   * proporcional à distância dele até o centro da câmera.
+   *
+   * Correção: contra-escalar o container por 1/zoom e reposicioná-lo com
+   * a fórmula inversa da transformação de câmera (em torno do centro dela),
+   * cancelando o efeito do zoom só pra esse container — sem mexer na
+   * câmera nem nos elementos do mundo do jogo.
+   */
+  _applyZoomCompensation(container) {
+    const cam = this.scene.cameras.main;
+    const zoom = cam.zoom || 1;
+    if (zoom === 1) return;
+    const inv = 1 / zoom;
+    container.setScale(inv);
+    container.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
   }
 
   _buildHealthBar() {
@@ -35,6 +69,7 @@ export default class HUD {
       .text(16, 34, '', { fontSize: '12px', color: '#ffffff' })
       .setScrollFactor(0)
       .setDepth(101);
+    this.uiContainer.add([this.hpBg, this.hpFill, this.hpText]);
   }
 
   /**
@@ -55,6 +90,7 @@ export default class HUD {
       .setScrollFactor(0)
       .setDepth(101)
       .setVisible(false);
+    this.uiContainer.add([this.shieldBg, this.shieldFill]);
   }
 
   _buildXpBar() {
@@ -72,6 +108,7 @@ export default class HUD {
       .text(16, 80, 'Nível 1', { fontSize: '12px', color: '#cfeaff' })
       .setScrollFactor(0)
       .setDepth(101);
+    this.uiContainer.add([this.xpBg, this.xpFill, this.levelText]);
   }
 
   _buildKillCounter() {
@@ -80,6 +117,7 @@ export default class HUD {
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(100);
+    this.uiContainer.add(this.killText);
   }
 
   _buildRunTimer() {
@@ -88,6 +126,7 @@ export default class HUD {
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(100);
+    this.uiContainer.add(this.timeText);
   }
 
   _buildGameOverText() {
@@ -101,7 +140,7 @@ export default class HUD {
       .setOrigin(0.5)
       .setScrollFactor(0);
     const hint = this.scene.add
-      .text(cx, cy + 10, 'Pressione R para reiniciar', { fontSize: '14px', color: '#ffffff' })
+      .text(cx, cy + 10, 'Pressione R ou toque na tela para reiniciar', { fontSize: '14px', color: '#ffffff' })
       .setOrigin(0.5)
       .setScrollFactor(0);
 

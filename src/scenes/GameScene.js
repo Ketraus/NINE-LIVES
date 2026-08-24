@@ -10,7 +10,9 @@ import RunManager from '../roguelike/RunManager.js';
 import SpawnDirector from '../roguelike/SpawnDirector.js';
 import HUD from '../ui/HUD.js';
 import LevelUpUI from '../ui/LevelUpUI.js';
+import PauseUI from '../ui/PauseUI.js';
 import DevConsole from '../systems/DevConsole.js';
+import TouchJoystick from '../systems/TouchJoystick.js';
 
 import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
@@ -113,6 +115,11 @@ export default class GameScene extends Phaser.Scene {
     const spawn = this.mapManager.getPlayerSpawn();
     this.player = new Player(this, spawn.x, spawn.y, this.runState);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+    // celular: câmera um pouco mais próxima, só estética/sensação de jogo
+    // (não muda hitbox/alcance de nada, é puramente visual)
+    if (this.sys.game.device.input.touch) {
+      this.cameras.main.setZoom(1.4);
+    }
     // startFollow() só define o alvo; o scroll real da câmera (e portanto
     // cameras.main.worldView) só se atualiza no próximo passo de render.
     // Sem isso, o primeiro lote de inimigos (spawnado ainda dentro de
@@ -176,6 +183,9 @@ export default class GameScene extends Phaser.Scene {
       max: this.player.healthSystem.maxHp
     });
     this.levelUpUI = new LevelUpUI(this, this.runManager);
+    // botão de pausa (PC + celular) + saída de fullscreen (só celular) —
+    // ver src/ui/PauseUI.js
+    this.pauseUI = new PauseUI(this);
     // console de hack (F9) — dá cartas por comando, ver src/systems/DevConsole.js
     this.devConsole = new DevConsole(this, this.runManager);
   }
@@ -222,6 +232,18 @@ export default class GameScene extends Phaser.Scene {
       this.isPaused = false;
       this.spawnDirector.resume();
     });
+
+    // menu de pausa (ver src/ui/PauseUI.js) — mesmo tratamento do level-up
+    // acima, só que quem cuida de physics.pause()/timeScale é o próprio
+    // PauseUI (igual LevelUpUI já fazia antes deste botão existir)
+    EventBus.on('pause-opened', () => {
+      this.isPaused = true;
+      this.spawnDirector.pause();
+    });
+    EventBus.on('pause-closed', () => {
+      this.isPaused = false;
+      this.spawnDirector.resume();
+    });
   }
 
   _buildInput() {
@@ -232,6 +254,27 @@ export default class GameScene extends Phaser.Scene {
         this.scene.restart({ weaponId: this.weaponId });
       }
     });
+
+    // ESC no PC alterna o menu de pausa — o botão (canto superior direito,
+    // ver src/ui/PauseUI.js) já cobre PC e celular, isto é só um atalho a
+    // mais pra quem tem teclado. toggle() já ignora sozinho se a run
+    // acabou ou o level-up está aberto.
+    this.input.keyboard.on('keydown-ESC', () => this.pauseUI.toggle());
+
+    // celular não tem tecla R — toque na tela reinicia também (funciona
+    // igual no PC com clique, sem prejudicar nada: só reage se já morreu)
+    this.input.on('pointerdown', () => {
+      if (this.isGameOver) {
+        this.scene.restart({ weaponId: this.weaponId });
+      }
+    });
+
+    // celular: ataque continua automático, jogador só controla movimento
+    // (ver Player._handleMovement). Só existe em dispositivo com touch —
+    // no PC nada muda, WASD/setas continuam sendo o único input de movimento.
+    if (this.sys.game.device.input.touch) {
+      this.touchJoystick = new TouchJoystick(this);
+    }
   }
 
   _spawnXpOrb(x, y, xpReward) {

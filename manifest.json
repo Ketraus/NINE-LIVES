@@ -1,0 +1,9 @@
+{
+  "name": "Nine Lives",
+  "short_name": "Nine Lives",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#111318",
+  "theme_color": "#111318"
+}

@@ -15,6 +15,8 @@
  *  - 'evolution-ready'        ({ evolution }) — carta base completou as cópias e evoluiu
  *  - 'ability-unlocked'       ({ abilityId, def }) — carta exclusiva escolhida
  *  - 'run-restart'            ()
+ *  - 'pause-opened'           () — menu de pausa aberto (ver src/ui/PauseUI.js)
+ *  - 'pause-closed'           () — menu de pausa fechado
  */
 class EventBus extends Phaser.Events.EventEmitter {}
 

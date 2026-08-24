@@ -28,7 +28,21 @@ export default class MainMenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    const start = () => this.scene.start('WeaponSelectScene');
+    const start = () => {
+      // celular: aproveita esse mesmo toque (gesto do usuário, exigido
+      // pela API de Fullscreen) pra sumir com a barra do navegador. Sem
+      // suporte (ex: iOS Safari não tem essa API pra página comum), só
+      // ignora e segue normal — ver index.html/manifest.json pro caminho
+      // que funciona no iPhone ("Adicionar à Tela de Início").
+      if (this.sys.game.device.input.touch && this.scale.fullscreen.available && !this.scale.isFullscreen) {
+        try {
+          this.scale.startFullscreen();
+        } catch (e) {
+          // sem suporte, sem problema — o jogo funciona normal do mesmo jeito
+        }
+      }
+      this.scene.start('WeaponSelectScene');
+    };
     this.input.keyboard.once('keydown-SPACE', start);
     this.input.once('pointerdown', start);
   }

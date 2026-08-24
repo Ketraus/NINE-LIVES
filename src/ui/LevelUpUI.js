@@ -36,9 +36,25 @@ export default class LevelUpUI {
     this.scene = scene;
     this.runManager = runManager;
     this.container = scene.add.container(0, 0).setDepth(300).setVisible(false);
+    this._applyZoomCompensation(this.container);
 
     EventBus.on('level-up', ({ options }) => this.show(options));
     EventBus.on('evolution-ready', ({ evolution }) => this.showEvolution(evolution));
+  }
+
+  /**
+   * Mesmo bug/correção do HUD (ver HUD._applyZoomCompensation): a câmera
+   * zoomada no celular (GameScene._buildPlayer) também empurra as cartas
+   * de level-up pra fora da posição pensada em pixels de tela. Contra-
+   * escala o container e reposiciona pra cancelar o zoom só na UI.
+   */
+  _applyZoomCompensation(container) {
+    const cam = this.scene.cameras.main;
+    const zoom = cam.zoom || 1;
+    if (zoom === 1) return;
+    const inv = 1 / zoom;
+    container.setScale(inv);
+    container.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
   }
 
   show(options) {

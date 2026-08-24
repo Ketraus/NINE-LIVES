@@ -231,8 +231,19 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       (down ? 1 : 0) - (up ? 1 : 0)
     );
 
-    if (vec.lengthSq() > 0) {
+    // celular: soma o vetor do joystick virtual (ver TouchJoystick) ao do
+    // teclado. Sem toque ativo o vetor é (0,0), então isto não muda nada
+    // no PC nem quando o joystick simplesmente não existe (this.scene.touchJoystick undefined).
+    const joyVec = this.scene.touchJoystick?.getVector();
+    if (joyVec) {
+      vec.x += joyVec.x;
+      vec.y += joyVec.y;
+    }
+
+    if (vec.length() > 1) {
       vec.normalize();
+    }
+    if (vec.lengthSq() > 0) {
       this.lastMoveDir = vec.clone();
     }
     // rastreado separado do lastMoveDir: só muda quando há componente
