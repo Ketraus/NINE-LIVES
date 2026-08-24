@@ -55,7 +55,8 @@ export default [
     "category": "base",
     "rarity": "common",
     "type": "thornsDamage",
-    "value": 4
+    "value": 4,
+    "evolvesInto": "thorns_up_evo_sobrecarga"
   },
   {
     "id": "armor_up",
@@ -203,10 +204,30 @@ export default [
         // intervalo de tempo ANDANDO (não tempo real) pra gerar 1 tornado —
         // ver TornadoAbility._advanceWalkTimer
         "cooldownMs": 2500,
-        "durationMs": 2500,
+        "durationMs": 1500,
         "damage": 3,
         "tickIntervalMs": 400,
         "radius": 34
+      }
+    ]
+  },
+  {
+    "id": "thorns_up_evo_sobrecarga",
+    "name": "Sobrecarga",
+    "description": "Uma aura de choque envolve você: qualquer inimigo dentro dela toma 4 de dano a cada 200ms, além do dano de contato e dos espinhos normais.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "thorns_up",
+    "type": "evolution",
+    "effects": [
+      {
+        "type": "unlockAbility",
+        "abilityId": "auraShock",
+        "tickIntervalMs": 200,
+        "damage": 4,
+        // "bem pequena": pouco maior que o raio de contato do jogador
+        // (sprite de 28px), só pra pegar quem já está grudado nele
+        "radius": 22
       }
     ]
   }

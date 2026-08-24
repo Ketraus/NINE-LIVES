@@ -3,6 +3,7 @@ import SlamAbility from './SlamAbility.js';
 import DroneAbility from './DroneAbility.js';
 import AllyDogAbility from './AllyDogAbility.js';
 import TornadoAbility from './TornadoAbility.js';
+import AuraShockAbility from './AuraShockAbility.js';
 
 /**
  * Ponto de extensão central pras habilidades exclusivas de arma (as cartas
@@ -21,7 +22,8 @@ const ABILITY_CLASSES = {
   slam: SlamAbility,
   drone: DroneAbility,
   allyDog: AllyDogAbility,
-  tornadoWalk: TornadoAbility
+  tornadoWalk: TornadoAbility,
+  auraShock: AuraShockAbility
 };
 
 export default class AbilityManager {
