@@ -217,14 +217,21 @@ export default class RunManager {
     this.runState.applyUpgrade(upgrade);
 
     const effects = upgrade.type === 'evolution' ? upgrade.effects : [upgrade];
-    effects.forEach((effect) => this._applyRuntimeEffect(effect));
+    effects.forEach((effect) => {
+      this._applyRuntimeEffect(effect);
 
-    if (upgrade.type === 'unlockAbility') {
-      // AbilityManager (soco/drone) escuta este evento pra instanciar a
-      // habilidade; a katana lê runState.unlockedAbilities direto em
-      // Weapon.js. RunManager não precisa saber qual é qual.
-      EventBus.emit('ability-unlocked', { abilityId: upgrade.abilityId, def: upgrade });
-    }
+      // AbilityManager (soco/drone/tornado) escuta este evento pra
+      // instanciar a habilidade; a katana lê runState.unlockedAbilities
+      // direto em Weapon.js. RunManager não precisa saber qual é qual.
+      // Checado por EFEITO (não pelo `upgrade` como um todo) pra também
+      // funcionar quando o unlockAbility vem de dentro de `effects` de uma
+      // evolução (ex.: Patas Turbo -> Vórtice Turbo) e não só de uma carta
+      // exclusiva normal (onde effects é só [upgrade], então o resultado
+      // pra elas continua idêntico a antes).
+      if (effect.type === 'unlockAbility') {
+        EventBus.emit('ability-unlocked', { abilityId: effect.abilityId, def: effect });
+      }
+    });
   }
 
   /**

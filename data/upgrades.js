@@ -17,7 +17,8 @@ export default [
     "category": "base",
     "rarity": "common",
     "type": "speedMultiplier",
-    "value": 0.15
+    "value": 0.15,
+    "evolvesInto": "speed_up_evo_tornado"
   },
   {
     "id": "hp_up",
@@ -185,6 +186,28 @@ export default [
     },
     "effects": [
       { "type": "paralyzeOnHit", "chance": 0.2, "durationMs": 800 }
+    ]
+  },
+  {
+    "id": "speed_up_evo_tornado",
+    "name": "Vórtice Turbo",
+    "description": "Ao andar, você gera tornados fixos que causam dano em área a cada 2,5s de caminhada (duram 1,5s e acertam vários inimigos ao mesmo tempo).",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "speed_up",
+    "type": "evolution",
+    "effects": [
+      {
+        "type": "unlockAbility",
+        "abilityId": "tornadoWalk",
+        // intervalo de tempo ANDANDO (não tempo real) pra gerar 1 tornado —
+        // ver TornadoAbility._advanceWalkTimer
+        "cooldownMs": 2500,
+        "durationMs": 2500,
+        "damage": 3,
+        "tickIntervalMs": 400,
+        "radius": 34
+      }
     ]
   }
 ]
