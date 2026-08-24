@@ -6,6 +6,13 @@ const BASE_SPEED = 160;
 export const BASE_MAX_HP = 100;
 const INVULNERABLE_MS = 350; // i-frames após tomar dano — evita ser "trancado" por vários inimigos ao mesmo tempo
 
+// Desvio (carta "Sexto Sentido", evolução de Reflexo Felino): o jogador não
+// pisca como nos i-frames normais (isso já significa "tomando dano
+// repetido") — fica translúcido de forma mais "sólida" por um instante, pra
+// ler como "o ataque passou direto", não como dano.
+const DODGE_ALPHA = 0.25;
+const DODGE_FLASH_MS = 220;
+
 // Visual do escudo (carta "Escudo Energético"): só um círculo azul ao redor
 // do gato, sem enfeite extra — pedido explícito ("só um círculo azul").
 const SHIELD_COLOR = 0x3aa8ff;
@@ -58,6 +65,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // dano de cada inimigo encostado, todos no mesmo frame.
     this.invulnerableMs = INVULNERABLE_MS;
     this.invulnerableUntil = 0;
+
+    // desvio (carta "Sexto Sentido"): 0 = não está desviando agora. Separado
+    // de invulnerableUntil de propósito — dodge não dá i-frames, é só o
+    // resultado visual de UM ataque que não acertou (ver onDodge/DamageSystem._rollDodge)
+    this._dodgeFlashUntil = 0;
 
     this.cursors = scene.input.keyboard.createCursorKeys();
     this.keys = scene.input.keyboard.addKeys('W,A,S,D');
@@ -182,10 +194,30 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._updateShield(this.scene.time.now);
   }
 
-  /** Pisca o sprite enquanto os i-frames de DamageSystem estiverem ativos. */
+  /**
+   * Controla a transparência do sprite: desvio (carta "Sexto Sentido") tem
+   * prioridade — fica num alpha fixo e mais visível que os i-frames, sem
+   * piscar, pra não ser confundido com "tomando dano". Sem desvio ativo,
+   * volta ao piscar normal dos i-frames (liga/desliga a cada 80ms) enquanto
+   * eles durarem.
+   */
   _updateInvulnerableFlash() {
-    const isInvulnerable = this.scene.time.now < this.invulnerableUntil;
-    this.setAlpha(isInvulnerable ? (Math.floor(this.scene.time.now / 80) % 2 === 0 ? 0.4 : 1) : 1);
+    const now = this.scene.time.now;
+    if (now < this._dodgeFlashUntil) {
+      this.setAlpha(DODGE_ALPHA);
+      return;
+    }
+    const isInvulnerable = now < this.invulnerableUntil;
+    this.setAlpha(isInvulnerable ? (Math.floor(now / 80) % 2 === 0 ? 0.4 : 1) : 1);
+  }
+
+  /**
+   * Chamado por DamageSystem._rollDodge quando o desvio proca — nenhum
+   * dano chegou a ser aplicado. Só marca a janela de transparência; quem
+   * desenha é _updateInvulnerableFlash, todo frame.
+   */
+  onDodge() {
+    this._dodgeFlashUntil = this.scene.time.now + DODGE_FLASH_MS;
   }
 
   _handleMovement() {

@@ -32,6 +32,7 @@ export default class RunState {
     this.damageReductionFraction = 0; // fração do dano recebido que é ignorada (carta "Blindagem"), acumula normalmente por cópia
     this.paralyzeOnHitChance = 0; // chance (0-1) de paralisar o inimigo ao acertar (evolução "Overcharge" do Overclock)
     this.paralyzeOnHitDurationMs = 0; // duração da paralisia quando ela procar (ver DamageSystem._applyParalyze)
+    this.dodgeChance = 0; // chance (0-1) de desviar de um ataque por completo, sem tomar dano nenhum (evolução "Sexto Sentido" do Reflexo Felino)
 
     // bônus ao número de opções de carta mostradas em cada level-up (carta
     // "Arsenal Expandido": pegar ela faz o PRÓXIMO level-up em diante
@@ -145,6 +146,11 @@ export default class RunState {
         // dia exista mais de uma fonte; hoje só a evolução "Overcharge" seta
         this.paralyzeOnHitChance += effect.chance ?? 0;
         this.paralyzeOnHitDurationMs = Math.max(this.paralyzeOnHitDurationMs, effect.durationMs ?? 0);
+        break;
+      case 'dodgeChance':
+        // cap em 0.9 pelo mesmo motivo do damageReductionFraction: não
+        // pode chegar a 100% e tornar o jogador literalmente intocável
+        this.dodgeChance = Math.min(0.9, this.dodgeChance + effect.value);
         break;
       default:
         break;

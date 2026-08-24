@@ -37,7 +37,8 @@ export default [
     "category": "base",
     "rarity": "common",
     "type": "cooldownMultiplier",
-    "value": 0.15
+    "value": 0.15,
+    "evolvesInto": "cooldown_down_evo_sixth_sense"
   },
   {
     "id": "range_up",
@@ -251,6 +252,18 @@ export default [
         // pontos de escudo recuperados por segundo, uma vez que a recarga começa
         "rechargeRatePerSec": 12
       }
+    ]
+  },
+  {
+    "id": "cooldown_down_evo_sixth_sense",
+    "name": "Sexto Sentido",
+    "description": "20% de chance de desviar completamente de um ataque — ao desviar, você fica momentaneamente transparente.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "cooldown_down",
+    "type": "evolution",
+    "effects": [
+      { "type": "dodgeChance", "value": 0.2 }
     ]
   }
 ]

@@ -26,6 +26,9 @@ export default class DamageSystem {
     if (nowMs - lastHit < cooldownMs) return false;
 
     target[lastHitKey] = nowMs;
+
+    if (this._rollDodge(target)) return false;
+
     target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs));
     target.playHitReaction?.();
 
@@ -53,6 +56,7 @@ export default class DamageSystem {
    */
   static applyWeaponHit(target, damage, source, nowMs) {
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
+    if (this._rollDodge(target)) return false;
     target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0));
     target.playHitReaction?.();
     this._applyLifesteal(source, damage);
@@ -109,5 +113,21 @@ export default class DamageSystem {
   static _applyShield(target, damage, nowMs) {
     if (!target.shieldSystem) return damage;
     return target.shieldSystem.absorb(damage, nowMs);
+  }
+
+  /**
+   * Rola a chance de `target` desviar de UM ataque por completo (carta
+   * "Sexto Sentido", evolução de Reflexo Felino — ver RunState.dodgeChance).
+   * Se acertar, nenhum dano é aplicado (nem reduzido, nem absorvido pelo
+   * escudo — simplesmente não conecta) e `target.onDodge?.()` é chamado
+   * pro visual (Player fica transparente por um instante). Só o Player tem
+   * `runState`, então inimigos passam por aqui sem nunca desviar.
+   */
+  static _rollDodge(target) {
+    const chance = target?.runState?.dodgeChance;
+    if (!chance) return false;
+    if (Math.random() >= chance) return false;
+    target.onDodge?.();
+    return true;
   }
 }
