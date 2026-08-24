@@ -166,6 +166,15 @@ export default class GameScene extends Phaser.Scene {
 
   _buildUI() {
     this.hud = new HUD(this);
+    // Player já emitiu 'player-health-changed' no próprio construtor
+    // (_buildPlayer, antes do HUD existir), então o HUD perdia esse
+    // primeiro evento e só mostrava o número de vida depois do primeiro
+    // dano. Reemite aqui, agora que o HUD já está ouvindo, pra HP cheio
+    // aparecer desde o início.
+    EventBus.emit('player-health-changed', {
+      current: this.player.healthSystem.current,
+      max: this.player.healthSystem.maxHp
+    });
     this.levelUpUI = new LevelUpUI(this, this.runManager);
     // console de hack (F9) — dá cartas por comando, ver src/systems/DevConsole.js
     this.devConsole = new DevConsole(this, this.runManager);

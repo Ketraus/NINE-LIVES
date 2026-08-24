@@ -1,6 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 
 const BAR_W = 200;
+const SHIELD_BAR_COLOR = 0x3aa8ff; // mesmo azul do círculo de escudo em Player.js
 
 /**
  * UI puramente reativa: só escuta EventBus e desenha. Não tem
@@ -11,6 +12,7 @@ export default class HUD {
   constructor(scene) {
     this.scene = scene;
     this._buildHealthBar();
+    this._buildShieldBar();
     this._buildXpBar();
     this._buildKillCounter();
     this._buildRunTimer();
@@ -35,19 +37,39 @@ export default class HUD {
       .setDepth(101);
   }
 
+  /**
+   * Barra de escudo (carta "Escudo Energético", evolução de Blindagem) —
+   * criada já no HUD, mas invisível até o primeiro 'player-shield-changed'
+   * chegar (ver _bindEvents), já que nem toda run tem a habilidade.
+   */
+  _buildShieldBar() {
+    this.shieldBg = this.scene.add
+      .rectangle(16, 52, BAR_W, 10, 0x000000, 0.5)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(100)
+      .setVisible(false);
+    this.shieldFill = this.scene.add
+      .rectangle(18, 53.5, BAR_W - 4, 7, SHIELD_BAR_COLOR)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(101)
+      .setVisible(false);
+  }
+
   _buildXpBar() {
     this.xpBg = this.scene.add
-      .rectangle(16, 52, BAR_W, 8, 0x000000, 0.5)
+      .rectangle(16, 68, BAR_W, 8, 0x000000, 0.5)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(100);
     this.xpFill = this.scene.add
-      .rectangle(18, 54, 0, 4, 0x4fd1ff)
+      .rectangle(18, 70, 0, 4, 0x4fd1ff)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(101);
     this.levelText = this.scene.add
-      .text(16, 64, 'Nível 1', { fontSize: '12px', color: '#cfeaff' })
+      .text(16, 80, 'Nível 1', { fontSize: '12px', color: '#cfeaff' })
       .setScrollFactor(0)
       .setDepth(101);
   }
@@ -93,6 +115,17 @@ export default class HUD {
       this.hpText.setText(`${Math.ceil(current)} / ${max}`);
     });
 
+    // só existe pra quem pegou "Escudo Energético" — a barra fica invisível
+    // (ver _buildShieldBar) até o primeiro evento chegar
+    EventBus.on('player-shield-changed', ({ current, max }) => {
+      if (!this.shieldBg.visible) {
+        this.shieldBg.setVisible(true);
+        this.shieldFill.setVisible(true);
+      }
+      const ratio = Phaser.Math.Clamp(current / max, 0, 1);
+      this.shieldFill.width = (BAR_W - 4) * ratio;
+    });
+
     EventBus.on('xp-changed', ({ xp, xpToNext, level }) => {
       const ratio = Phaser.Math.Clamp(xp / xpToNext, 0, 1);
       this.xpFill.width = (BAR_W - 4) * ratio;
@@ -117,6 +150,10 @@ export default class HUD {
       this._kills = 0;
       this.killText.setText('Abates: 0');
       this.timeText.setText('00:00');
+      // a nova run pode não ter (ou ainda não ter pego) o Escudo Energético
+      // de novo — some com a barra até o próximo 'player-shield-changed'
+      this.shieldBg.setVisible(false);
+      this.shieldFill.setVisible(false).width = BAR_W - 4;
     });
   }
 

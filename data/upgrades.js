@@ -65,7 +65,8 @@ export default [
     "category": "base",
     "rarity": "common",
     "type": "damageReductionFraction",
-    "value": 0.1
+    "value": 0.1,
+    "evolvesInto": "armor_up_evo_shield"
   },
 
   // ---------- cartas base épicas: raras de aparecer, qualquer classe pode
@@ -228,6 +229,27 @@ export default [
         // "bem pequena": pouco maior que o raio de contato do jogador
         // (sprite de 28px), só pra pegar quem já está grudado nele
         "radius": 22
+      }
+    ]
+  },
+  {
+    "id": "armor_up_evo_shield",
+    "name": "Escudo Energético",
+    "description": "Um escudo recarregável envolve você e absorve dano antes da sua vida. Depois de alguns segundos sem ser atingido, ele recarrega sozinho.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "armor_up",
+    "type": "evolution",
+    "effects": [
+      {
+        "type": "unlockAbility",
+        "abilityId": "energyShield",
+        // pontos de escudo, absorvidos antes da vida (ver ShieldSystem)
+        "maxShield": 25,
+        // tempo sem tomar dano até começar a recarregar (ver ShieldSystem.update)
+        "rechargeDelayMs": 4000,
+        // pontos de escudo recuperados por segundo, uma vez que a recarga começa
+        "rechargeRatePerSec": 12
       }
     ]
   }

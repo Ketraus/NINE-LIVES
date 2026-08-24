@@ -1,9 +1,17 @@
 import HealthSystem from '../combat/HealthSystem.js';
+import ShieldSystem from '../combat/ShieldSystem.js';
 import EventBus from '../systems/EventBus.js';
 
 const BASE_SPEED = 160;
 export const BASE_MAX_HP = 100;
 const INVULNERABLE_MS = 350; // i-frames após tomar dano — evita ser "trancado" por vários inimigos ao mesmo tempo
+
+// Visual do escudo (carta "Escudo Energético"): só um círculo azul ao redor
+// do gato, sem enfeite extra — pedido explícito ("só um círculo azul").
+const SHIELD_COLOR = 0x3aa8ff;
+const SHIELD_RADIUS_PADDING = 8; // um pouco maior que o corpo do jogador, pra "envolver" ele
+const SHIELD_BLINK_INTERVAL_MS = 80; // mesmo intervalo que TornadoAbility usa pro piscar de recarga
+const SHIELD_HIT_FLASH_MS = 90;
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
   /**
@@ -57,6 +65,76 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.weaponManager = null; // injetado pela GameScene depois de criado
     this.isDead = false;
     this.lastHorizontalDir = 1; // direção horizontal "travada" pra armas tipo katana (1 = direita, -1 = esquerda)
+
+    // escudo (carta "Escudo Energético"): null até a habilidade ser
+    // desbloqueada. Ouvido aqui (e não no AbilityManager) porque, assim
+    // como a katana lê doubleStrike direto em Weapon.js, o escudo precisa
+    // mexer direto no fluxo de dano do Player (ver DamageSystem._applyShield)
+    // e não só rodar um update() isolado. EventBus.removeAllListeners() no
+    // início de GameScene.create() evita duplicar isto entre restarts.
+    this.shieldSystem = null;
+    this.shieldFx = null;
+    EventBus.on('ability-unlocked', ({ abilityId, def }) => {
+      if (abilityId === 'energyShield') this._unlockShield(def);
+    });
+    // mesmos eventos que já pausam o SpawnDirector (ver GameScene) — o
+    // escudo precisa descontar o mesmo intervalo, senão recarrega (ou até
+    // enche de um pulo) só de o jogador demorar na tela de cartas
+    EventBus.on('levelup-opened', () => this.shieldSystem?.pause(this.scene.time.now));
+    EventBus.on('levelup-closed', () => this.shieldSystem?.resume(this.scene.time.now));
+  }
+
+  _unlockShield(def) {
+    if (this.shieldSystem) return; // carta é 1x só, mas não custa nada garantir
+    this.shieldSystem = new ShieldSystem(def.maxShield, {
+      rechargeDelayMs: def.rechargeDelayMs,
+      rechargeRatePerSec: def.rechargeRatePerSec,
+      onChange: (current, max) => EventBus.emit('player-shield-changed', { current, max }),
+      onHit: () => this._flashShieldHit()
+    });
+
+    const radius = this._baseRadius + SHIELD_RADIUS_PADDING;
+    this.shieldFx = this.scene.add
+      .circle(this.x, this.y, radius, SHIELD_COLOR, 0.18)
+      .setStrokeStyle(2, SHIELD_COLOR, 0.8)
+      .setDepth(9); // logo abaixo do jogador (depth 10), acima do chão
+  }
+
+  /** Flash branco rápido no escudo — mesma linguagem visual que Enemy.playHitReaction usa pro corpo dos inimigos. */
+  _flashShieldHit() {
+    if (!this.shieldFx) return;
+    this.shieldFx.setFillStyle(0xffffff, 0.45);
+    this.shieldFx.setStrokeStyle(3, 0xffffff, 1);
+    this.scene.time.delayedCall(SHIELD_HIT_FLASH_MS, () => {
+      if (!this.shieldFx?.active) return;
+      this.shieldFx.setFillStyle(SHIELD_COLOR, 0.18);
+      this.shieldFx.setStrokeStyle(2, SHIELD_COLOR, 0.8);
+    });
+  }
+
+  /**
+   * Acompanha o jogador e cuida da recarga + do visual: pisca (liga/
+   * desliga, mesmo estilo do vórtice de TornadoAbility) enquanto está
+   * recarregando, e fica mais apagado conforme o escudo esvazia.
+   */
+  _updateShield(time) {
+    if (!this.shieldSystem || !this.shieldFx) return;
+
+    this.shieldSystem.update(time);
+    this.shieldFx.setPosition(this.x, this.y);
+    // o círculo é um objeto à parte do sprite do gato (não um filho dele),
+    // então não cresce sozinho com COLOSSO (evolução de vida que aplica
+    // setScale no Player via applySize) — precisa copiar a escala atual
+    // do jogador todo frame, senão fica pequeno demais quando ele cresce
+    this.shieldFx.setScale(this.scale);
+
+    if (this.shieldSystem.isRegenerating(time)) {
+      const isBlinkOn = Math.floor(time / SHIELD_BLINK_INTERVAL_MS) % 2 === 0;
+      this.shieldFx.setAlpha(isBlinkOn ? 0.9 : 0.25);
+    } else {
+      const ratio = Phaser.Math.Clamp(this.shieldSystem.current / this.shieldSystem.maxShield, 0, 1);
+      this.shieldFx.setAlpha(0.25 + ratio * 0.6);
+    }
   }
 
   setWeaponManager(weaponManager) {
@@ -101,6 +179,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._handleMovement();
     this._autoAttack();
     this._updateInvulnerableFlash();
+    this._updateShield(this.scene.time.now);
   }
 
   /** Pisca o sprite enquanto os i-frames de DamageSystem estiverem ativos. */
@@ -168,6 +247,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.isDead = true;
     this.setTint(0x555555);
     this.setVelocity(0, 0);
+    this.shieldFx?.setVisible(false);
     EventBus.emit('player-died');
   }
 }

@@ -26,7 +26,7 @@ export default class DamageSystem {
     if (nowMs - lastHit < cooldownMs) return false;
 
     target[lastHitKey] = nowMs;
-    target.healthSystem.takeDamage(this._applyDamageReduction(target, damage));
+    target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs));
     target.playHitReaction?.();
 
     if (target.invulnerableMs) {
@@ -53,7 +53,7 @@ export default class DamageSystem {
    */
   static applyWeaponHit(target, damage, source, nowMs) {
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
-    target.healthSystem.takeDamage(this._applyDamageReduction(target, damage));
+    target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0));
     target.playHitReaction?.();
     this._applyLifesteal(source, damage);
     this._applyParalyze(target, source, nowMs);
@@ -98,5 +98,16 @@ export default class DamageSystem {
     const reduction = target?.runState?.damageReductionFraction;
     if (!reduction) return damage;
     return damage * (1 - reduction);
+  }
+
+  /**
+   * Deixa o escudo (carta "Escudo Energético", evolução de Blindagem)
+   * absorver o dano antes da vida, se o alvo tiver um. Só o Player pode
+   * ter `shieldSystem` (ver Player._unlockShield); inimigos passam por
+   * aqui sem efeito, igual a _applyDamageReduction.
+   */
+  static _applyShield(target, damage, nowMs) {
+    if (!target.shieldSystem) return damage;
+    return target.shieldSystem.absorb(damage, nowMs);
   }
 }
