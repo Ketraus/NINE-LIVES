@@ -190,7 +190,15 @@ export default class RunManager {
     const picks = this.runState.upgradeCounts[upgrade.id] || 0;
     if (picks !== EVOLUTION_STACK_THRESHOLD) return null;
     const evolution = this.upgradeDefs.find((u) => u.id === upgrade.evolvesInto);
-    return evolution ? this._resolveEvolutionName(evolution) : null;
+    if (!evolution) return null;
+    // algumas evoluções de carta base só fazem sentido pra uma arma
+    // específica (ex.: "Instinto Caçador" mexe direto no projétil da
+    // pistola, ver RangedWeapon). Se a evolução tiver `weaponId` e não
+    // bater com a arma da run, ela simplesmente não fica pronta ainda —
+    // a carta base continua empilhando normalmente pra essa arma, até
+    // uma evolução própria ser criada pra ela.
+    if (evolution.weaponId && evolution.weaponId !== this.runState.weaponId) return null;
+    return this._resolveEvolutionName(evolution);
   }
 
   /**

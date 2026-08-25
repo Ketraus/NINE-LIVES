@@ -47,7 +47,8 @@ export default [
     "category": "base",
     "rarity": "common",
     "type": "rangeMultiplier",
-    "value": 0.2
+    "value": 0.2,
+    "evolvesInto": "range_up_evo_hunter_instinct"
   },
   {
     "id": "thorns_up",
@@ -252,6 +253,26 @@ export default [
         // pontos de escudo recuperados por segundo, uma vez que a recarga começa
         "rechargeRatePerSec": 12
       }
+    ]
+  },
+  {
+    "id": "range_up_evo_hunter_instinct",
+    "name": "Instinto Caçador",
+    "description": "O tiro perfura o primeiro inimigo atingido e salta para o inimigo mais próximo dele.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "range_up",
+    "type": "evolution",
+    // por enquanto só faz sentido pra pistola (o efeito mexe direto no
+    // projétil, ver RangedWeapon._ensureBulletGroup) — katana e punhos
+    // ainda não têm ideia decidida pra evolução de Visão Aguçada. Com
+    // `weaponId` aqui, RunManager._findPendingEvolution não oferece esta
+    // evolução pra quem não é pistola: a carta base continua empilhando
+    // normalmente (+20% de alcance por cópia) até uma evolução própria
+    // ser criada pra elas.
+    "weaponId": "pistol",
+    "effects": [
+      { "type": "unlockAbility", "abilityId": "chainShot" }
     ]
   },
   {

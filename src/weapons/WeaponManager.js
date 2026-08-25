@@ -44,7 +44,11 @@ export default class WeaponManager {
       rangeMultiplier: this.runState.rangeMultiplier,
       // true só depois da carta exclusiva "katana_double" (unlockAbility:
       // doubleStrike); Weapon.js ignora este campo se a arma não for a katana
-      doubleStrike: this.runState.unlockedAbilities.has('doubleStrike')
+      doubleStrike: this.runState.unlockedAbilities.has('doubleStrike'),
+      // true só depois da evolução "Instinto Caçador" (Visão Aguçada,
+      // pistola); RangedWeapon.js ignora este campo se a arma não for a
+      // pistola (só ela usa RangedWeapon pra começo de conversa)
+      chainShot: this.runState.unlockedAbilities.has('chainShot')
     });
 
     // armas melee sempre "golpeiam" (fire() não retorna nada -> truthy);

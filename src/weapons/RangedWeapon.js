@@ -18,6 +18,13 @@ const DEFAULT_PROJECTILE_LIFETIME_MS = 1200;
  * atira imediatamente, em vez de ficar "recarregando" enquanto mirava
  * no vazio.
  */
+// quantos "saltos" pra um novo inimigo a evolução "Instinto Caçador"
+// (range_up_evo_hunter_instinct, ver data/upgrades.js) permite por tiro.
+// Só 1 por enquanto (acerta o primeiro, salta pro segundo mais próximo
+// DELE) — se um dia quisermos mais saltos, isto vira parte do efeito da
+// carta em vez de uma constante fixa aqui.
+const CHAIN_SHOT_JUMPS = 1;
+
 export default class RangedWeapon {
   /** @param {object} def - entrada de data/weapons.js (type: "ranged") */
   constructor(def) {
@@ -27,7 +34,7 @@ export default class RangedWeapon {
 
   fire(scene, player, enemyGroup, statMods) {
     const range = this.def.range * (1 + statMods.rangeMultiplier);
-    const target = this._findNearestEnemy(player, enemyGroup, range);
+    const target = this._findNearestEnemy(player.x, player.y, enemyGroup, range);
     if (!target) return false; // sem alvo à vista: não atira, não gasta cooldown
 
     this._ensureBulletGroup(scene, player, enemyGroup);
@@ -49,6 +56,16 @@ export default class RangedWeapon {
     // em _ensureBulletGroup) — mesma direção que a bala está viajando
     bullet.setData('dirX', dir.x);
     bullet.setData('dirY', dir.y);
+    // inimigos já acertados por ESTE projétil (o próprio + qualquer salto
+    // da "Instinto Caçador") — evita re-acertar o mesmo alvo enquanto a
+    // bala ainda está sobreposta a ele, e evita saltar de volta pra quem
+    // já foi atingido
+    bullet.setData('hitEnemies', []);
+    // quantos saltos pra um novo inimigo esta bala ainda pode dar; range
+    // do salto usa o mesmo alcance (já com rangeMultiplier) do tiro em si,
+    // já que a evolução parte justamente de Visão Aguçada
+    bullet.setData('chainJumpsLeft', statMods.chainShot ? CHAIN_SHOT_JUMPS : 0);
+    bullet.setData('chainRange', range);
 
     // projétil não deve viver pra sempre caso erre todo mundo
     scene.time.delayedCall(DEFAULT_PROJECTILE_LIFETIME_MS, () => bullet.destroy());
@@ -61,10 +78,31 @@ export default class RangedWeapon {
     if (this.bulletGroup) return;
     this.bulletGroup = scene.physics.add.group();
     scene.physics.add.overlap(this.bulletGroup, enemyGroup, (bullet, enemy) => {
+      const hitEnemies = bullet.getData('hitEnemies');
+      if (hitEnemies.includes(enemy)) return; // mesmo alvo, bala ainda sobreposta a ele
+
       const hit = DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player, scene.time.now);
-      if (hit && this.def.knockback) {
+      if (!hit) return; // desviou/já morreu: bala segue intacta, sem contar como impacto
+
+      hitEnemies.push(enemy);
+      if (this.def.knockback) {
         enemy.applyKnockback(bullet.getData('dirX'), bullet.getData('dirY'), this.def.knockback, scene.time.now);
       }
+
+      // "Instinto Caçador": em vez de destruir a bala aqui, procura o
+      // inimigo mais próximo DO INIMIGO QUE ACABOU DE SER ATINGIDO (não
+      // do player) e redireciona o projétil pra ele — é um salto pro
+      // próximo alvo, não um "atravessar e continuar reto"
+      const jumpsLeft = bullet.getData('chainJumpsLeft');
+      if (jumpsLeft > 0) {
+        const nextTarget = this._findNearestEnemy(enemy.x, enemy.y, enemyGroup, bullet.getData('chainRange'), hitEnemies);
+        if (nextTarget) {
+          this._retarget(bullet, nextTarget);
+          bullet.setData('chainJumpsLeft', jumpsLeft - 1);
+          return;
+        }
+      }
+
       bullet.destroy();
     });
     // reaproveita o mapManager que a GameScene já monta — bala não deve
@@ -72,13 +110,30 @@ export default class RangedWeapon {
     scene.mapManager?.addCollider(this.bulletGroup, (bullet) => bullet.destroy());
   }
 
-  _findNearestEnemy(player, enemyGroup, range) {
+  /** Reaponta uma bala já em voo pro alvo dado, sem recriar o sprite. */
+  _retarget(bullet, target) {
+    const dir = new Phaser.Math.Vector2(target.x - bullet.x, target.y - bullet.y).normalize();
+    const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
+    bullet.setVelocity(dir.x * speed, dir.y * speed);
+    bullet.setRotation(dir.angle());
+    bullet.setData('dirX', dir.x);
+    bullet.setData('dirY', dir.y);
+  }
+
+  /**
+   * @param {number} originX/originY - de onde medir a distância (player no
+   *   tiro inicial, o inimigo recém-atingido no salto da "Instinto Caçador")
+   * @param {Array} [exclude] - inimigos a ignorar (usado no salto, pra não
+   *   voltar pro alvo que a bala acabou de atingir)
+   */
+  _findNearestEnemy(originX, originY, enemyGroup, range, exclude = []) {
     let nearest = null;
     let nearestDist = range;
 
     enemyGroup.children.iterate((enemy) => {
       if (!enemy?.active) return;
-      const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
+      if (exclude.includes(enemy)) return;
+      const dist = Phaser.Math.Distance.Between(originX, originY, enemy.x, enemy.y);
       if (dist <= nearestDist) {
         nearestDist = dist;
         nearest = enemy;
