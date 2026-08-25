@@ -1,306 +1,105 @@
-# Protótipo Roguelike (Phaser 3)
+# NINE LIVES — protótipo
 
-## Como rodar (sem instalar nada)
+## Como rodar (o básico)
 
-1. Abra a pasta `proto` no VS Code.
-2. Clique com o botão direito em `index.html` → **"Open with Live Server"**
-   (ou clique em "Go Live" no canto inferior direito).
-3. O navegador abre sozinho o jogo. Pronto.
+1. Abre a pasta no VS Code.
+2. Clica com o botão direito no `index.html` e escolhe **"Open with Live Server"** (ou clica em "Go Live" no canto inferior direito).
+3. O jogo abre no navegador. Pronto.
 
-Não precisa de `npm install`, `npm run dev` nem terminal. O Phaser é
-carregado direto de um CDN (`index.html`), e o resto do código é
-JavaScript puro (ES Modules) que o navegador entende sozinho.
+Não precisa instalar nada, nem rodar terminal, nem `npm`. O Phaser vem de um link externo (`index.html`) e o resto é JavaScript puro que o navegador já entende.
 
-**Só funciona com internet na hora de abrir** (por causa do CDN do
-Phaser). Se a escola não tiver internet:
-1. Baixe https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js
-2. Salve como `assets/phaser.min.js` dentro da pasta `proto`.
-3. No `index.html`, troque a linha do `<script src="https://cdn...">`
-   por `<script src="assets/phaser.min.js"></script>`.
+**Só funciona com internet** por causa do Phaser. Se não tiver internet:
+- Baixa o `phaser.min.js` aqui: https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js
+- Coloca dentro de `assets/` e troca o link no `index.html` pelo caminho `assets/phaser.min.js`.
 
-**Importante ao atualizar o projeto**: quando receber uma versão nova,
-**substitua a pasta `proto` inteira** (apague a antiga e extraia a
-nova) em vez de extrair uma sobre a outra. Extrair por cima deixa
-arquivos velhos misturados com os novos — foi exatamente isso que fez
-a tela de escolha de arma "sumir" numa versão anterior: sobrou um
-`gameConfig.js` antigo do lado do novo, e o `index.html` carregava o
-antigo.
+**Importante:** quando atualizar o projeto, **substitua a pasta `proto` inteira** (apaga a antiga e coloca a nova). Extrair por cima mistura arquivos velhos com novos e pode quebrar coisa (já aconteceu).
+
+---
 
 ## Controles
-- **WASD / Setas**: mover
-- **Espaço / clique**: atacar (arco melee na direção que você está olhando)
+
+- **WASD / Setas**: andar
+- **Espaço / clique**: atacar (na direção que você tá olhando)
 - **R**: reiniciar depois de morrer
 
-## Ciclo implementado
-Menu → **Escolha de arma** (Punhos / Espada / Pistola) → Mapa (Tiled) →
-Inimigo persegue → Ataque → Dano → Morte → Reiniciar (mantém a arma
-escolhida).
+---
 
-Bônus: inimigos derrotados dropam XP → ao subir de nível o jogo pausa e
-oferece 3 cartas de upgrade (`data/upgrades.js`).
+## O que já tá funcionando
 
-## Tela de escolha de arma
-`WeaponSelectScene` mostra as armas de `data/weapons.js` como cartas
-clicáveis e manda pra `GameScene` já com a escolha:
-`this.scene.start('GameScene', { weaponId })`. `GameScene` guarda
-`this.weaponId` e repassa no restart (tecla R), então morrer não troca
-sua arma sem avisar.
+Menu → escolha de arma (Punhos / Espada / Pistola) → mapa (Tiled) → inimigos perseguem → ataque → dano → morte → reiniciar (mantém a arma escolhida).
 
-A arma escolhida fica em `runState.weaponId` (não é resetada por
-`RunState.reset()` de propósito — só o progresso da run zera).
-`RunManager._getAvailableUpgrades()` já existe como ponto de extensão
-pra filtrar upgrades por arma no futuro; hoje devolve o pool inteiro
-sem filtrar nada.
+Inimigos dropam XP; ao subir de nível, o jogo pausa e mostra 3 cartas de upgrade (`data/upgrades.js`).
 
-## Estrutura de assets
-Pastas prontas pra ir recebendo os assets reais do NINE LIVES — sem
-nenhum sistema novo, só organização. Cada pasta abaixo já existe no
-projeto (as vazias têm um `.gitkeep` só pra não sumirem do zip/git,
-pode apagar o `.gitkeep` assim que colocar o primeiro arquivo de
-verdade ali dentro):
+---
 
-- **`assets/maps/`** — tilesets e mapas exportados do Tiled (`.png` dos
-  tilesets + `.json` do mapa). Já em uso (`map.json`, `tileset.png`) —
-  ver seção "Editando o mapa no Tiled" logo abaixo.
-- **`assets/sprites/`** — sprites individuais e spritesheets de
-  personagens/inimigos/itens (`player.png`, `enemy.png`, `xp_orb.png`
-  etc.). Já em uso.
-- **`assets/fx/`** *(nova)* — efeitos visuais: partículas, flashes de
-  impacto, rastros de projétil, explosões etc. Hoje só existe um efeito
-  (`hit_fx.png`) e ele ainda está em `assets/sprites/` por não ter tido
-  onde ir antes — pode ficar onde está (não precisa migrar) ou mudar
-  pra cá quando integrar os efeitos de verdade; se mudar, lembre de
-  atualizar o caminho em `PreloadScene.js`.
-- **`assets/sfx/`** *(nova)* — efeitos sonoros (som de tiro, corte,
-  passos, dano, morte, coleta de XP etc.).
-- **`assets/music/`** *(nova)* — músicas/trilha sonora (menu, gameplay,
-  etc.).
-- **`assets/ui/`** *(nova)* — fontes customizadas e assets de interface
-  (ícones, painéis, molduras de carta, botões). Hoje toda a UI usa a
-  fonte padrão do navegador via `fontSize`/`color` direto no código
-  (`HUD.js`, `LevelUpUI.js`, `WeaponSelectScene.js`, `MainMenuScene.js`)
-  — sem fonte customizada carregada ainda.
-- **`data/animations.js`** *(novo)* — mesmo padrão de `data/weapons.js`
-  e `data/enemies.js`: um array vazio, comentado, pronto pra receber as
-  definições de animação (`this.anims.create`) quando os spritesheets
-  animados chegarem. Ainda não é importado por nada.
+## Escolha de arma
 
-**Como referenciar um asset novo depois de colocá-lo na pasta certa**
-(sem mudar nada agora — só o fluxo de sempre do projeto):
-- Imagens, spritesheets, tilesets e áudio: adicionam uma linha em
-  `src/scenes/PreloadScene.js` (`this.load.image(...)`,
-  `this.load.spritesheet(...)`, `this.load.audio(...)`), do mesmo jeito
-  que `player`/`enemy`/`tileset` já são carregados ali.
-- Fonte customizada: também entra no `PreloadScene.js`
-  (`this.load.font(...)` ou `this.load.bitmapFont(...)`, dependendo do
-  formato da fonte).
-- Animações: depois de carregar o spritesheet no `PreloadScene.js`,
-  preenche uma entrada em `data/animations.js` e chama
-  `this.anims.create(...)` em algum lugar que rode uma vez só (ex.: no
-  `create()` do `PreloadScene` ou do `BootScene`) — ainda não existe
-  esse ponto no código, é o próximo passo natural quando os
-  spritesheets animados chegarem.
-- Mapas/tilesets novos: já documentado abaixo, em "Usando mais de um
-  tileset".
+`WeaponSelectScene` mostra as armas de `data/weapons.js` como cartas clicáveis. Quando você escolhe uma, o jogo guarda e começa a run. Se morrer e apertar `R`, você volta com a mesma arma (não precisa escolher de novo).
+
+---
+
+## Pastas de assets
+
+Já estão organizadas pra receber os arquivos de verdade (sprites, sons, mapas, etc.). Cada pasta abaixo já existe no projeto:
+
+- `assets/maps/` — mapas do Tiled e tilesets
+- `assets/sprites/` — sprites de personagens, inimigos, itens
+- `assets/fx/` — efeitos visuais (partículas, flashes)
+- `assets/sfx/` — sons
+- `assets/music/` — música
+- `assets/ui/` — ícones, fontes, painéis
+
+Se quiser adicionar uma imagem nova, é só colocar o arquivo na pasta certa e carregar no `PreloadScene.js` (igual já tem pra `player.png`, `enemy.png`, etc.).
+
+---
 
 ## Editando o mapa no Tiled
-`assets/maps/map.json` é um mapa Tiled válido (formato JSON, tileset
-embutido em `assets/maps/tileset.png`, 32x32 por tile). Pode abrir
-direto no Tiled Map Editor, editar as layers `Ground`/`Walls` e o
-objeto de ponto `PlayerSpawn` na layer `Objects`, e salvar de volta —
-o Phaser vai ler as mesmas layers automaticamente
-(`src/maps/TiledLoader.js`).
 
-### Como montar o mapa no Tiled do zero
-Os nomes abaixo precisam bater **exatamente** com o que está em
-`src/maps/MapManager.js` (constantes no topo do arquivo — mude lá se
-quiser nomes diferentes):
+O mapa atual (`assets/maps/map.json`) foi feito no Tiled. Você pode abrir ele, editar as camadas `Ground` (chão) e `Walls` (paredes), e o ponto `PlayerSpawn` na camada `Objects`. Depois é só salvar e exportar como JSON.
 
-1. **New Map** → orientação Orthogonal, tile size 32x32.
-2. **Tileset**: Map > New Tileset, baseado numa imagem (`tileset.png`).
-   No campo **Name** do tileset, digite `tileset` (é esse nome que o
-   código procura — `TILESET_NAME_IN_TILED` no MapManager).
-3. **Tile Layers**: crie duas, nessa ordem, nomeadas exatamente
-   `Ground` e `Walls`. `Walls` é a que gera colisão — qualquer tile
-   pintado nela vira parede; deixe vazio (gid 0) onde o jogador deve
-   andar livre.
-4. **Object Layer**: crie uma chamada `Objects`. Dentro dela, insira
-   um **Point** e dê o nome `PlayerSpawn` — é onde o jogador nasce.
-5. **Export**: File > Export As > `map.json`, salvando em
-   `assets/maps/`. Se o nome do tileset-imagem mudar, atualize também
-   o `this.load.image('tileset', ...)` em `PreloadScene.js`.
+Se for criar um mapa do zero:
 
-Se algum nome estiver errado, o jogo não falha silenciosamente: o
-`TiledLoader` lança um erro explicando exatamente o que renomear (veja
-o console do navegador), e o `MapManager` avisa no console (sem
-travar o jogo) se não achar o `PlayerSpawn`, nascendo no centro do
-mapa como fallback.
+1. **Novo mapa** → Orientação Orthogonal, tile size 32x32.
+2. **Tileset** → adicionar uma imagem (ex: `tileset.png`). No campo **Name**, coloca `tileset` (é o nome que o código procura).
+3. **Camadas de tile** → cria duas: `Ground` e `Walls`. A `Walls` gera colisão; qualquer tile pintado ali vira parede.
+4. **Camada de objetos** → cria uma chamada `Objects`. Dentro dela, coloca um **Point** com nome `PlayerSpawn` — é onde o jogador nasce.
+5. **Exporta** como `map.json` pra dentro de `assets/maps/`.
 
-### Adicionando outros pontos no mapa (baús, portas, spawns futuros)
-`MapManager.getObjectPoint(layerName, objectName)` é genérico — não
-precisa de um método novo pra cada tipo de objeto. Basta criar o Point
-no Tiled (em qualquer Object Layer) e chamar
-`mapManager.getObjectPoint('Objects', 'NomeDoObjeto')` de onde for
-usar.
+Se os nomes não baterem, o jogo avisa no console o que tá errado.
 
-### Usando mais de um tileset
-O código já suporta N tilesets na mesma Tile Layer (`Ground` ou
-`Walls` podem misturar tiles de tilesets diferentes — o Phaser resolve
-sozinho qual tileset cada tile pertence). Pra adicionar um novo:
+---
 
-1. **No Tiled**: Map → New Tileset, aponte pra imagem nova (ex.:
-   `props.png`), e em Name coloque algo único (ex.: `props`) —
-   diferente do nome de qualquer outro tileset já usado no mapa. Depois
-   é só pintar tiles dele normalmente nas layers `Ground`/`Walls`.
-2. **Em `src/scenes/PreloadScene.js`**: adicione uma linha carregando a
-   imagem, com uma chave única:
-   ```js
-   this.load.image('props', 'assets/maps/props.png');
-   ```
-3. **Em `src/maps/MapManager.js`**: acrescente uma entrada na lista
-   `TILESETS` no topo do arquivo:
-   ```js
-   const TILESETS = [
-     { imageKey: 'tileset', nameInTiled: 'tileset' },
-     { imageKey: 'props', nameInTiled: 'props' }
-   ];
-   ```
-4. Exporte o mapa de novo (File → Export As → `assets/maps/map.json`)
-   por cima do antigo.
+## Cartas e evoluções
 
-Se o `nameInTiled` não bater exatamente com o Name configurado no
-Tiled (passo 1), o jogo já avisa no console qual tileset não foi
-encontrado — não precisa ficar adivinhando.
+As cartas estão em `data/upgrades.js`. Tem dois tipos principais:
 
-## Cartas: evolução vs. habilidade exclusiva
-Duas mecânicas diferentes convivem em `data/upgrades.js`, ambas
-disparadas por `RunManager` e mostradas por `LevelUpUI`:
+### Evoluções (`category: "evolution"`)
+- Uma carta base pode ter um campo `evolvesInto` apontando pra uma carta de evolução.
+- Exemplo: `hp_up` (Nove Vidas) evolui pra `hp_up_evo_colosso` (COLOSSO) depois de pegar **5 cópias** da carta base.
+- Quando a evolução é ativada, a carta base some do pool de ofertas.
 
-### Cartas de evolução (`category: "evolution"`)
-Uma carta "base" (ex.: `hp_up` / Vitalidade) pode ter um campo
-`evolvesInto` apontando pro `id` de uma carta com `category: "evolution"`
-(ex.: `hp_up_evo_colosso` / COLOSSO). Fluxo:
-1. Cada vez que o jogador escolhe a carta base, `RunManager.chooseUpgrade()`
-   aplica o efeito dela **normalmente** (o estado das cópias anteriores
-   nunca é apagado — os bônus acumulam).
-2. Quando a contagem de cópias bate `EVOLUTION_STACK_THRESHOLD` (hoje 5,
-   constante no topo de `RunManager.js`), a evolução é emitida via evento
-   `'evolution-ready'` e a `LevelUpUI` mostra **só ela**, em destaque
-   dourado, nunca misturada com as 3 opções normais de level-up.
-3. A evolução só entra em vigor quando o jogador clica pra confirmar
-   (`confirmEvolution()`) — ela tem sua própria lista de `effects`
-   (pode dar vários bônus de uma vez: vida, tamanho, velocidade etc.) que
-   somam em cima do que a carta base já deu.
-4. Depois de confirmada, a carta base some do pool de ofertas (ver
-   `RunManager._getAvailableUpgrades()` — checa `ownedUpgradeIds`).
+### Habilidades exclusivas (`type: "unlockAbility"`)
+- São cartas que só aparecem se você escolheu uma arma específica.
+- Exemplo: `fists_slam` (Pancada Sísmica) só aparece pra quem tá de Punhos.
+- São únicas — depois de pegar, não aparece de novo.
 
-Pra criar uma evolução nova: adicione `evolvesInto` na carta base e uma
-entrada nova com `category: "evolution"` + `effects: [...]`. Se algum
-efeito precisar mexer direto no Player/scene (não só um número em
-`RunState`), adicione um `case` em `RunManager._applyRuntimeEffect()`.
+---
 
-Uma evolução também pode ter `namesByWeapon` (mapa `weaponId -> nome`)
-quando ela vale pra qualquer arma mas deve se chamar diferente conforme a
-arma da run — mesmo `id`/`effects` o tempo todo, só o texto mostrado na
-carta muda (`RunManager._resolveEvolutionName`). Exemplo: `dmg_up_evo_
-overcharge` (evolução do Overclock) aparece como "Impacto Paralisante"
-com Punhos, "Corte Neural" com Katana e "Munição EM" com Pistola.
+## Balanceamento e ajustes
 
-### Overcharge (evolução do Overclock — paralisia ao acertar)
-`dmg_up` (Overclock) evolui, após 5 cópias, pra `dmg_up_evo_overcharge`:
-20% de chance de paralisar o inimigo por 300ms a cada acerto de arma
-(soco, corte de katana ou tiro — não conta contra-ataque de espinhos,
-Pancada Sísmica nem GatoDrone, ver abaixo). Fluxo:
-- `RunState.paralyzeOnHitChance`/`paralyzeOnHitDurationMs` guardam o
-  bônus (efeito `paralyzeOnHit` em `RunState._applyEffect`).
-- `DamageSystem.applyWeaponHit(target, damage, source, nowMs)` ganhou um
-  4º parâmetro opcional `nowMs` — quando presente, `_applyParalyze` rola
-  a chance de `source.runState.paralyzeOnHitChance` e, se acertar, seta
-  `target.paralyzedUntil = nowMs + duração`. Só `Weapon.js` (soco/katana)
-  e `RangedWeapon.js` (pistola) passam `nowMs`; as outras chamadas de
-  `applyWeaponHit` (espinhos em `GameScene.js`, `SlamAbility.js`,
-  `DroneAbility.js`) continuam sem passar, então nunca procam paralisia —
-  de propósito, é só o dano das 3 armas base que ganha o efeito.
-- `Enemy.paralyzedUntil` (0 = nunca paralisado) é checado em `chase()`:
-  enquanto `nowMs < paralyzedUntil`, o inimigo zera a velocity e não
-  persegue (continua tomando dano normalmente).
+- `data/enemies.js` — define os inimigos (HP, velocidade, dano, XP, etc.)
+- `data/weapons.js` — define as armas (dano, alcance, cooldown, etc.)
+- `data/upgrades.js` — define as cartas e evoluções
 
-### Cartas exclusivas / habilidade desbloqueável (`type: "unlockAbility"`)
-Cartas como `fists_slam` (Impacto), `katana_double` (Corte Duplo) e
-`pistol_drone` (Drone) têm `weaponId` (só aparecem pra quem escolheu
-aquela arma na `WeaponSelectScene`) e `type: "unlockAbility"`. Ao serem
-escolhidas, `RunState` só registra o `abilityId` em `unlockedAbilities`
-e `RunManager` emite `'ability-unlocked'`; quem dá vida à habilidade de
-fato é o `AbilityManager` (soco/drone) ouvindo esse evento, ou — no caso
-específico da katana — `Weapon.js` lendo `runState.unlockedAbilities`
-direto. Diferente das cartas de evolução, cada uma só pode ser tirada
-uma vez (`RunManager._getAvailableUpgrades()` filtra as já
-desbloqueadas) e não têm cópias/stacks.
+Você pode editar esses números sem mexer no código do jogo.
 
-## Balanceamento
-`data/enemies.js`, `data/weapons.js` e `data/upgrades.js` são módulos
-JS que só exportam um objeto (`export default {...}`) — edite os
-números ali sem tocar no resto do código. Viraram `.js` em vez de
-`.json` porque o navegador, sem um bundler, não importa `.json`
-direto de forma confiável — mas o formato do objeto é idêntico.
+---
 
-**Adicionar uma 4ª arma**: só adicionar uma entrada nova em
-`data/weapons.js` (com `id` único) — ela aparece sozinha na tela de
-escolha, porque `WeaponSelectScene` itera o array inteiro. Nenhum outro
-arquivo precisa mudar.
+## Próximos passos (ideias)
 
-### Dificuldade / combate
-- `src/entities/enemies/EnemySpawner.js`: `SPAWN_INTERVAL_MS` (intervalo
-  entre spawns), `SPAWN_MARGIN_BEYOND_VIEW` (quanto além da borda da
-  câmera um inimigo precisa nascer pra garantir que nasce fora da visão)
-  e `MAX_ALIVE` (teto de inimigos vivos ao mesmo tempo — sem isso o mapa
-  enche e vira enxame incontrolável).
-  **O spawn é relativo à câmera, não ao mapa inteiro**: todo inimigo
-  nasce num ângulo aleatório ao redor do jogador, fora da área que a
-  câmera está mostrando no momento (`_findSpawnPosition()`). Isso é o
-  que permite deixar o mapa absurdamente maior sem precisar mexer em
-  nada aqui — não importa o tamanho do mapa, os inimigos sempre nascem
-  "logo fora da tela", nunca a quilômetros de distância do jogador (o
-  que aconteceria se o spawn sorteasse qualquer ponto do mapa inteiro,
-  como era antes). Se o mapa ficar muito maior, o que pode valer a pena
-  ajustar é `MAX_ALIVE` pra cima (mapa grande com poucos inimigos
-  simultâneos pode parecer vazio ao correr por ele).
-- `src/entities/Player.js`: `INVULNERABLE_MS` — janela de
-  invulnerabilidade (i-frames) depois de tomar qualquer dano de
-  contato. Sem i-frame, ficar cercado por vários inimigos ao mesmo
-  tempo tira vida de todos simultaneamente, o que deixa o jogo
-  injustamente punitivo. O sprite pisca enquanto está invulnerável.
-- **Contra-ataque (espinhos)**: `runState.thornsDamage` (base 2,
-  definido em `RunState.reset()`) é aplicado de volta no inimigo toda
-  vez que ele te acerta de fato (não durante i-frame). Já existe uma
-  carta de upgrade "Espinhos" em `data/upgrades.js` que aumenta esse
-  valor — é só a base do que você pediu, ainda dá pra crescer
-  (ex.: escalar com dano recebido em vez de valor fixo).
+- Mais tipos de inimigo (já tem suporte em `enemies.js`)
+- Mais armas (basta adicionar em `weapons.js`)
+- Mais evoluções (basta adicionar em `upgrades.js`)
+- Mapas maiores ou mais salas (o `MapManager` já é genérico)
 
-## Onde crescer cada sistema depois
-- **XP/level/waves**: `roguelike/RunState.js` e `RunManager.js` já
-  guardam `wave`, multiplicadores etc. — hoje só uma fração é usada.
-- **Múltiplas armas**: `WeaponManager` já recebe a lista toda de
-  `weapons.js`, só usa a primeira — trocar de arma é questão de
-  gerenciar qual `Weapon` está ativo.
-- **Vários tipos de inimigo/bosses**: `EnemySpawner` já sorteia entre
-  todas as entradas de `enemies.js`; hoje só existe uma ("grunt").
-- **Salas/progressão**: `MapManager` é a fachada única de mapa — trocar
-  de mapa por sala é só chamar `.build()` de novo com outra key.
-
-## O que mudou em relação à versão com Vite
-Este projeto foi convertido para rodar sem build (sem Vite/npm):
-- Removido `import Phaser from 'phaser'` de todos os arquivos —
-  o Phaser agora é carregado como script global no `index.html`
-  (variável `Phaser` fica disponível para todo o código).
-- `data/*.json` → `data/*.js` (import de JSON puro não é confiável
-  sem bundler no navegador).
-- Caminhos de assets em `PreloadScene.js` passaram a incluir o
-  prefixo `assets/` (antes o Vite fazia esse remapeamento sozinho
-  via `publicDir`).
-- `vite.config.js` e `package.json` foram removidos por não serem
-  mais necessários.
-
-  https://opengameart.org/content/dungeon-crawl-32x32-tiles
-
-  
+---
