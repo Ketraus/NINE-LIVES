@@ -163,6 +163,22 @@
         document.documentElement.requestFullscreen?.().catch(() => {});
       }
     });
+
+    // Some com o botão assim que a run começa (ver MainMenuScene.start(),
+    // que dispara este evento no mesmo toque/tecla que já usa pra entrar
+    // em tela cheia e trocar de cena) — ele fica só na tela de menu.
+    // BUG que isso corrige: em celular, este botão é um elemento HTML de
+    // verdade, fixo por cima do canvas (position:fixed, z-index:50) no
+    // canto superior direito — exatamente onde o PauseUI desenha o ícone
+    // de pausa (ver src/ui/PauseUI.js). Ele ficava visível o jogo inteiro
+    // e "roubava" todo toque naquele canto antes de chegar no canvas, por
+    // isso o botão de pausa nunca reagia no celular. Escondendo-o pra
+    // sempre ao sair do menu (permissão de tela cheia concedida ou não),
+    // o canto some com o ícone real por baixo e passa a controlar tela
+    // cheia só de dentro do menu pausa (botão "Sair da Tela Cheia").
+    window.addEventListener('nine-lives:fullscreen-started', () => {
+      fsBtn.style.display = 'none';
+    });
   </script>
 </body>
 </html>

@@ -34,6 +34,20 @@ export default class PauseUI {
     scene.events.once('shutdown', () => this.destroy());
   }
 
+  /**
+   * BUG (PC: clique em "Continuar" não registrava): `container.setScrollFactor(0)`
+   * só afeta o container em si, não propaga pros filhos (é preciso passar
+   * `true` como 3º argumento, ou setar em cada um — ver docs do Phaser).
+   * Sem isso, cada retângulo/texto aqui dentro mantinha o scrollFactor
+   * padrão (1), e assim que a câmera saía da posição inicial (ela segue o
+   * jogador, ver GameScene._buildPlayer) a área de clique real ficava
+   * deslocada da posição desenhada na tela — cada vez mais longe da run
+   * quanto mais o jogador tivesse andado. Por isso o botão de pausa em si
+   * (perto do canto, erro pequeno) ainda dava pra acertar às vezes, mas o
+   * "Continuar" (mais pro centro) praticamente nunca. Corrigido setando
+   * `.setScrollFactor(0)` em cada elemento individualmente, do mesmo jeito
+   * que HUD.js e LevelUpUI.js já faziam.
+   */
   _buildButton() {
     const x = this.scene.scale.width - 40;
     const y = 32;
@@ -44,9 +58,10 @@ export default class PauseUI {
     const bg = this.scene.add
       .circle(x, y, BTN_RADIUS, 0x000000, 0.5)
       .setStrokeStyle(1, 0xffffff, 0.4)
+      .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
-    const bar1 = this.scene.add.rectangle(x - 4, y, 3, 14, 0xffffff);
-    const bar2 = this.scene.add.rectangle(x + 4, y, 3, 14, 0xffffff);
+    const bar1 = this.scene.add.rectangle(x - 4, y, 3, 14, 0xffffff).setScrollFactor(0);
+    const bar2 = this.scene.add.rectangle(x + 4, y, 3, 14, 0xffffff).setScrollFactor(0);
 
     bg.on('pointerover', () => bg.setFillStyle(0x000000, 0.7));
     bg.on('pointerout', () => bg.setFillStyle(0x000000, 0.5));
@@ -62,63 +77,91 @@ export default class PauseUI {
     this.panelContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(250).setVisible(false);
     this._applyZoomCompensation(this.panelContainer);
 
-    const overlay = this.scene.add.rectangle(
-      cx,
-      cy,
-      this.scene.scale.width,
-      this.scene.scale.height,
-      0x000000,
-      0.65
-    );
+    const overlay = this.scene.add
+      .rectangle(
+        cx,
+        cy,
+        this.scene.scale.width,
+        this.scene.scale.height,
+        0x000000,
+        0.65
+      )
+      .setScrollFactor(0);
 
     const panelBg = this.scene.add
       .rectangle(cx, cy, PANEL_W, PANEL_H, 0x22252e, 0.97)
-      .setStrokeStyle(2, 0xffffff);
+      .setStrokeStyle(2, 0xffffff)
+      .setScrollFactor(0);
 
     const title = this.scene.add
       .text(cx, cy - PANEL_H / 2 + 32, 'PAUSADO', { fontSize: '20px', color: '#ffffff', fontStyle: 'bold' })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setScrollFactor(0);
 
     this.panelContainer.add([overlay, panelBg, title]);
 
     this.panelContainer.add(this._buildMenuButton(cx, cy - 10, 'Continuar', () => this.close()));
 
     // só existe em dispositivo touch com suporte à Fullscreen API — mesma
-    // checagem usada pra ENTRAR em fullscreen (ver MainMenuScene.create)
+    // checagem usada pra ENTRAR em fullscreen (ver MainMenuScene.create).
+    // BUG que isto corrige: antes o botão só sabia SAIR da tela cheia e,
+    // quando o jogo já não estava mais em fullscreen, _refreshFullscreenButton
+    // escondia ele (setVisible(false)) — ou seja, depois de sair uma vez,
+    // não tinha mais como voltar (o botão sumia e nunca reaparecia).
+    // Agora é um único botão que alterna (ver _toggleFullscreen) e nunca
+    // se esconde sozinho; só o texto muda ("Entrar"/"Sair") conforme o
+    // estado atual, atualizado toda vez que o menu abre (ver open()) e
+    // logo após o próprio clique.
     if (this.scene.sys.game.device.input.touch && this.scene.scale.fullscreen.available) {
-      this.fullscreenButton = this._buildMenuButton(cx, cy + 55, 'Sair da Tela Cheia', () => {
-        this.scene.scale.stopFullscreen();
-        this._refreshFullscreenButton();
-      });
+      this.fullscreenButton = this._buildMenuButton(cx, cy + 55, '', () => this._toggleFullscreen());
+      this._refreshFullscreenButton();
       this.panelContainer.add(this.fullscreenButton);
     }
   }
 
-  /** Botão retangular simples reaproveitado pro painel (Continuar / Sair da Tela Cheia). */
+  /** Botão retangular simples reaproveitado pro painel (Continuar / Entrar-Sair da Tela Cheia). */
   _buildMenuButton(x, y, label, onClick) {
     const group = this.scene.add.container(x, y);
     const bg = this.scene.add
       .rectangle(0, 0, PANEL_W - 40, 40, 0x33384a, 1)
       .setStrokeStyle(1, 0x9fc8ff)
+      .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
-    const text = this.scene.add.text(0, 0, label, { fontSize: '14px', color: '#ffffff' }).setOrigin(0.5);
+    const text = this.scene.add
+      .text(0, 0, label, { fontSize: '14px', color: '#ffffff' })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
 
     bg.on('pointerover', () => bg.setFillStyle(0x3d4358));
     bg.on('pointerout', () => bg.setFillStyle(0x33384a));
     bg.on('pointerdown', onClick);
 
     group.add([bg, text]);
+    group.labelText = text; // referência pra _refreshFullscreenButton poder trocar o texto depois
     return group;
   }
 
+  /** Alterna tela cheia nos dois sentidos (ver comentário em _buildPanel acima). */
+  _toggleFullscreen() {
+    if (this.scene.scale.isFullscreen) {
+      this.scene.scale.stopFullscreen();
+    } else {
+      this.scene.scale.startFullscreen();
+    }
+    this._refreshFullscreenButton();
+  }
+
   /**
-   * O botão de fullscreen só faz sentido enquanto o jogo ESTÁ em
-   * fullscreen — o jogador pode ter saído por fora (gesto do sistema, back
-   * do Android etc.) enquanto o menu estava fechado, então recalcula toda
-   * vez que o painel abre em vez de decidir isso só uma vez na construção.
+   * Só troca o TEXTO do botão ("Entrar"/"Sair") conforme o estado atual —
+   * o botão em si nunca se esconde (ver comentário em _buildPanel). Chamado
+   * ao abrir o menu (o jogador pode ter saído da tela cheia por fora,
+   * gesto do sistema, back do Android etc., enquanto o menu estava
+   * fechado) e logo após o próprio clique no botão.
    */
   _refreshFullscreenButton() {
-    this.fullscreenButton?.setVisible(this.scene.scale.isFullscreen);
+    if (!this.fullscreenButton) return;
+    const label = this.scene.scale.isFullscreen ? 'Sair da Tela Cheia' : 'Entrar em Tela Cheia';
+    this.fullscreenButton.labelText.setText(label);
   }
 
   _setButtonVisible(visible) {

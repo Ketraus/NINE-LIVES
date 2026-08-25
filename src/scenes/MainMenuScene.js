@@ -41,6 +41,10 @@ export default class MainMenuScene extends Phaser.Scene {
           // sem suporte, sem problema — o jogo funciona normal do mesmo jeito
         }
       }
+      // avisa o index.html pra esconder o botão HTML de tela cheia (ver
+      // #fullscreen-btn) — ele só faz sentido aqui no menu; a partir da
+      // run, quem controla tela cheia é o menu pausa (src/ui/PauseUI.js)
+      window.dispatchEvent(new Event('nine-lives:fullscreen-started'));
       this.scene.start('WeaponSelectScene');
     };
     this.input.keyboard.once('keydown-SPACE', start);
