@@ -1,4 +1,4 @@
-# NINE LIVES — protótipo
+# NINE LIVES
 
 ## Como rodar (o básico)
 
