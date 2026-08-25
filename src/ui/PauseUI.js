@@ -34,20 +34,9 @@ export default class PauseUI {
     scene.events.once('shutdown', () => this.destroy());
   }
 
-  /**
-   * BUG (PC: clique em "Continuar" não registrava): `container.setScrollFactor(0)`
-   * só afeta o container em si, não propaga pros filhos (é preciso passar
-   * `true` como 3º argumento, ou setar em cada um — ver docs do Phaser).
-   * Sem isso, cada retângulo/texto aqui dentro mantinha o scrollFactor
-   * padrão (1), e assim que a câmera saía da posição inicial (ela segue o
-   * jogador, ver GameScene._buildPlayer) a área de clique real ficava
-   * deslocada da posição desenhada na tela — cada vez mais longe da run
-   * quanto mais o jogador tivesse andado. Por isso o botão de pausa em si
-   * (perto do canto, erro pequeno) ainda dava pra acertar às vezes, mas o
-   * "Continuar" (mais pro centro) praticamente nunca. Corrigido setando
-   * `.setScrollFactor(0)` em cada elemento individualmente, do mesmo jeito
-   * que HUD.js e LevelUpUI.js já faziam.
-   */
+  // scrollFactor(0) no container não propaga pros filhos, então cada
+  // elemento também precisa do próprio setScrollFactor(0) (senão a área
+  // clicável se desloca conforme a câmera segue o jogador)
   _buildButton() {
     const x = this.scene.scale.width - 40;
     const y = 32;
@@ -104,14 +93,8 @@ export default class PauseUI {
 
     // só existe em dispositivo touch com suporte à Fullscreen API — mesma
     // checagem usada pra ENTRAR em fullscreen (ver MainMenuScene.create).
-    // BUG que isto corrige: antes o botão só sabia SAIR da tela cheia e,
-    // quando o jogo já não estava mais em fullscreen, _refreshFullscreenButton
-    // escondia ele (setVisible(false)) — ou seja, depois de sair uma vez,
-    // não tinha mais como voltar (o botão sumia e nunca reaparecia).
-    // Agora é um único botão que alterna (ver _toggleFullscreen) e nunca
-    // se esconde sozinho; só o texto muda ("Entrar"/"Sair") conforme o
-    // estado atual, atualizado toda vez que o menu abre (ver open()) e
-    // logo após o próprio clique.
+    // Botão único que alterna entrar/sair (ver _toggleFullscreen), o texto
+    // troca conforme o estado atual
     if (this.scene.sys.game.device.input.touch && this.scene.scale.fullscreen.available) {
       this.fullscreenButton = this._buildMenuButton(cx, cy + 55, '', () => this._toggleFullscreen());
       this._refreshFullscreenButton();
@@ -137,11 +120,11 @@ export default class PauseUI {
     bg.on('pointerdown', onClick);
 
     group.add([bg, text]);
-    group.labelText = text; // referência pra _refreshFullscreenButton poder trocar o texto depois
+    group.labelText = text;
     return group;
   }
 
-  /** Alterna tela cheia nos dois sentidos (ver comentário em _buildPanel acima). */
+  /** Alterna tela cheia nos dois sentidos. */
   _toggleFullscreen() {
     if (this.scene.scale.isFullscreen) {
       this.scene.scale.stopFullscreen();
@@ -151,13 +134,9 @@ export default class PauseUI {
     this._refreshFullscreenButton();
   }
 
-  /**
-   * Só troca o TEXTO do botão ("Entrar"/"Sair") conforme o estado atual —
-   * o botão em si nunca se esconde (ver comentário em _buildPanel). Chamado
-   * ao abrir o menu (o jogador pode ter saído da tela cheia por fora,
-   * gesto do sistema, back do Android etc., enquanto o menu estava
-   * fechado) e logo após o próprio clique no botão.
-   */
+  // troca só o texto ("Entrar"/"Sair") conforme o estado atual — chamado
+  // ao abrir o menu (o jogador pode ter saído da tela cheia por fora) e
+  // logo após o clique no botão
   _refreshFullscreenButton() {
     if (!this.fullscreenButton) return;
     const label = this.scene.scale.isFullscreen ? 'Sair da Tela Cheia' : 'Entrar em Tela Cheia';
