@@ -36,8 +36,8 @@ export default [
     "damage": 5,
     "range": 220,
     "cooldownMs": 480,
-    "projectileSpeed": 380,
-    "projectileTint": 0xfff07a,
+    "projectileSpeed": 640,
+    "projectileTint": 0x4fd1ff,
     "knockback": 110
   }
 ]

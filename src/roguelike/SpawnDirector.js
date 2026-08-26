@@ -1,34 +1,73 @@
-// A cada DIFFICULTY_STEP_MS de run, a dificuldade sobe um "degrau": o
-// intervalo entre levas de spawn encolhe e, a cada poucos degraus, a
-// quantidade de inimigos por leva aumenta. Tudo em degraus discretos (em
-// vez de uma fórmula contínua) pra ficar fácil de prever e ajustar.
-const DIFFICULTY_STEP_MS = 20000; // um degrau a cada 20s de run
+// Curva de dificuldade progressiva ao longo dos 10 minutos de run: em vez
+// de degraus discretos, três curvas contínuas (teto de vivos, intervalo
+// entre levas e tamanho da leva) definidas por pontos-chave em minutos e
+// interpoladas linearmente entre eles (ver _lerpCurve()) — suave entre um
+// ponto e outro, mas com liberdade pra ficar bem mais íngreme perto do
+// fim só ajustando os pontos, sem mudar a lógica.
+//
+// Depois do último ponto (10:00), todas as curvas ficam travadas no valor
+// final (ver _lerpCurve()) — a run não continua ficando mais difícil pra
+// sempre, e o teto de vivos NUNCA passa de ABSOLUTE_MAX_ALIVE.
 
-// Intervalo entre levas de spawn: começa mais espaçado (pedido: "delay
-// maior entre eles" no início) e encolhe aos poucos até o piso.
-const INITIAL_INTERVAL_MS = 3500;
-const MIN_INTERVAL_MS = 900; // piso: nunca spawna mais rápido que isso
-const INTERVAL_STEP_MS = 150; // quanto o intervalo encolhe por degrau
-
-const INITIAL_BATCH = 2; // poucos inimigos por leva no início — evita "tudo de uma vez"
-const MAX_BATCH = 6; // teto de inimigos por leva (o teto de vivos abaixo ainda se aplica em cima disso)
-const STEPS_PER_BATCH_INCREASE = 4; // a cada 4 degraus, +1 inimigo por leva
+const ABSOLUTE_MAX_ALIVE = 150; // limite rígido, nunca ultrapassado em hipótese alguma
 
 /**
- * Teto de inimigos vivos ao mesmo tempo: tabela de degraus pedida
- * explicitamente (0-25s / 25-55s / 1:00-1:40), progressiva — nunca pula
- * direto pro máximo. Depois do último degrau da tabela, continua
- * crescendo aos poucos (rampa linear) até MAX_ALIVE_TARGET, em vez de
- * ficar travado em 30 pro resto da run.
+ * Teto de inimigos vivos ao mesmo tempo, por tempo de run (ms -> cap).
+ * Valores pedidos explicitamente: começa tranquilo (10), cresce de forma
+ * constante até os 8:00 (120) e então acelera nos últimos 2 minutos,
+ * fechando em 150 exatamente aos 10:00.
  */
-const ALIVE_STEPS = [
-  { atMs: 0, cap: 10 }, // 0:00–0:25 → no máx. 10 vivos
-  { atMs: 25000, cap: 15 }, // 0:25–0:55 (e até 1:00) → 15
-  { atMs: 60000, cap: 30 } // a partir de 1:00 → 30
+const CAP_CURVE = [
+  { t: 0, v: 10 }, // 0:00
+  { t: 60000, v: 20 }, // 1:00
+  { t: 120000, v: 32 }, // 2:00
+  { t: 180000, v: 45 }, // 3:00
+  { t: 240000, v: 60 }, // 4:00
+  { t: 300000, v: 75 }, // 5:00
+  { t: 360000, v: 90 }, // 6:00
+  { t: 420000, v: 105 }, // 7:00
+  { t: 480000, v: 120 }, // 8:00
+  { t: 540000, v: 138 }, // 9:00
+  { t: 570000, v: 145 }, // 9:30
+  { t: 600000, v: 150 } // 10:00
 ];
-const MAX_ALIVE_TARGET = 100; // teto final, bem mais pra frente na run
-const MAX_ALIVE_RAMP_START_MS = 100000; // 1:40 — fim do degrau fixo pedido, começa a rampa progressiva
-const MAX_ALIVE_RAMP_MS = 4 * 60 * 1000; // 4 minutos pra ir do último degrau (30) até o TARGET
+
+/**
+ * Intervalo entre levas de spawn, por tempo de run (ms -> delay em ms).
+ * Acompanha o mesmo espírito da curva de teto (calmo no início, acelera
+ * bastante nos últimos 2 minutos), mas separado dela porque é ele quem dá
+ * a sensação de "frequência" — sem isso, o jogo só reporia os inimigos
+ * mortos devagar mesmo com um teto alto.
+ */
+const INTERVAL_CURVE = [
+  { t: 0, v: 3500 }, // 0:00 — bem espaçado, início tranquilo
+  { t: 60000, v: 2600 }, // 1:00
+  { t: 120000, v: 2000 }, // 2:00
+  { t: 180000, v: 1600 }, // 3:00
+  { t: 240000, v: 1300 }, // 4:00
+  { t: 300000, v: 1050 }, // 5:00
+  { t: 360000, v: 850 }, // 6:00
+  { t: 420000, v: 650 }, // 7:00
+  { t: 480000, v: 480 }, // 8:00
+  { t: 540000, v: 320 }, // 9:00
+  { t: 570000, v: 220 }, // 9:30
+  { t: 600000, v: 150 } // 10:00 — quase uma leva a cada 1/7 de segundo: caos
+];
+
+/**
+ * Quantos inimigos cada leva tenta criar, por tempo de run (ms -> qtd).
+ * Cresce bem mais devagar que o teto/intervalo — ela só evita que o
+ * "déficit" (ver _spawnBatch) precise fazer todo o trabalho sozinho a
+ * cada leva; o grosso da sensação de intensidade vem do intervalo menor.
+ */
+const BATCH_CURVE = [
+  { t: 0, v: 2 }, // 0:00
+  { t: 120000, v: 3 }, // 2:00
+  { t: 300000, v: 4 }, // 5:00
+  { t: 480000, v: 5 }, // 8:00
+  { t: 540000, v: 6 }, // 9:00
+  { t: 600000, v: 8 } // 10:00
+];
 
 /**
  * Dono do "quando" e "quantos" da sobrevivência por tempo: cronometra a
@@ -36,15 +75,17 @@ const MAX_ALIVE_RAMP_MS = 4 * 60 * 1000; // 4 minutos pra ir do último degrau (
  * spawn e quantos inimigos cada leva pede. NÃO sabe nada sobre COMO um
  * inimigo é criado, posicionado ou de que tipo é — isso continua 100% em
  * EnemySpawner.spawnOne() (que também segue sendo quem decide se pode
- * spawnar mais, via setMaxAlive()). Este é só o metrônomo; o spawner é
- * quem toca o instrumento.
+ * spawnar mais, via setMaxAlive(), e quem garante que todo spawn nasce
+ * fora da visão da câmera — ver _findSpawnPosition() lá). Este é só o
+ * metrônomo; o spawner é quem toca o instrumento.
  *
  * Inimigos já vivos nunca são tocados aqui — cada leva só ADICIONA novos
  * via spawnOne(), então quem já estava na tela continua vivo normalmente.
  * Também controla, via EnemySpawner.setMaxAlive(), o teto de quantos
- * inimigos podem estar vivos ao mesmo tempo — esse teto também cresce com
- * o tempo (ver MAX_ALIVE_*), então o enxame vai enchendo a tela aos poucos
- * em vez de já nascer lotado no primeiro minuto.
+ * inimigos podem estar vivos ao mesmo tempo — esse teto cresce com o
+ * tempo seguindo CAP_CURVE, então o enxame vai enchendo a tela aos poucos
+ * em vez de já nascer lotado no primeiro minuto, e nunca passa de
+ * ABSOLUTE_MAX_ALIVE (150), mesmo além dos 10 minutos.
  */
 export default class SpawnDirector {
   /**
@@ -62,7 +103,7 @@ export default class SpawnDirector {
 
   start() {
     this.startTime = this.scene.time.now;
-    this.enemySpawner.setMaxAlive(ALIVE_STEPS[0].cap);
+    this.enemySpawner.setMaxAlive(CAP_CURVE[0].v);
     this._scheduleNextBatch();
     this._spawnBatch(); // primeira leva imediata, mapa não fica vazio
   }
@@ -122,13 +163,13 @@ export default class SpawnDirector {
     const cap = this._currentMaxAlive();
     this.enemySpawner.setMaxAlive(cap);
 
-    // Quando o teto sobe de um degrau pro outro (ex.: 15 -> 30 na virada
-    // de 1:00), o lote normal (pequeno, pra não sufocar) demoraria muitos
-    // ciclos pra alcançar o novo teto — daria a impressão de "poucos
-    // inimigos" logo depois da virada. Por isso o tamanho do lote é o
-    // maior entre o ritmo normal e o "déficit" até o teto atual: na maior
-    // parte do tempo (teto parado) o déficit é pequeno e quem manda é o
-    // ritmo normal; só quando o teto acabou de subir é que este lote fica
+    // Quando o teto sobe bastante entre uma leva e outra, o lote normal
+    // (pequeno, pra não sufocar) demoraria muitos ciclos pra alcançar o
+    // novo teto — daria a impressão de "poucos inimigos" logo depois da
+    // virada. Por isso o tamanho do lote é o maior entre o ritmo normal e
+    // o "déficit" até o teto atual: na maior parte do tempo (teto subindo
+    // devagar) o déficit é pequeno e quem manda é o ritmo normal; só
+    // quando o teto sobe rápido (últimos minutos) é que este lote fica
     // maior por uma ou duas levas, até alcançar o novo teto.
     const deficit = cap - this.enemySpawner.getAliveCount();
     const amount = Math.max(this._currentBatchSize(), deficit);
@@ -137,40 +178,46 @@ export default class SpawnDirector {
     }
   }
 
-  _currentStep() {
-    return Math.floor(this.getElapsedMs() / DIFFICULTY_STEP_MS);
-  }
-
   _currentIntervalMs() {
-    const reduction = this._currentStep() * INTERVAL_STEP_MS;
-    return Math.max(MIN_INTERVAL_MS, INITIAL_INTERVAL_MS - reduction);
+    return Math.round(this._lerpCurve(INTERVAL_CURVE, this.getElapsedMs()));
   }
 
   _currentBatchSize() {
-    const increases = Math.floor(this._currentStep() / STEPS_PER_BATCH_INCREASE);
-    return Math.min(MAX_BATCH, INITIAL_BATCH + increases);
+    return Math.round(this._lerpCurve(BATCH_CURVE, this.getElapsedMs()));
   }
 
   /**
-   * @returns {number} teto de inimigos vivos no momento atual da run.
-   * Primeiro segue a tabela fixa de degraus (ALIVE_STEPS); depois do
-   * último degrau, passa a crescer aos poucos (rampa linear) até
-   * MAX_ALIVE_TARGET, em vez de saltar ou travar no valor do último degrau.
+   * @returns {number} teto de inimigos vivos no momento atual da run,
+   * seguindo CAP_CURVE e travado (Math.min) em ABSOLUTE_MAX_ALIVE (150)
+   * como segunda garantia, além do próprio último ponto da curva já ser 150.
    */
   _currentMaxAlive() {
-    const elapsed = this.getElapsedMs();
+    const value = this._lerpCurve(CAP_CURVE, this.getElapsedMs());
+    return Math.min(ABSOLUTE_MAX_ALIVE, Math.round(value));
+  }
 
-    // degrau fixo: pega o maior "cap" cujo atMs já foi alcançado
-    let stepCap = ALIVE_STEPS[0].cap;
-    for (const step of ALIVE_STEPS) {
-      if (elapsed >= step.atMs) stepCap = step.cap;
+  /**
+   * Interpolação linear genérica entre os pontos {t, v} de uma curva
+   * (CAP_CURVE, INTERVAL_CURVE ou BATCH_CURVE), todas ordenadas por t
+   * crescente. Antes do primeiro ponto, usa o valor do primeiro; depois
+   * do último (ex.: run passou de 10:00), trava no valor do último —
+   * nunca extrapola pra além do que foi definido.
+   */
+  _lerpCurve(curve, elapsedMs) {
+    if (elapsedMs <= curve[0].t) return curve[0].v;
+
+    const last = curve[curve.length - 1];
+    if (elapsedMs >= last.t) return last.v;
+
+    for (let i = 0; i < curve.length - 1; i++) {
+      const a = curve[i];
+      const b = curve[i + 1];
+      if (elapsedMs >= a.t && elapsedMs <= b.t) {
+        const progress = (elapsedMs - a.t) / (b.t - a.t);
+        return a.v + (b.v - a.v) * progress;
+      }
     }
 
-    if (elapsed < MAX_ALIVE_RAMP_START_MS) return stepCap;
-
-    // rampa progressiva depois do fim da tabela fixa
-    const progress = Math.min(1, (elapsed - MAX_ALIVE_RAMP_START_MS) / MAX_ALIVE_RAMP_MS);
-    const value = stepCap + (MAX_ALIVE_TARGET - stepCap) * progress;
-    return Math.round(value);
+    return last.v; // inalcançável na prática, só por segurança
   }
 }

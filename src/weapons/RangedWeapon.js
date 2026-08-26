@@ -2,6 +2,15 @@ import DamageSystem from '../combat/DamageSystem.js';
 
 const DEFAULT_PROJECTILE_SPEED = 380;
 const DEFAULT_PROJECTILE_LIFETIME_MS = 1200;
+// cor padrão do projétil quando a arma não define "projectileTint" — azul
+// elétrico, mesma família de cor já usada em outros acentos do jogo (ex:
+// barra de loading, fxTint da katana)
+const DEFAULT_PROJECTILE_TINT = 0x4fd1ff;
+// tamanho (em px) da textura do "raio" gerada em _ensureBulletTexture —
+// desenhada já no tamanho final pra evitar reamostragem (o jogo usa
+// pixelArt: true, então redimensionar uma textura pequena fica granulado)
+const LASER_TEX_WIDTH = 20;
+const LASER_TEX_HEIGHT = 8;
 
 /**
  * Arma à distância (pistola, ...): mira automaticamente no inimigo mais
@@ -42,15 +51,29 @@ export default class RangedWeapon {
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
+    const tint = this.def.projectileTint ?? DEFAULT_PROJECTILE_TINT;
+    const textureKey = this._ensureBulletTexture(scene, tint);
 
-    const bullet = this.bulletGroup.create(player.x, player.y, 'hit_fx');
+    const bullet = this.bulletGroup.create(player.x, player.y, textureKey);
     bullet
       .setDepth(15)
-      .setScale(0.35)
-      .setTint(this.def.projectileTint ?? 0xffffff)
+      .setScale(this.def.projectileScale ?? 1)
+      // ADD faz o raio "brilhar" contra o fundo em vez de só colar uma
+      // textura em cima — é o que dá a sensação de laser/energia
+      .setBlendMode(Phaser.BlendModes.ADD)
       .setRotation(dir.angle());
     bullet.body.setAllowGravity(false);
+    // a textura desenhada é bem mais comprida que o hitbox real do tiro
+    // (é só o "rastro" visual do raio) — encolhe e centraliza a hitbox
+    // pra manter o mesmo tamanho de acerto de antes, senão a bala passaria
+    // a acertar inimigos de mais longe do que deveria
+    bullet.body.setSize(6, 4, true);
     bullet.setVelocity(dir.x * speed, dir.y * speed);
+    // brilho extra em volta do sprite (some sozinho se o navegador cair
+    // pra renderer Canvas, onde preFX não existe — por isso o guard)
+    if (bullet.preFX) {
+      bullet.preFX.addGlow(tint, 0, 1.5, false, 0.2, 6);
+    }
     bullet.setData('damage', damage);
     // guardado pra empurrar o inimigo na hora do impacto (ver knockback
     // em _ensureBulletGroup) — mesma direção que a bala está viajando
@@ -71,6 +94,45 @@ export default class RangedWeapon {
     scene.time.delayedCall(DEFAULT_PROJECTILE_LIFETIME_MS, () => bullet.destroy());
 
     return true;
+  }
+
+  /**
+   * Desenha (uma única vez por cor, com Graphics + generateTexture) a
+   * textura do "raio" usado como projétil — uma cápsula alongada com
+   * halo em volta e um núcleo quase branco na ponta, em vez de reusar o
+   * hit_fx (bolinha redonda de efeito de impacto) tingido de amarelo.
+   * Cacheada em scene.textures, então só é gerada de fato no primeiro
+   * tiro de cada cor de projétil.
+   */
+  _ensureBulletTexture(scene, tint) {
+    const key = `fx_laser_bolt_${tint.toString(16)}`;
+    if (scene.textures.exists(key)) return key;
+
+    const w = LASER_TEX_WIDTH;
+    const h = LASER_TEX_HEIGHT;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    const g = scene.add.graphics();
+
+    // halo externo — bem suave, é o que lê como "brilho" do raio à distância
+    g.fillStyle(tint, 0.16);
+    g.fillEllipse(cx, cy, w, h);
+    g.fillStyle(tint, 0.32);
+    g.fillEllipse(cx, cy, w * 0.72, h * 0.6);
+
+    // corpo do raio: cápsula alongada apontando pra frente (direção +X,
+    // depois rotacionada em fire() conforme a direção real do tiro)
+    g.fillStyle(tint, 0.95);
+    g.fillRoundedRect(cx - w * 0.4, cy - h * 0.16, w * 0.8, h * 0.32, h * 0.16);
+
+    // núcleo quase branco — "ponto quente" na frente do disparo
+    g.fillStyle(0xffffff, 0.95);
+    g.fillRoundedRect(cx - w * 0.3, cy - h * 0.09, w * 0.55, h * 0.18, h * 0.09);
+
+    g.generateTexture(key, w, h);
+    g.destroy();
+    return key;
   }
 
   /** Overlap bala x inimigos, e colisão bala x paredes, registrados uma única vez (não a cada tiro). */
