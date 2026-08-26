@@ -63,6 +63,12 @@ export default class RunManager {
     // BASE_LEVEL_UP_OPTIONS e RunState.maxCardSlotsBonus.
     const optionCount = BASE_LEVEL_UP_OPTIONS + this.runState.maxCardSlotsBonus;
     const options = this._pickWeightedUpgrades(pool, optionCount);
+    // Pool vazio (jogador já pegou/maxou todas as cartas disponíveis pra
+    // esta arma): não há o que oferecer. Sem este guard, LevelUpUI.show([])
+    // ainda pausava o jogo (physics.pause + timeScale=0) esperando um clique
+    // que nunca ia vir, travando a run pro resto do tempo. Nesse caso o
+    // level sobe "de graça" e o jogo simplesmente continua.
+    if (options.length === 0) return;
     EventBus.emit('level-up', { options });
   }
 
