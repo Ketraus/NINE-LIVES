@@ -11,6 +11,15 @@ const LASER_DEFAULT_COLOR = 0xb26bff;
 const LASER_TRAIL_INTERVAL_MS = 40;
 const LASER_TRAIL_COPIES = 5;
 
+// Visual do tiro do GatoDrone AINDA NÃO evoluído (antes da carta CatForce
+// 2.0): mesmo estilo de "raio" desenhado usado no tiro atualizado da
+// pistola (ver RangedWeapon._ensureBulletTexture) — cápsula com halo e
+// núcleo quase branco — só que verde, no lugar da bolinha azul antiga
+// (hit_fx só tingido, sem brilho nem formato de disparo de verdade).
+const BASE_BULLET_COLOR = 0x53ff9c;
+const BASE_BULLET_TEX_WIDTH = 14;
+const BASE_BULLET_TEX_HEIGHT = 6;
+
 // Posição de escolta de cada cópia relativa ao jogador. Até 3 drones
 // mantêm o "chapéu" de sempre (HAT_OFFSETS); ao chegar no 4º (GatoDrone
 // completa, maxStacks: 4 em data/upgrades.js) TODOS migram pra um quadrado,
@@ -156,13 +165,13 @@ export default class DroneAbility {
   _fire(scene, target) {
     const dir = new Phaser.Math.Vector2(target.x - this.sprite.x, target.y - this.sprite.y).normalize();
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
-    const color = this.laser ? this.laserColor : 0x7af0ff;
+    const color = this.laser ? this.laserColor : BASE_BULLET_COLOR; // era 0x7af0ff (bolinha azul antiga)
 
-    const bullet = this.bulletGroup.create(this.sprite.x, this.sprite.y, 'hit_fx');
-    bullet
-      .setDepth(15)
-      .setTint(color)
-      .setRotation(dir.angle());
+    // laser evoluído continua no hit_fx esticado (visual próprio dele, não
+    // mexido aqui); tiro base agora usa a textura de "raio" gerada na hora
+    const textureKey = this.laser ? 'hit_fx' : this._ensureBulletTexture(scene, color);
+    const bullet = this.bulletGroup.create(this.sprite.x, this.sprite.y, textureKey);
+    bullet.setDepth(15).setRotation(dir.angle());
     bullet.body.setAllowGravity(false);
     bullet.setVelocity(dir.x * speed, dir.y * speed);
     bullet.setData('damage', this.def.damage);
@@ -173,14 +182,54 @@ export default class DroneAbility {
     if (this.laser) {
       // feixe fino e alongado (em vez da bolinha padrão) + blend ADD pra
       // brilhar como um laser de verdade contra o mapa escuro
-      bullet.setScale(0.85, 0.22).setBlendMode(Phaser.BlendModes.ADD);
+      bullet.setTint(color).setScale(0.85, 0.22).setBlendMode(Phaser.BlendModes.ADD);
       this._spawnMuzzleFlash(scene, this.sprite.x, this.sprite.y, color);
       this._attachLaserTrail(scene, bullet, color);
     } else {
-      bullet.setScale(0.3);
+      // mesmo tratamento do tiro atualizado da pistola: ADD pra brilhar +
+      // hitbox própria, menor que a textura (que é só o "rastro" visual)
+      bullet.setScale(1).setBlendMode(Phaser.BlendModes.ADD);
+      bullet.body.setSize(4, 3, true);
+      if (bullet.preFX) {
+        bullet.preFX.addGlow(color, 0, 1.5, false, 0.2, 6);
+      }
     }
 
     scene.time.delayedCall(BULLET_LIFETIME_MS, () => bullet.destroy());
+  }
+
+  /**
+   * Desenha (uma única vez por cor, com Graphics + generateTexture) a
+   * textura do "raio" do tiro base do drone — mesma técnica usada no tiro
+   * atualizado da pistola (ver RangedWeapon._ensureBulletTexture): cápsula
+   * alongada com halo em volta e núcleo quase branco na ponta. Cacheada em
+   * scene.textures, então só é gerada de fato no primeiro tiro dessa cor.
+   */
+  _ensureBulletTexture(scene, tint) {
+    const key = `fx_drone_bolt_${tint.toString(16)}`;
+    if (scene.textures.exists(key)) return key;
+
+    const w = BASE_BULLET_TEX_WIDTH;
+    const h = BASE_BULLET_TEX_HEIGHT;
+    const cx = w / 2;
+    const cy = h / 2;
+
+    const g = scene.add.graphics();
+
+    g.fillStyle(tint, 0.16);
+    g.fillEllipse(cx, cy, w, h);
+    g.fillStyle(tint, 0.32);
+    g.fillEllipse(cx, cy, w * 0.72, h * 0.6);
+
+    g.fillStyle(tint, 0.95);
+    g.fillRoundedRect(cx - w * 0.4, cy - h * 0.16, w * 0.8, h * 0.32, h * 0.16);
+
+    g.fillStyle(0xffffff, 0.95);
+    g.fillRoundedRect(cx - w * 0.3, cy - h * 0.09, w * 0.55, h * 0.18, h * 0.09);
+
+    g.generateTexture(key, w, h);
+    g.destroy();
+    return key;
   }
 
   /** Pulso rápido no cano do drone no instante do disparo — só o laser tem,
