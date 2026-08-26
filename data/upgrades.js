@@ -140,11 +140,17 @@ export default [
   {
     "id": "pistol_drone",
     "name": "GatoDrone",
-    "description": "Um drone acompanha você e dispara sozinho nos inimigos (ataque mais lento). Cada cópia soma +1 drone (máx. 3).",
+    "description": "Um drone acompanha você e dispara sozinho nos inimigos (ataque mais lento). Cada cópia soma +1 drone (máx. 4).",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "pistol",
-    "maxStacks": 3,
+    "maxStacks": 4,
+    // teto de cópias precisou subir pra 4: evolução de carta rara/exclusiva
+    // dispara na 4ª cópia (evolvesAtStacks), não na 3ª — com maxStacks
+    // menor que o limiar a carta sumiria do pool antes de chegar lá (ver
+    // RunManager._getAvailableUpgrades)
+    "evolvesAtStacks": 4,
+    "evolvesInto": "pistol_drone_evo_catforce",
     "type": "unlockAbility",
     "abilityId": "drone",
     "cooldownMs": 900,
@@ -313,6 +319,25 @@ export default [
       // rolado a cada soco (ver Weapon._fireArc); SlowmoSystem só afeta a
       // velocidade dos inimigos (ver Enemy.chase) — o jogador nunca é tocado
       { "type": "bulletTimeOnAttack", "chance": 0.07, "durationMs": 1000 }
+    ]
+  },
+  {
+    "id": "pistol_drone_evo_catforce",
+    "name": "CatForce 2.0",
+    "description": "Os 4 drones passam a disparar lasers roxos que atravessam todos os inimigos no caminho. Dano e cadência de tiro continuam os mesmos.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "pistol_drone",
+    "weaponId": "pistol",
+    "type": "evolution",
+    "effects": [
+      // NÃO é unlockAbility: já existem até 4 drones ativos (GatoDrone
+      // maxStacks: 4) — isto atualiza os que já existem em vez de somar um
+      // 5º (ver RunManager._applyRuntimeEffect/_applyUpgrade e
+      // AbilityManager._upgrade). Dano/cooldown/range/velocidade do
+      // projétil ficam os mesmos de GatoDrone, só o visual e o perfuro
+      // mudam (ver DroneAbility.upgrade)
+      { "type": "upgradeAbility", "abilityId": "drone", "pierce": true, "laserColor": 0xb26bff }
     ]
   },
   {

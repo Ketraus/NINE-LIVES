@@ -1,10 +1,10 @@
 import EventBus from '../systems/EventBus.js';
 import { BASE_MAX_HP } from '../entities/Player.js';
 
-// Regra atual: obter a MESMA carta base 5 vezes evolui ela. Único número
-// mágico do sistema — se um dia cada carta precisar de um número diferente
-// de cópias, isto vira um campo em data/upgrades.js (ex.: `evolvesAtStacks`)
-// em vez de uma constante global.
+// Regra padrão: obter a MESMA carta base 5 vezes evolui ela. Cartas com
+// teto de cópias menor que isso (ex.: GatoDrone, maxStacks: 4) nunca
+// chegariam lá — pra essas, `evolvesAtStacks` em data/upgrades.js sobrepõe
+// este padrão (ver _findPendingEvolution).
 const EVOLUTION_STACK_THRESHOLD = 5;
 
 // Quantas opções normais de carta o level-up mostra por padrão. A carta
@@ -188,13 +188,16 @@ export default class RunManager {
 
   /**
    * @returns {object|null} a entrada de evolução correspondente se a carta
-   * acabou de completar (exatamente) o número de cópias exigido, senão
-   * null. Chamado DEPOIS de _applyUpgrade, então upgradeCounts já reflete
-   * esta escolha.
+   * acabou de completar (exatamente) o número de cópias exigido — o padrão
+   * (EVOLUTION_STACK_THRESHOLD) ou o `evolvesAtStacks` próprio da carta,
+   * quando ela declara um (ex.: GatoDrone evolui em 3, seu teto de cópias).
+   * Senão null. Chamado DEPOIS de _applyUpgrade, então upgradeCounts já
+   * reflete esta escolha.
    */
   _findPendingEvolution(upgrade) {
     const picks = this.runState.upgradeCounts[upgrade.id] || 0;
-    if (picks !== EVOLUTION_STACK_THRESHOLD) return null;
+    const threshold = upgrade.evolvesAtStacks ?? EVOLUTION_STACK_THRESHOLD;
+    if (picks !== threshold) return null;
     const evolution = this._findEvolutionFor(upgrade);
     if (!evolution) return null;
     return this._resolveEvolutionName(evolution);
@@ -262,6 +265,13 @@ export default class RunManager {
       if (effect.type === 'unlockAbility') {
         EventBus.emit('ability-unlocked', { abilityId: effect.abilityId, def: effect });
       }
+
+      // Como unlockAbility, mas pra evoluções que MELHORAM uma habilidade já
+      // ativa (ex.: CatForce 2.0 nos drones do GatoDrone) em vez de
+      // instanciar mais uma cópia dela do zero — ver AbilityManager._upgrade.
+      if (effect.type === 'upgradeAbility') {
+        EventBus.emit('ability-upgraded', { abilityId: effect.abilityId, def: effect });
+      }
     });
   }
 
@@ -310,9 +320,11 @@ export default class RunManager {
       return { ok: false, message: `Carta "${cardId}" não existe. Digite "list" pra ver os ids.` };
     }
     if (upgrade.category === 'evolution') {
+      const baseCard = this.upgradeDefs.find((u) => u.id === upgrade.evolvesFrom);
+      const threshold = baseCard?.evolvesAtStacks ?? EVOLUTION_STACK_THRESHOLD;
       return {
         ok: false,
-        message: `"${upgrade.name}" é uma evolução, não dá pra pegar direto — dê a carta base "${upgrade.evolvesFrom}" ${EVOLUTION_STACK_THRESHOLD}x.`
+        message: `"${upgrade.name}" é uma evolução, não dá pra pegar direto — dê a carta base "${upgrade.evolvesFrom}" ${threshold}x.`
       };
     }
     if (upgrade.weaponId && upgrade.weaponId !== this.runState.weaponId) {
