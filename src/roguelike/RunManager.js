@@ -126,7 +126,8 @@ export default class RunManager {
     return this.upgradeDefs.filter((upgrade) => {
       if (upgrade.category === 'evolution') return false;
       if (upgrade.weaponId && upgrade.weaponId !== this.runState.weaponId) return false;
-      if (upgrade.evolvesInto && this.runState.ownedUpgradeIds.has(upgrade.evolvesInto)) return false;
+      const evolution = this._findEvolutionFor(upgrade);
+      if (evolution && this.runState.ownedUpgradeIds.has(evolution.id)) return false;
       const owned = this.runState.upgradeCounts[upgrade.id] || 0;
       if (owned >= this._maxStacksFor(upgrade)) return false;
       return true;
@@ -186,19 +187,35 @@ export default class RunManager {
    * esta escolha.
    */
   _findPendingEvolution(upgrade) {
-    if (!upgrade.evolvesInto) return null;
     const picks = this.runState.upgradeCounts[upgrade.id] || 0;
     if (picks !== EVOLUTION_STACK_THRESHOLD) return null;
-    const evolution = this.upgradeDefs.find((u) => u.id === upgrade.evolvesInto);
+    const evolution = this._findEvolutionFor(upgrade);
     if (!evolution) return null;
-    // algumas evoluções de carta base só fazem sentido pra uma arma
-    // específica (ex.: "Instinto Caçador" mexe direto no projétil da
-    // pistola, ver RangedWeapon). Se a evolução tiver `weaponId` e não
-    // bater com a arma da run, ela simplesmente não fica pronta ainda —
-    // a carta base continua empilhando normalmente pra essa arma, até
-    // uma evolução própria ser criada pra ela.
-    if (evolution.weaponId && evolution.weaponId !== this.runState.weaponId) return null;
     return this._resolveEvolutionName(evolution);
+  }
+
+  /**
+   * Acha, em data/upgrades.js, a entrada de evolução (category:
+   * 'evolution') que corresponde a uma carta base PRA ARMA da run atual.
+   * Uma carta base pode ter mais de uma evolução possível — todas com o
+   * mesmo `evolvesFrom` (o id da carta base), cada uma com seu próprio
+   * `weaponId` (ex.: Visão Aguçada evolui diferente em cada arma: "Instinto
+   * Caçador" na pistola, "Corte Fantasma" na katana, "Reflexos de Predador"
+   * nos punhos). Prioriza uma evolução com `weaponId` batendo a arma atual;
+   * na falta de uma específica, cai numa evolução "genérica" (sem
+   * `weaponId`, ex.: COLOSSO) se existir. Sem nenhuma correspondência pra
+   * esta arma -> null, e a carta base simplesmente continua empilhando
+   * normalmente (é o caso de katana/punhos antes desta função existir, e
+   * ainda é o caso de qualquer carta futura sem evolução pra uma arma
+   * específica).
+   */
+  _findEvolutionFor(upgrade) {
+    const candidates = this.upgradeDefs.filter(
+      (u) => u.category === 'evolution' && u.evolvesFrom === upgrade.id
+    );
+    if (candidates.length === 0) return null;
+    const weaponId = this.runState.weaponId;
+    return candidates.find((c) => c.weaponId === weaponId) ?? candidates.find((c) => !c.weaponId) ?? null;
   }
 
   /**
@@ -345,8 +362,9 @@ export default class RunManager {
       .map((u) => {
         const owned = this.runState.upgradeCounts[u.id] || 0;
         const maxStacks = this._maxStacksFor(u);
+        const evolution = this._findEvolutionFor(u);
         let tag = '';
-        if (u.evolvesInto && this.runState.ownedUpgradeIds.has(u.evolvesInto)) {
+        if (evolution && this.runState.ownedUpgradeIds.has(evolution.id)) {
           tag = ' [já evoluiu]';
         } else if (owned > 0) {
           tag = Number.isFinite(maxStacks) ? ` [${owned}/${maxStacks}]` : ` [${owned}x]`;

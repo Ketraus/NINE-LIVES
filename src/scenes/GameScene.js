@@ -13,6 +13,7 @@ import LevelUpUI from '../ui/LevelUpUI.js';
 import PauseUI from '../ui/PauseUI.js';
 import DevConsole from '../systems/DevConsole.js';
 import TouchJoystick from '../systems/TouchJoystick.js';
+import SlowmoSystem from '../systems/SlowmoSystem.js';
 
 import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
@@ -109,6 +110,9 @@ export default class GameScene extends Phaser.Scene {
     this.runState = new RunState(this.weaponId);
     this.isGameOver = false;
     this.isPaused = false;
+    // câmera lenta só-inimigos (evolução "Reflexos de Predador", punhos) —
+    // lida por EnemySpawner.updateAll a cada frame (ver src/systems/SlowmoSystem.js)
+    this.slowmoSystem = new SlowmoSystem();
   }
 
   _buildPlayer() {

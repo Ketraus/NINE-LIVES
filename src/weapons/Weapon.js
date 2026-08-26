@@ -1,5 +1,10 @@
 import DamageSystem from '../combat/DamageSystem.js';
 
+// Fração do dano principal que cada acerto "avulso" da evolução "Corte
+// Fantasma" (katana) causa — ver Weapon._applyStrayHits. Metade, pra ser
+// um bônus de cobertura/alcance e não um segundo corte de graça no mesmo dano.
+const STRAY_DAMAGE_FRACTION = 0.5;
+
 /**
  * Arma melee (punhos, katana, ...): em vez de uma hitbox física, checa
  * geometricamente quais inimigos estão na "área do golpe" no momento do
@@ -36,25 +41,54 @@ export default class Weapon {
       // katana: nunca ataca em diagonal/vertical, só reto pro lado que
       // o jogador estava olhando por último (ver Player.getHorizontalAimDirection)
       const aim = player.getHorizontalAimDirection();
-      this._fireLine(scene, player, enemyGroup, aim, range, damage);
+      // acumula quem já foi acertado pelo(s) corte(s) reto(s) deste golpe
+      // (1 ou 2, se doubleStrike) — evolução "Corte Fantasma" (statMods.strayHits,
+      // ver abaixo) não pode dar um segundo hit em quem já foi cortado
+      const hitEnemies = new Set();
+      this._fireLine(scene, player, enemyGroup, aim, range, damage, hitEnemies);
 
       // carta exclusiva "katana_double" (unlockAbility: doubleStrike):
       // repete o mesmo corte espelhado pro lado oposto, no mesmo golpe
       if (statMods.doubleStrike) {
-        this._fireLine(scene, player, enemyGroup, aim.clone().negate(), range, damage);
+        this._fireLine(scene, player, enemyGroup, aim.clone().negate(), range, damage, hitEnemies);
+      }
+
+      // evolução "Corte Fantasma" (Visão Aguçada, katana): chance de
+      // também acertar inimigos fora da(s) faixa(s) acima, mas ainda numa
+      // área ao redor do jogador — ver _applyStrayHits. null se a
+      // evolução não foi obtida (WeaponManager só monta o objeto quando
+      // runState.strayHitsMaxTargets > 0).
+      if (statMods.strayHits) {
+        this._applyStrayHits(scene, player, enemyGroup, damage, statMods.strayHits, hitEnemies);
       }
     } else {
       const aim = player.getAimDirection();
-      this._fireArc(scene, player, enemyGroup, aim, range, damage);
+      const landedHit = this._fireArc(scene, player, enemyGroup, aim, range, damage);
+
+      // evolução "Reflexos de Predador" (Visão Aguçada, punhos): chance
+      // baixa a cada soco QUE REALMENTE ACERTOU alguém (soco no vazio não
+      // rola nada) de deixar os inimigos em câmera lenta por um tempo
+      // curto — ver src/systems/SlowmoSystem.js. null se a evolução não
+      // foi obtida.
+      if (landedHit && statMods.bulletTime && Math.random() < statMods.bulletTime.chance) {
+        scene.slowmoSystem?.trigger(scene.time.now, statMods.bulletTime.durationMs);
+        this._showBulletTimeFx(scene);
+      }
     }
   }
 
-  /** Leque na direção do olhar — usado pelos punhos. */
+  /**
+   * Leque na direção do olhar — usado pelos punhos.
+   * @returns {boolean} true se acertou pelo menos um inimigo (ver fire() —
+   *   evolução "Reflexos de Predador" só rola a chance de câmera lenta em
+   *   socos que realmente conectaram)
+   */
   _fireArc(scene, player, enemyGroup, aim, range, damage) {
     const halfArc = Phaser.Math.DegToRad(this.def.arcDegrees) / 2;
 
     this._showArcFx(scene, player, aim, range);
 
+    let landedHit = false;
     enemyGroup.children.iterate((enemy) => {
       if (!enemy?.active) return;
       const toEnemy = new Phaser.Math.Vector2(enemy.x - player.x, enemy.y - player.y);
@@ -66,8 +100,10 @@ export default class Weapon {
       if (normalizedAngle <= halfArc) {
         if (!this._hasLineOfSight(scene, player, enemy)) return;
         this._applyHit(scene, enemy, damage, player, aim);
+        landedHit = true;
       }
     });
+    return landedHit;
   }
 
   /**
@@ -78,7 +114,12 @@ export default class Weapon {
    * distância, então continua lendo como "corte reto atravessando a
    * fileira", só que mais longo/largo que antes pra pegar mais gente.
    */
-  _fireLine(scene, player, enemyGroup, aim, range, damage) {
+  /**
+   * @param {Set} [hitEnemies] - se passado, todo inimigo realmente acertado
+   *   é adicionado aqui (ver fire() e _applyStrayHits — evita que a
+   *   evolução "Corte Fantasma" dê um segundo hit em quem já foi cortado)
+   */
+  _fireLine(scene, player, enemyGroup, aim, range, damage, hitEnemies) {
     const halfWidth = (this.def.lineWidth ?? 26) / 2;
 
     this._showLineFx(scene, player, aim, range);
@@ -98,7 +139,44 @@ export default class Weapon {
       if (perpDist > halfWidth) return;
 
       if (!this._hasLineOfSight(scene, player, enemy)) return;
+      hitEnemies?.add(enemy);
       this._applyHit(scene, enemy, damage, player, aim);
+    });
+  }
+
+  /**
+   * Evolução "Corte Fantasma" (Visão Aguçada, katana): rola, pra cada
+   * inimigo dentro de `def.radius` do jogador que NÃO foi acertado pela
+   * faixa reta do corte (`hitEnemies`), a chance de também ser atingido —
+   * até `def.maxTargets` acertos "avulsos" por golpe. Não é alcance
+   * infinito (o raio é curto, pouco mais que o dobro do alcance normal da
+   * katana) nem garantido (é uma chance por inimigo, não todos dentro do
+   * raio são acertados de uma vez). Balanceamento: cada acerto avulso vale
+   * só metade do dano do corte principal (STRAY_DAMAGE_FRACTION) — é um
+   * bônus de alcance/cobertura, não um segundo corte "de graça".
+   * @param {object} def - { chance, radius, maxTargets } (ver WeaponManager)
+   * @param {Set} hitEnemies - quem já foi cortado neste golpe; também
+   *   recebe cada inimigo acertado aqui, pra nunca ultrapassar maxTargets
+   *   mesmo iterando o grupo inteiro
+   */
+  _applyStrayHits(scene, player, enemyGroup, damage, def, hitEnemies) {
+    let struck = 0;
+    const strayDamage = damage * STRAY_DAMAGE_FRACTION;
+
+    enemyGroup.children.iterate((enemy) => {
+      if (struck >= def.maxTargets) return;
+      if (!enemy?.active || hitEnemies.has(enemy)) return;
+
+      const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
+      if (dist > def.radius) return;
+      if (Math.random() >= def.chance) return;
+      if (!this._hasLineOfSight(scene, player, enemy)) return;
+
+      const toEnemy = new Phaser.Math.Vector2(enemy.x - player.x, enemy.y - player.y).normalize();
+      this._showStrayFx(scene, enemy);
+      this._applyHit(scene, enemy, strayDamage, player, toEnemy);
+      hitEnemies.add(enemy);
+      struck += 1;
     });
   }
 
@@ -189,5 +267,37 @@ export default class Weapon {
       duration: this.def.fxDurationMs ?? 220,
       onComplete: () => fx.destroy()
     });
+  }
+
+  /**
+   * Visual de um acerto "avulso" da evolução Corte Fantasma: um flash
+   * pequeno direto em cima do inimigo (diferente da faixa reta normal,
+   * já que este hit não segue o eixo do corte) — deixa claro que aquele
+   * inimigo específico foi pego "fora" do golpe.
+   */
+  _showStrayFx(scene, enemy) {
+    const fx = scene.add
+      .image(enemy.x, enemy.y, 'hit_fx')
+      .setDepth(20)
+      .setScale(0.5)
+      .setAlpha(0.9)
+      .setTint(this.def.fxTint ?? 0xffffff);
+    scene.tweens.add({
+      targets: fx,
+      alpha: 0,
+      scale: fx.scale * 1.8,
+      duration: 150,
+      onComplete: () => fx.destroy()
+    });
+  }
+
+  /**
+   * Visual de gatilho da evolução Reflexos de Predador: um flash rápido e
+   * sutil na tela toda, só pra marcar o instante em que a câmera lenta
+   * começou (o efeito em si — inimigos mais devagar — já é visível sozinho
+   * o resto da duração, isto é só o "estalo" inicial).
+   */
+  _showBulletTimeFx(scene) {
+    scene.cameras.main.flash(120, 60, 90, 160, false);
   }
 }

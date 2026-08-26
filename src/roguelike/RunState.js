@@ -34,6 +34,21 @@ export default class RunState {
     this.paralyzeOnHitDurationMs = 0; // duração da paralisia quando ela procar (ver DamageSystem._applyParalyze)
     this.dodgeChance = 0; // chance (0-1) de desviar de um ataque por completo, sem tomar dano nenhum (evolução "Sexto Sentido" do Reflexo Felino)
 
+    // evolução "Corte Fantasma" (Visão Aguçada, katana): chance por golpe de
+    // também acertar inimigos fora da faixa reta da espada, dentro de um
+    // raio ao redor do jogador, até um número máximo de alvos "avulsos"
+    // (ver Weapon._applyStrayHits). maxTargets em 0 = evolução não obtida.
+    this.strayHitsChance = 0;
+    this.strayHitsRadius = 0;
+    this.strayHitsMaxTargets = 0;
+
+    // evolução "Reflexos de Predador" (Visão Aguçada, punhos): chance por
+    // soco de deixar os inimigos em câmera lenta por um tempo (ver
+    // src/systems/SlowmoSystem.js) — o jogador nunca é afetado.
+    // chance em 0 = evolução não obtida.
+    this.bulletTimeChance = 0;
+    this.bulletTimeDurationMs = 0;
+
     // bônus ao número de opções de carta mostradas em cada level-up (carta
     // "Arsenal Expandido": pegar ela faz o PRÓXIMO level-up em diante
     // oferecer +1 opção). Consultado por RunManager._triggerLevelUp
@@ -151,6 +166,21 @@ export default class RunState {
         // cap em 0.9 pelo mesmo motivo do damageReductionFraction: não
         // pode chegar a 100% e tornar o jogador literalmente intocável
         this.dodgeChance = Math.min(0.9, this.dodgeChance + effect.value);
+        break;
+      case 'strayHits':
+        // não acumula (+=) de propósito: só existe uma fonte possível hoje
+        // (a evolução "Corte Fantasma"), então atribuir direto é equivalente
+        // e mais simples de ler — se um dia surgir uma segunda fonte, aí sim
+        // vira soma/Math.max como os outros casos acima.
+        this.strayHitsChance = effect.chance ?? this.strayHitsChance;
+        this.strayHitsRadius = effect.radius ?? this.strayHitsRadius;
+        this.strayHitsMaxTargets = effect.maxTargets ?? this.strayHitsMaxTargets;
+        break;
+      case 'bulletTimeOnAttack':
+        // mesmo raciocínio do case 'strayHits' acima: única fonte hoje
+        // ("Reflexos de Predador"), atribuição direta em vez de acúmulo.
+        this.bulletTimeChance = effect.chance ?? this.bulletTimeChance;
+        this.bulletTimeDurationMs = effect.durationMs ?? this.bulletTimeDurationMs;
         break;
       default:
         break;

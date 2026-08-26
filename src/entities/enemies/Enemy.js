@@ -61,8 +61,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * @param {number} [nowMs] - scene.time.now; usado pra saber se ainda está
    *   "voando" de um knockback recente (ver applyKnockback) ou paralisado
    *   (ver `paralyzedUntil` e DamageSystem._applyParalyze)
+   * @param {number} [speedMultiplier] - vem de scene.slowmoSystem (evolução
+   *   "Reflexos de Predador", punhos, ver EnemySpawner.updateAll e
+   *   src/systems/SlowmoSystem.js); 1 = velocidade normal. Só afeta a
+   *   perseguição normal — knockback e paralisia (abaixo) já ignoram
+   *   `def.speed` de qualquer forma, então não precisam disto.
    */
-  chase(target, nowMs = 0) {
+  chase(target, nowMs = 0, speedMultiplier = 1) {
     if (!this.active || this.healthSystem.isDead()) return;
 
     // tint de paralisia: liga/desliga independente do knockback, pra ficar
@@ -86,7 +91,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const distSq = dx * dx + dy * dy;
     if (distSq === 0) return;
     const dist = Math.sqrt(distSq);
-    this.setVelocity((dx / dist) * this.def.speed, (dy / dist) * this.def.speed);
+    const speed = this.def.speed * speedMultiplier;
+    this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
   }
 
   /**

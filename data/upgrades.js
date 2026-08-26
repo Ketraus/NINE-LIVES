@@ -276,6 +276,46 @@ export default [
     ]
   },
   {
+    "id": "range_up_evo_katana_stray",
+    "name": "Corte Fantasma",
+    "description": "Seus cortes ganham a chance de também acertar até 3 inimigos fora da faixa da espada, dentro de uma área ao seu redor.",
+    "category": "evolution",
+    "rarity": "epic",
+    // segunda evolução possível de Visão Aguçada (ver range_up acima) — só
+    // pra katana. RunManager._findEvolutionFor escolhe esta em vez de
+    // "Instinto Caçador" (que tem weaponId "pistol") quando a arma da run
+    // é katana; o campo `evolvesInto` de range_up continua apontando só
+    // pra "Instinto Caçador" por documentação, mas não é mais o que decide
+    // isso — quem decide é o `evolvesFrom`+`weaponId` daqui.
+    "evolvesFrom": "range_up",
+    "weaponId": "katana",
+    "type": "evolution",
+    "effects": [
+      // chance rolada por inimigo próximo (fora da faixa do corte) a cada
+      // golpe; radius é a partir do jogador, não infinito; maxTargets trava
+      // em no máximo 3 acertos "avulsos" por golpe (ver Weapon._applyStrayHits)
+      { "type": "strayHits", "chance": 0.35, "radius": 220, "maxTargets": 3 }
+    ]
+  },
+  {
+    "id": "range_up_evo_fists_bullet_time",
+    "name": "Reflexos de Predador",
+    "description": "7% de chance a cada soco de deixar os inimigos em câmera lenta por 1s — você continua se movendo normalmente.",
+    "category": "evolution",
+    "rarity": "epic",
+    // terceira evolução possível de Visão Aguçada — só pra punhos (ver
+    // comentário em range_up_evo_katana_stray acima sobre como a escolha
+    // entre as três evoluções funciona)
+    "evolvesFrom": "range_up",
+    "weaponId": "fists",
+    "type": "evolution",
+    "effects": [
+      // rolado a cada soco (ver Weapon._fireArc); SlowmoSystem só afeta a
+      // velocidade dos inimigos (ver Enemy.chase) — o jogador nunca é tocado
+      { "type": "bulletTimeOnAttack", "chance": 0.07, "durationMs": 1000 }
+    ]
+  },
+  {
     "id": "cooldown_down_evo_sixth_sense",
     "name": "Sexto Sentido",
     "description": "20% de chance de desviar completamente de um ataque — ao desviar, você fica momentaneamente transparente.",

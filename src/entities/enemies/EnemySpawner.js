@@ -125,10 +125,17 @@ export default class EnemySpawner {
     return new Phaser.Geom.Rectangle(cam.scrollX, cam.scrollY, cam.width / zoom, cam.height / zoom);
   }
 
-  /** Chamado no update da GameScene: faz todos perseguirem o jogador. */
+  /**
+   * Chamado no update da GameScene: faz todos perseguirem o jogador.
+   * Repassa o multiplicador de velocidade da câmera lenta só-inimigos
+   * (scene.slowmoSystem — evolução "Reflexos de Predador", punhos, ver
+   * src/systems/SlowmoSystem.js) pra cada Enemy.chase(); 1 (velocidade
+   * normal) se a run não tiver essa evolução ou ela não estiver ativa agora.
+   */
   updateAll(nowMs) {
+    const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
     this.group.children.iterate((enemy) => {
-      enemy?.chase(this.player, nowMs);
+      enemy?.chase(this.player, nowMs, speedMultiplier);
     });
   }
 }

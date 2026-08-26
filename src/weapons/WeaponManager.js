@@ -48,7 +48,23 @@ export default class WeaponManager {
       // true só depois da evolução "Instinto Caçador" (Visão Aguçada,
       // pistola); RangedWeapon.js ignora este campo se a arma não for a
       // pistola (só ela usa RangedWeapon pra começo de conversa)
-      chainShot: this.runState.unlockedAbilities.has('chainShot')
+      chainShot: this.runState.unlockedAbilities.has('chainShot'),
+      // config da evolução "Corte Fantasma" (Visão Aguçada, katana) ou null
+      // se não obtida; Weapon.js ignora se a arma não for a katana (shape
+      // "line", só ela chama _fireLine/_applyStrayHits)
+      strayHits: this.runState.strayHitsMaxTargets > 0
+        ? {
+            chance: this.runState.strayHitsChance,
+            radius: this.runState.strayHitsRadius,
+            maxTargets: this.runState.strayHitsMaxTargets
+          }
+        : null,
+      // config da evolução "Reflexos de Predador" (Visão Aguçada, punhos)
+      // ou null se não obtida; Weapon.js ignora se a arma não for os
+      // punhos (shape "arc", só ela chama _fireArc)
+      bulletTime: this.runState.bulletTimeChance > 0
+        ? { chance: this.runState.bulletTimeChance, durationMs: this.runState.bulletTimeDurationMs }
+        : null
     });
 
     // armas melee sempre "golpeiam" (fire() não retorna nada -> truthy);
