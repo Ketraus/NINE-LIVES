@@ -117,10 +117,15 @@ export default [
   {
     "id": "fists_slam",
     "name": "Pancada Sísmica",
-    "description": "A cada poucos segundos, um golpe forte em área ao seu redor.",
+    "description": "A cada poucos segundos, um golpe forte em área ao seu redor. Cada cópia deixa o golpe mais frequente (máx. 4).",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "fists",
+    // teto igual ao das outras raras (GatoDrone): 4 cópias, e
+    // evolvesAtStacks já deixado pronto pra quando a evolução for
+    // implementada (ela ainda não existe — sem evolvesInto de propósito)
+    "maxStacks": 4,
+    "evolvesAtStacks": 4,
     "type": "unlockAbility",
     "abilityId": "slam",
     "cooldownMs": 3000,
@@ -130,10 +135,12 @@ export default [
   {
     "id": "katana_double",
     "name": "Corte Duplo",
-    "description": "Seus ataques de katana golpeiam para os dois lados de uma vez.",
+    "description": "Seus ataques de katana golpeiam para os dois lados de uma vez. Cada cópia soma mais cortes ao redor do golpe (máx. 4).",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "katana",
+    "maxStacks": 4,
+    "evolvesAtStacks": 4,
     "type": "unlockAbility",
     "abilityId": "doubleStrike"
   },

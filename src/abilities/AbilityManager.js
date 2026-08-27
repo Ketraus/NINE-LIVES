@@ -51,6 +51,20 @@ export default class AbilityManager {
   _unlock(abilityId, def) {
     const AbilityClass = ABILITY_CLASSES[abilityId];
     if (!AbilityClass) return; // ex.: doubleStrike, tratado direto em Weapon.js
+
+    // Algumas habilidades (ex.: Pancada Sísmica, até 4 cópias) não fazem
+    // sentido empilhando em várias instâncias paralelas idênticas — cada
+    // carta extra só intensifica a ÚNICA instância já ativa (fica mais
+    // frequente), em vez de somar mais uma rodando ao mesmo tempo no mesmo
+    // lugar. Uma classe opta nisso implementando restack(); sem o método,
+    // o comportamento de sempre continua (uma instância nova por cópia,
+    // ex.: GatoDrone/AllyDog, que têm formação própria pra várias cópias).
+    const existing = this.active.find((a) => a instanceof AbilityClass);
+    if (existing && typeof existing.restack === 'function') {
+      existing.restack(def);
+      return;
+    }
+
     // índice de quantas instâncias desta MESMA habilidade já existem —
     // repassado pra a classe poder se posicionar numa formação (ver
     // AllyDogAbility/DroneAbility), em vez de todas nascerem empilhadas

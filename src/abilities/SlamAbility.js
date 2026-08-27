@@ -1,8 +1,13 @@
 import DamageSystem from '../combat/DamageSystem.js';
 
+// Quanto o intervalo entre pancadas diminui a cada cópia extra da carta
+// (ver restack()) e piso de segurança pra nunca ficar rápido demais.
+const COOLDOWN_STEP_MS = 500;
+const MIN_COOLDOWN_MS = 1200;
+
 /**
  * Habilidade exclusiva dos Punhos (carta "fists_slam"): a cada
- * def.cooldownMs, causa def.damage em todo inimigo dentro de def.radius
+ * this.cooldownMs, causa def.damage em todo inimigo dentro de def.radius
  * ao redor do jogador. Roda em paralelo ao ataque automático normal —
  * não usa WeaponManager, tem cooldown próprio.
  *
@@ -14,11 +19,24 @@ export default class SlamAbility {
   /** @param {object} def - entrada de data/upgrades.js (type: "unlockAbility") */
   constructor(def) {
     this.def = def;
+    this.cooldownMs = def.cooldownMs;
     this.lastMs = 0;
   }
 
+  /**
+   * Chamado a cada cópia extra da carta "Pancada Sísmica" (até 4, ver
+   * data/upgrades.js maxStacks e AbilityManager._unlock) — em vez de
+   * empilhar mais uma pancada rodando em paralelo (o que faria 4 ondas
+   * idênticas se sobrepondo no mesmo raio, ao redor do mesmo jogador),
+   * a MESMA pancada fica mais frequente: cada carta reduz o intervalo em
+   * COOLDOWN_STEP_MS, até o piso MIN_COOLDOWN_MS.
+   */
+  restack() {
+    this.cooldownMs = Math.max(MIN_COOLDOWN_MS, this.cooldownMs - COOLDOWN_STEP_MS);
+  }
+
   update(time, player, enemyGroup, scene) {
-    if (time - this.lastMs < this.def.cooldownMs) return;
+    if (time - this.lastMs < this.cooldownMs) return;
     this.lastMs = time;
     this._slam(player, enemyGroup, scene);
   }

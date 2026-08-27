@@ -42,15 +42,25 @@ export default class Weapon {
       // o jogador estava olhando por último (ver Player.getHorizontalAimDirection)
       const aim = player.getHorizontalAimDirection();
       // acumula quem já foi acertado pelo(s) corte(s) reto(s) deste golpe
-      // (1 ou 2, se doubleStrike) — evolução "Corte Fantasma" (statMods.strayHits,
-      // ver abaixo) não pode dar um segundo hit em quem já foi cortado
+      // (1 a 8, dependendo das cópias de doubleStrike — ver abaixo) —
+      // evolução "Corte Fantasma" (statMods.strayHits, ver abaixo) não
+      // pode dar um segundo hit em quem já foi cortado
       const hitEnemies = new Set();
       this._fireLine(scene, player, enemyGroup, aim, range, damage, hitEnemies);
 
-      // carta exclusiva "katana_double" (unlockAbility: doubleStrike):
-      // repete o mesmo corte espelhado pro lado oposto, no mesmo golpe
-      if (statMods.doubleStrike) {
-        this._fireLine(scene, player, enemyGroup, aim.clone().negate(), range, damage, hitEnemies);
+      // carta exclusiva "katana_double" (unlockAbility: doubleStrike): cada
+      // cópia soma mais um par de cortes espaçado igualmente ao redor do
+      // jogador — 1 cópia = 2 cortes (frente/trás, igual sempre foi), 2 =
+      // 4 (cruz), 3 = 6, 4 cópias = 8 cortes a cada 45°, quase fechando
+      // como uma estrela/lótus. totalCuts inclui o corte principal já
+      // disparado acima (por isso o loop começa em i=1, não em i=0).
+      const totalCuts = statMods.doubleStrikeStacks > 0 ? statMods.doubleStrikeStacks * 2 : 1;
+      if (totalCuts > 1) {
+        const angleStep = Phaser.Math.PI2 / totalCuts;
+        for (let i = 1; i < totalCuts; i++) {
+          const cutAim = aim.clone().rotate(angleStep * i);
+          this._fireLine(scene, player, enemyGroup, cutAim, range, damage, hitEnemies);
+        }
       }
 
       // evolução "Corte Fantasma" (Visão Aguçada, katana): chance de

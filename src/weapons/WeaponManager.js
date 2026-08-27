@@ -42,9 +42,12 @@ export default class WeaponManager {
     const fired = this.currentWeapon.fire(this.scene, player, this.enemyGroup, {
       damageMultiplier: this.runState.damageMultiplier,
       rangeMultiplier: this.runState.rangeMultiplier,
-      // true só depois da carta exclusiva "katana_double" (unlockAbility:
-      // doubleStrike); Weapon.js ignora este campo se a arma não for a katana
-      doubleStrike: this.runState.unlockedAbilities.has('doubleStrike'),
+      // quantidade de cópias já pegas da carta exclusiva "katana_double"
+      // (unlockAbility: doubleStrike), até 4 — Weapon.js usa isso pra saber
+      // quantos cortes totais dar no golpe (2 por cópia: 1 cópia = 2 cortes,
+      // igual sempre foi; 4 cópias = 8, quase uma estrela/lótus ao redor do
+      // jogador). Ignorado se a arma não for a katana.
+      doubleStrikeStacks: this.runState.upgradeCounts.katana_double || 0,
       // true só depois da evolução "Instinto Caçador" (Visão Aguçada,
       // pistola); RangedWeapon.js ignora este campo se a arma não for a
       // pistola (só ela usa RangedWeapon pra começo de conversa)
