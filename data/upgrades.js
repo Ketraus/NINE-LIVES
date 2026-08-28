@@ -121,11 +121,11 @@ export default [
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "fists",
-    // teto igual ao das outras raras (GatoDrone): 4 cópias, e
-    // evolvesAtStacks já deixado pronto pra quando a evolução for
-    // implementada (ela ainda não existe — sem evolvesInto de propósito)
+    // teto igual ao das outras raras (GatoDrone): 4 cópias — evolução em
+    // Terremoto (ver fists_slam_evo_terremoto) na 4ª, igual GatoDrone/CatForce
     "maxStacks": 4,
     "evolvesAtStacks": 4,
+    "evolvesInto": "fists_slam_evo_terremoto",
     "type": "unlockAbility",
     "abilityId": "slam",
     "cooldownMs": 3000,
@@ -345,6 +345,36 @@ export default [
       // projétil ficam os mesmos de GatoDrone, só o visual e o perfuro
       // mudam (ver DroneAbility.upgrade)
       { "type": "upgradeAbility", "abilityId": "drone", "pierce": true, "laserColor": 0xb26bff }
+    ]
+  },
+  {
+    "id": "fists_slam_evo_terremoto",
+    "name": "Terremoto",
+    "description": "A Pancada Sísmica vira um tremor: área de impacto maior e, logo em seguida, uma onda de choque que arremessa os inimigos pra longe, causando dano em área.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "fists_slam",
+    "weaponId": "fists",
+    "type": "evolution",
+    "effects": [
+      // não é unlockAbility: já existe uma ÚNICA SlamAbility ativa
+      // (restack até 4 cópias, ver AbilityManager._unlock) — isto melhora
+      // ela em vez de somar mais uma (mesmo padrão de CatForce 2.0 no
+      // drone, ver SlamAbility.upgrade). Dano e cooldown do impacto
+      // principal continuam os mesmos de Pancada Sísmica; só a área do
+      // impacto e a onda de choque secundária (nova) mudam. Balanceamento:
+      // radiusMultiplier deixa a área ~40% maior; a onda de choque em si
+      // cobre uma área bem maior ainda (2.2x o raio base), mas causa só
+      // 45% do dano do impacto principal — ela empurra mais do que fere.
+      {
+        "type": "upgradeAbility",
+        "abilityId": "slam",
+        "radiusMultiplier": 1.4,
+        "shockwaveRadiusMultiplier": 2.2,
+        "shockwaveDamageFraction": 0.45,
+        "shockwaveKnockback": 380,
+        "shockwaveDelayMs": 160
+      }
     ]
   },
   {
