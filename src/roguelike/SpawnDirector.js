@@ -101,8 +101,20 @@ export default class SpawnDirector {
     this.pauseStartedAt = null; // timestamp de quando a pausa atual começou, ou null se não está pausado
   }
 
+  /**
+   * scene.time.now só é atualizado depois do 1º ciclo de update da cena
+   * (fica travado em 0 antes disso) — na criação da GameScene (ou logo
+   * após o boot), ler scene.time.now aqui pegava esse 0 como startTime,
+   * fazendo getElapsedMs() nascer já "adiantado" pelo tempo real gasto em
+   * Boot/Preload/Menu (daí o cronômetro começar em valores aleatórios tipo
+   * 05:00). game.loop.time é o relógio bruto do jogo, sempre atualizado.
+   */
+  _now() {
+    return this.scene.sys.game.loop.time;
+  }
+
   start() {
-    this.startTime = this.scene.time.now;
+    this.startTime = this._now();
     this.enemySpawner.setMaxAlive(CAP_CURVE[0].v);
     this._scheduleNextBatch();
     this._spawnBatch(); // primeira leva imediata, mapa não fica vazio
@@ -123,20 +135,20 @@ export default class SpawnDirector {
    */
   pause() {
     if (this.pauseStartedAt != null) return; // já pausado
-    this.pauseStartedAt = this.scene.time.now;
+    this.pauseStartedAt = this._now();
   }
 
   /** Retoma o relógio da run (tela de cartas fechada). */
   resume() {
     if (this.pauseStartedAt == null) return;
-    this.pausedMs += this.scene.time.now - this.pauseStartedAt;
+    this.pausedMs += this._now() - this.pauseStartedAt;
     this.pauseStartedAt = null;
   }
 
   /** @returns {number} milissegundos de run decorridos, sem contar tempo pausado (0 se ainda não iniciou) */
   getElapsedMs() {
     if (this.startTime == null) return 0;
-    const now = this.scene.time.now;
+    const now = this._now();
     const currentPauseMs = this.pauseStartedAt != null ? now - this.pauseStartedAt : 0;
     return now - this.startTime - this.pausedMs - currentPauseMs;
   }

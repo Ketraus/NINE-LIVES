@@ -48,7 +48,18 @@ export default class GameScene extends Phaser.Scene {
     this._buildCollisions();
     this._buildInput();
 
-    this.events.once('shutdown', () => this.spawnDirector?.stop());
+    // EventBus é global e sobrevive ao scene.restart() (morte + R/toque) —
+    // sem isto, cada restart empilha mais um jogo de listeners (LevelUpUI,
+    // HUD, PauseUI, AbilityManager, Player, GameScene) por cima dos da run
+    // anterior, todos ainda vivos e reagindo com estado velho. Era a causa
+    // real do bug "Arsenal Expandido volta pro estado antigo": uma
+    // LevelUpUI fantasma de uma run anterior também recebia 'level-up' e
+    // desenhava sua própria versão (com menos opções) por cima da atual.
+    // Limpa tudo aqui pra cada create() começar com listeners zerados.
+    this.events.once('shutdown', () => {
+      this.spawnDirector?.stop();
+      EventBus.removeAllListeners();
+    });
 
     EventBus.emit('run-restart');
   }
