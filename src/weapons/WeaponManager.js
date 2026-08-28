@@ -48,6 +48,11 @@ export default class WeaponManager {
       // igual sempre foi; 4 cópias = 8, quase uma estrela/lótus ao redor do
       // jogador). Ignorado se a arma não for a katana.
       doubleStrikeStacks: this.runState.upgradeCounts.katana_double || 0,
+      // true só depois da evolução "Dança de Cortes" (katana_double, 4
+      // cópias) — Weapon.js ignora se a arma não for a katana; estiliza
+      // os 4 cortes rápidos do combo em vermelho e amplia o 5º golpe
+      // (ver Weapon._swingStyle)
+      danceOfCuts: this.runState.unlockedAbilities.has('danceOfCuts'),
       // true só depois da evolução "Instinto Caçador" (Visão Aguçada,
       // pistola); RangedWeapon.js ignora este campo se a arma não for a
       // pistola (só ela usa RangedWeapon pra começo de conversa)

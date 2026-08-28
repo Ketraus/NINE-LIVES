@@ -141,6 +141,7 @@ export default [
     "weaponId": "katana",
     "maxStacks": 4,
     "evolvesAtStacks": 4,
+    "evolvesInto": "katana_double_evo_danca_cortes",
     "type": "unlockAbility",
     "abilityId": "doubleStrike"
   },
@@ -375,6 +376,23 @@ export default [
         "shockwaveKnockback": 380,
         "shockwaveDelayMs": 160
       }
+    ]
+  },
+  {
+    "id": "katana_double_evo_danca_cortes",
+    "name": "Dança de Cortes",
+    "description": "Os cortes do combo ficam vermelho vivo, e o último golpe da sequência vem maior, mais forte e com um impacto avassalador.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "katana_double",
+    "weaponId": "katana",
+    "type": "evolution",
+    "effects": [
+      // não é unlockAbility de habilidade autônoma: doubleStrikeStacks já
+      // é lido direto pelo WeaponManager (ver runState.upgradeCounts) —
+      // isto só liga a flag que faz Weapon._fireSword estilizar o combo
+      // (4 cortes vermelhos + 5º golpe ampliado, ver Weapon._swingStyle)
+      { "type": "unlockAbility", "abilityId": "danceOfCuts" }
     ]
   },
   {

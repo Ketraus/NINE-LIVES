@@ -79,6 +79,10 @@ export default class Weapon {
     // que a evolução "Corte Fantasma" (ver abaixo) dê um segundo hit em
     // quem já foi cortado por um dos golpes em sequência
     const hitEnemies = new Set();
+    // "Dança de Cortes" (evolução de Corte Duplo): só entra em jogo com o
+    // combo completo (5 golpes) — os 4 primeiros ganham a cor vermelha
+    // viva da evolução, o 5º é o golpe final ampliado (ver _swingStyle)
+    const isDance = !!statMods.danceOfCuts;
 
     for (let i = 0; i < swings; i++) {
       // 1º golpe sempre reto no eixo de mira; os seguintes alternam
@@ -87,7 +91,19 @@ export default class Weapon {
       const side = i === 0 ? 0 : i % 2 === 1 ? 1 : -1;
       const angleOffset = Phaser.Math.DegToRad(offsetDeg) * side * Math.ceil(i / 2);
       const swingAim = aim.clone().rotate(angleOffset);
-      const doSwing = () => this._fireArc(scene, player, enemyGroup, swingAim, range, damage, hitEnemies, true);
+      const isFinisher = isDance && i === swings - 1;
+      const style = this._swingStyle(isDance, isFinisher);
+      const swingRange = range * style.rangeMultiplier;
+
+      const doSwing = () =>
+        this._fireArc(scene, player, enemyGroup, swingAim, swingRange, damage, hitEnemies, true, {
+          tint: style.tint,
+          arcDegreesOverride: this.def.arcDegrees + style.arcDegreesBonus,
+          fxDurationMultiplier: style.fxDurationMultiplier,
+          knockbackMultiplier: style.knockbackMultiplier,
+          cameraShakeMultiplier: style.cameraShakeMultiplier,
+          isFinisher
+        });
 
       if (i === 0) doSwing();
       else scene.time.delayedCall(delayMs * i, doSwing);
@@ -104,6 +120,39 @@ export default class Weapon {
   }
 
   /**
+   * Define a "roupagem" de cada golpe do combo da katana quando a
+   * evolução "Dança de Cortes" está ativa: os cortes normais só trocam de
+   * cor (vermelho vivo, def.danceCutTint); o golpe final (5º) também
+   * cresce em área/arco, dura mais na tela e bate mais forte (def.danceFinisher).
+   * Sem a evolução, devolve os valores neutros (visual/comportamento de
+   * sempre, sem custo de dano/cooldown).
+   */
+  _swingStyle(isDance, isFinisher) {
+    const neutral = {
+      tint: null,
+      rangeMultiplier: 1,
+      arcDegreesBonus: 0,
+      fxDurationMultiplier: 1,
+      knockbackMultiplier: 1,
+      cameraShakeMultiplier: 1
+    };
+    if (!isDance) return neutral;
+
+    const tint = this.def.danceCutTint ?? 0xff2b2b;
+    if (!isFinisher) return { ...neutral, tint };
+
+    const f = this.def.danceFinisher ?? {};
+    return {
+      tint,
+      rangeMultiplier: f.rangeMultiplier ?? 1.35,
+      arcDegreesBonus: f.arcDegreesBonus ?? 30,
+      fxDurationMultiplier: f.fxDurationMultiplier ?? 1.6,
+      knockbackMultiplier: f.knockbackMultiplier ?? 1.8,
+      cameraShakeMultiplier: f.cameraShakeMultiplier ?? 3
+    };
+  }
+
+  /**
    * Leque na direção do olhar — usado pelos punhos e por cada golpe do
    * combo da katana (ver _fireSword).
    * @param {Set} [hitEnemies] - se passado, todo inimigo realmente
@@ -116,11 +165,12 @@ export default class Weapon {
    *   evolução "Reflexos de Predador" só rola a chance de câmera lenta em
    *   socos que realmente conectaram)
    */
-  _fireArc(scene, player, enemyGroup, aim, range, damage, hitEnemies, useSwordFx) {
-    const halfArc = Phaser.Math.DegToRad(this.def.arcDegrees) / 2;
+  _fireArc(scene, player, enemyGroup, aim, range, damage, hitEnemies, useSwordFx, options = {}) {
+    const arcDegrees = options.arcDegreesOverride ?? this.def.arcDegrees;
+    const halfArc = Phaser.Math.DegToRad(arcDegrees) / 2;
 
     if (useSwordFx) {
-      this._showSwordSwingFx(scene, player, aim, range, halfArc);
+      this._showSwordSwingFx(scene, player, aim, range, halfArc, options);
     } else {
       this._showArcFx(scene, player, aim, range);
     }
@@ -137,7 +187,19 @@ export default class Weapon {
       const normalizedAngle = Math.min(angleBetween, Phaser.Math.PI2 - angleBetween);
       if (normalizedAngle <= halfArc) {
         if (!this._hasLineOfSight(scene, player, enemy)) return;
-        this._applyHit(scene, enemy, damage, player, aim);
+        const hit = this._applyHit(
+          scene,
+          enemy,
+          damage,
+          player,
+          aim,
+          options.knockbackMultiplier ?? 1,
+          options.cameraShakeMultiplier ?? 1
+        );
+        // golpe final da "Dança de Cortes": além do knockback/shake maiores
+        // já aplicados acima, um estouro de partículas extra em cima de
+        // quem foi atingido — ver _showFinisherImpactFx
+        if (hit && options.isFinisher) this._showFinisherImpactFx(scene, enemy.x, enemy.y, options.tint);
         hitEnemies?.add(enemy);
         landedHit = true;
       }
@@ -213,16 +275,17 @@ export default class Weapon {
    * Enemy.playHitReaction), então toda arma/habilidade ganha o mesmo
    * feedback sem precisar chamar nada daqui.
    */
-  _applyHit(scene, enemy, damage, player, aim) {
+  _applyHit(scene, enemy, damage, player, aim, knockbackMultiplier = 1, cameraShakeMultiplier = 1) {
     const hit = DamageSystem.applyWeaponHit(enemy, damage, player, scene.time.now);
     if (hit) {
       if (this.def.cameraShake) {
-        scene.cameras.main.shake(60, this.def.cameraShake);
+        scene.cameras.main.shake(60, this.def.cameraShake * cameraShakeMultiplier);
       }
       if (this.def.knockback) {
-        enemy.applyKnockback(aim.x, aim.y, this.def.knockback, scene.time.now);
+        enemy.applyKnockback(aim.x, aim.y, this.def.knockback * knockbackMultiplier, scene.time.now);
       }
     }
+    return hit;
   }
 
   /** Visual do soco: flash curto e pequeno, ofertado à frente do jogador. */
@@ -251,16 +314,22 @@ export default class Weapon {
    * (mesmo `range`/`halfArc` de _fireArc), com uma borda mais clara
    * acompanhando o fio da lâmina pra reforçar a leitura do golpe.
    */
-  _showSwordSwingFx(scene, player, aim, range, halfArc) {
+  _showSwordSwingFx(scene, player, aim, range, halfArc, options = {}) {
     const baseAngle = aim.angle();
-    const tint = this.def.fxTint ?? 0xcfe8ff;
+    const tint = options.tint ?? this.def.fxTint ?? 0xcfe8ff;
+    const durationMult = options.fxDurationMultiplier ?? 1;
+    // golpe final da Dança de Cortes: fatia mais opaca, borda mais grossa
+    // e expande mais — reforça que é o corte "grande" da sequência
+    const strokeWidth = options.isFinisher ? 9 : 5;
+    const fillAlpha = options.isFinisher ? 0.65 : 0.5;
+    const expandScale = options.isFinisher ? 1.3 : 1.15;
     const g = scene.add.graphics({ x: player.x, y: player.y }).setDepth(20);
 
-    g.fillStyle(tint, 0.5);
+    g.fillStyle(tint, fillAlpha);
     g.slice(0, 0, range, baseAngle - halfArc, baseAngle + halfArc, false);
     g.fillPath();
 
-    g.lineStyle(5, tint, 0.95);
+    g.lineStyle(strokeWidth, tint, 0.95);
     g.beginPath();
     g.arc(0, 0, range, baseAngle - halfArc, baseAngle + halfArc, false);
     g.strokePath();
@@ -268,12 +337,54 @@ export default class Weapon {
     scene.tweens.add({
       targets: g,
       alpha: 0,
-      scaleX: 1.15,
-      scaleY: 1.15,
-      duration: this.def.fxDurationMs ?? 200,
+      scaleX: expandScale,
+      scaleY: expandScale,
+      duration: (this.def.fxDurationMs ?? 200) * durationMult,
       ease: 'Cubic.easeOut',
       onComplete: () => g.destroy()
     });
+  }
+
+  /**
+   * Impacto extra do golpe final da "Dança de Cortes": um estouro de
+   * estilhaços na cor do combo em cima de cada inimigo atingido, além do
+   * knockback/screen shake já ampliados em _applyHit — reforça a
+   * sensação de "golpe de misericórdia" no fim da sequência.
+   */
+  _showFinisherImpactFx(scene, x, y, tint) {
+    const color = tint ?? 0xff2b2b;
+
+    const flash = scene.add.image(x, y, 'hit_fx').setDepth(21).setScale(0.6).setAlpha(0.95).setTint(0xffffff);
+    scene.tweens.add({
+      targets: flash,
+      scale: flash.scale * 2.2,
+      alpha: 0,
+      duration: 180,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    const shardCount = 8;
+    for (let i = 0; i < shardCount; i++) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const dist = Phaser.Math.Between(24, 52);
+      const shard = scene.add
+        .image(x, y, 'hit_fx')
+        .setDepth(20)
+        .setScale(Phaser.Math.FloatBetween(0.25, 0.45))
+        .setRotation(angle)
+        .setTint(color);
+      scene.tweens.add({
+        targets: shard,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        scale: shard.scale * 0.3,
+        duration: Phaser.Math.Between(220, 320),
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy()
+      });
+    }
   }
 
   /**

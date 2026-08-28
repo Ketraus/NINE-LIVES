@@ -31,7 +31,18 @@ export default [
     // Corte Duplo (katana_double): desvio angular e atraso entre os
     // golpes sequenciais do combo — ver Weapon._fireSword
     "comboOffsetDeg": 24,
-    "comboDelayMs": 90
+    "comboDelayMs": 90,
+    // Dança de Cortes (evolução de Corte Duplo): cor dos 4 cortes rápidos
+    // do combo + como o 5º golpe (o "finalizador") se destaca deles —
+    // ver Weapon._swingStyle
+    "danceCutTint": 0xff2b2b,
+    "danceFinisher": {
+      "rangeMultiplier": 1.35,
+      "arcDegreesBonus": 30,
+      "fxDurationMultiplier": 1.6,
+      "knockbackMultiplier": 1.8,
+      "cameraShakeMultiplier": 3
+    }
   },
   {
     "id": "pistol",
