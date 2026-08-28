@@ -100,6 +100,11 @@ export default [
     "category": "base",
     "rarity": "epic",
     "maxStacks": 3,
+    // teto de cópias (3) É o próprio limiar de evolução — diferente de
+    // GatoDrone/Pancada Sísmica (evoluem na 4ª, maxStacks 4), Purificação
+    // evolui exatamente ao completar as 3 cópias pedidas
+    "evolvesAtStacks": 3,
+    "evolvesInto": "dog_purify_evo_cyberus",
     "type": "unlockAbility",
     "abilityId": "allyDog",
     "speed": 150,
@@ -393,6 +398,31 @@ export default [
       // isto só liga a flag que faz Weapon._fireSword estilizar o combo
       // (4 cortes vermelhos + 5º golpe ampliado, ver Weapon._swingStyle)
       { "type": "unlockAbility", "abilityId": "danceOfCuts" }
+    ]
+  },
+  {
+    "id": "dog_purify_evo_cyberus",
+    "name": "Cyberus",
+    "description": "Os 3 cachorros se fundem em Cyberus, um cão de 3 cabeças. Por enquanto, a 1ª cabeça arremessa uma granada que deixa uma poça de chamas azuis: inimigos que ficarem dentro dela levam dano contínuo.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "dog_purify",
+    "type": "evolution",
+    "effects": [
+      // não é unlockAbility: já existem até 3 AllyDogAbility ativas
+      // (dog_purify maxStacks: 3) — isto liga a 1ª cabeça (granada) em
+      // TODAS elas, mesmo padrão de CatForce 2.0/Terremoto (ver
+      // AllyDogAbility.upgrade). Cabeças 2 e 3 ficam pra depois.
+      {
+        "type": "upgradeAbility",
+        "abilityId": "allyDog",
+        "grenadeCooldownMs": 3500,
+        "grenadeRange": 260,
+        "grenadeDamage": 5,
+        "grenadeTickIntervalMs": 500,
+        "grenadeDurationMs": 4000,
+        "grenadeRadius": 46
+      }
     ]
   },
   {
