@@ -8,6 +8,7 @@
  * Eventos usados neste protótipo:
  *  - 'player-health-changed'  ({ current, max })
  *  - 'player-died'            ()
+ *  - 'player-won'             () — run sobreviveu até RUN_WIN_SECONDS (10:00, ver GameScene._triggerWin)
  *  - 'enemy-died'             ({ x, y, xpReward })
  *  - 'xp-changed'             ({ xp, xpToNext, level })
  *  - 'run-time-changed'       ({ seconds }) — tempo decorrido da run, emitido a cada segundo (ver GameScene._updateRunTimer)

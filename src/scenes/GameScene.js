@@ -22,6 +22,7 @@ import upgradesData from '../../data/upgrades.js';
 const XP_ORB_PICKUP_RANGE_HINT = 4; // margem extra no corpo físico do orb
 const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
+const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -106,6 +107,33 @@ export default class GameScene extends Phaser.Scene {
       this._lastRunTimeSeconds = seconds;
       EventBus.emit('run-time-changed', { seconds });
     }
+    if (seconds >= RUN_WIN_SECONDS) {
+      this._triggerWin();
+    }
+  }
+
+  /** Sobreviveu até RUN_WIN_SECONDS: mesmo "fim de run" da morte (trava
+   * timer/spawn), só que com vitória — HUD mostra a tela de parabéns
+   * (ver 'player-won' em HUD.js) e R/toque leva pra seleção de arma em
+   * vez de reiniciar a mesma run (ver isGameOver+hasWon em _buildInput). */
+  _triggerWin() {
+    this.isGameOver = true;
+    this.hasWon = true;
+    this.spawnDirector.stop();
+    EventBus.emit('player-won');
+  }
+
+  /** Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
+   * scene.restart() abaixo); venceu (10:00, ver _triggerWin) -> volta pra
+   * seleção de arma em vez de reiniciar a mesma run de novo sozinha. */
+  _restartOrGoToWeaponSelect() {
+    if (this.hasWon) {
+      this.scene.start('WeaponSelectScene');
+      return;
+    }
+    // repassa a arma explicitamente: scene.restart() sozinho não
+    // garante que os dados do create() anterior sejam reaproveitados
+    this.scene.restart({ weaponId: this.weaponId });
   }
 
   // ---------- construção ----------
@@ -120,6 +148,7 @@ export default class GameScene extends Phaser.Scene {
   _buildRun() {
     this.runState = new RunState(this.weaponId);
     this.isGameOver = false;
+    this.hasWon = false;
     this.isPaused = false;
     // câmera lenta só-inimigos (evolução "Reflexos de Predador", punhos) —
     // lida por EnemySpawner.updateAll a cada frame (ver src/systems/SlowmoSystem.js)
@@ -263,11 +292,7 @@ export default class GameScene extends Phaser.Scene {
 
   _buildInput() {
     this.input.keyboard.on('keydown-R', () => {
-      if (this.isGameOver) {
-        // repassa a arma explicitamente: scene.restart() sozinho não
-        // garante que os dados do create() anterior sejam reaproveitados
-        this.scene.restart({ weaponId: this.weaponId });
-      }
+      if (this.isGameOver) this._restartOrGoToWeaponSelect();
     });
 
     // ESC no PC alterna o menu de pausa — o botão (canto superior direito,
@@ -279,9 +304,7 @@ export default class GameScene extends Phaser.Scene {
     // celular não tem tecla R — toque na tela reinicia também (funciona
     // igual no PC com clique, sem prejudicar nada: só reage se já morreu)
     this.input.on('pointerdown', () => {
-      if (this.isGameOver) {
-        this.scene.restart({ weaponId: this.weaponId });
-      }
+      if (this.isGameOver) this._restartOrGoToWeaponSelect();
     });
 
     // celular: ataque continua automático, jogador só controla movimento

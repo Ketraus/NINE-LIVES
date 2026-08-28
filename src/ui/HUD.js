@@ -22,11 +22,13 @@ export default class HUD {
     this._buildKillCounter();
     this._buildRunTimer();
     this._buildGameOverText();
+    this._buildWinText();
 
-    // gameOverGroup é um container à parte (ver _buildGameOverText), então
-    // recebe a mesma correção separadamente.
+    // gameOverGroup/winGroup são containers à parte (ver _buildGameOverText
+    // / _buildWinText), então recebem a mesma correção separadamente.
     this._applyZoomCompensation(this.uiContainer);
     this._applyZoomCompensation(this.gameOverGroup);
+    this._applyZoomCompensation(this.winGroup);
 
     this._bindEvents();
   }
@@ -147,6 +149,34 @@ export default class HUD {
     this.gameOverGroup.add([bg, title, hint]);
   }
 
+  /** Mesmo esquema visual do game over (ver _buildGameOverText), cores de
+   * vitória — mostrada em 'player-won' quando a run chega em 10:00. */
+  _buildWinText() {
+    this.winGroup = this.scene.add.container(0, 0).setDepth(200).setVisible(false);
+    const cx = this.scene.scale.width / 2;
+    const cy = this.scene.scale.height / 2;
+
+    const bg = this.scene.add.rectangle(cx, cy, 340, 140, 0x000000, 0.75).setScrollFactor(0);
+    const title = this.scene.add
+      .text(cx, cy - 30, 'Parabéns, você venceu o jogo!', {
+        fontSize: '20px',
+        color: '#7CFC9C',
+        align: 'center',
+        wordWrap: { width: 300 }
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    const hint = this.scene.add
+      .text(cx, cy + 30, 'Pressione R ou toque na tela para escolher outra arma', {
+        fontSize: '14px',
+        color: '#ffffff'
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+
+    this.winGroup.add([bg, title, hint]);
+  }
+
   _bindEvents() {
     EventBus.on('player-health-changed', ({ current, max }) => {
       const ratio = Phaser.Math.Clamp(current / max, 0, 1);
@@ -184,8 +214,13 @@ export default class HUD {
       this.gameOverGroup.setVisible(true);
     });
 
+    EventBus.on('player-won', () => {
+      this.winGroup.setVisible(true);
+    });
+
     EventBus.on('run-restart', () => {
       this.gameOverGroup.setVisible(false);
+      this.winGroup.setVisible(false);
       this._kills = 0;
       this.killText.setText('Abates: 0');
       this.timeText.setText('00:00');

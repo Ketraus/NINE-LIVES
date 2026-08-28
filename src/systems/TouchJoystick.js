@@ -62,6 +62,7 @@ export default class TouchJoystick {
     EventBus.on('pause-opened', () => this._setVisible(false));
     EventBus.on('pause-closed', () => this._setVisible(this.pointerId !== null));
     EventBus.on('player-died', () => this._setVisible(false));
+    EventBus.on('player-won', () => this._setVisible(false));
 
     scene.events.once('shutdown', () => this.destroy());
   }

@@ -26,6 +26,7 @@ export default class PauseUI {
     this._buildPanel();
 
     EventBus.on('player-died', () => this._setButtonVisible(false));
+    EventBus.on('player-won', () => this._setButtonVisible(false));
     EventBus.on('run-restart', () => {
       this.close();
       this._setButtonVisible(true);
