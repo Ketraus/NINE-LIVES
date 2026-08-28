@@ -58,7 +58,8 @@ export default class AuraShockAbility {
     // realmente acontece.
     const effectiveRadius = this.def.radius * player.scale;
     let hitSomeone = false;
-    enemyGroup.children.iterate((enemy) => {
+    // snapshot: mesma razão do fix em SlamAbility/TornadoAbility/Weapon
+    enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
       if (dist <= effectiveRadius) {

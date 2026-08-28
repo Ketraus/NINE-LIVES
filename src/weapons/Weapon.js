@@ -99,7 +99,8 @@ export default class Weapon {
     this._showArcFx(scene, player, aim, range);
 
     let landedHit = false;
-    enemyGroup.children.iterate((enemy) => {
+    // snapshot: applyHit pode matar/remover do grupo e quebrar a iteração live
+    enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
       const toEnemy = new Phaser.Math.Vector2(enemy.x - player.x, enemy.y - player.y);
       const dist = toEnemy.length();
@@ -134,7 +135,8 @@ export default class Weapon {
 
     this._showLineFx(scene, player, aim, range);
 
-    enemyGroup.children.iterate((enemy) => {
+    // snapshot: mesma razão do fix em _fireArc/_applyStrayHits
+    enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
       const toEnemy = new Phaser.Math.Vector2(enemy.x - player.x, enemy.y - player.y);
 
@@ -173,7 +175,8 @@ export default class Weapon {
     let struck = 0;
     const strayDamage = damage * STRAY_DAMAGE_FRACTION;
 
-    enemyGroup.children.iterate((enemy) => {
+    // snapshot: mesma razão do fix em _fireArc/_fireLine
+    enemyGroup.getChildren().slice().forEach((enemy) => {
       if (struck >= def.maxTargets) return;
       if (!enemy?.active || hitEnemies.has(enemy)) return;
 

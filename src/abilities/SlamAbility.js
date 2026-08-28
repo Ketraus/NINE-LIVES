@@ -42,7 +42,9 @@ export default class SlamAbility {
   }
 
   _slam(player, enemyGroup, scene) {
-    enemyGroup.children.iterate((enemy) => {
+    // snapshot: se applyWeaponHit matar e remover o inimigo do grupo, iterar
+    // direto no Set vivo pula o próximo item (causava "só ~2 acertos" em AoE)
+    enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
       if (dist <= this.def.radius) DamageSystem.applyWeaponHit(enemy, this.def.damage, player);

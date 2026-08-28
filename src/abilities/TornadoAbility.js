@@ -121,7 +121,8 @@ export default class TornadoAbility {
 
   _damageEnemiesInRange(tornado, enemyGroup, time) {
     let hitSomeone = false;
-    enemyGroup.children.iterate((enemy) => {
+    // snapshot: mesma razão do fix em SlamAbility/AuraShockAbility/Weapon
+    enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(tornado.x, tornado.y, enemy.x, enemy.y);
       if (dist <= this.def.radius) {
