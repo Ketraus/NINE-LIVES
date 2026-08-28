@@ -17,16 +17,21 @@ export default [
   {
     "id": "katana",
     "name": "Katana",
-    "description": "Corte reto e largo na direção que você está olhando, atravessando vários inimigos alinhados de uma vez. Recarga lenta, mas dano e alcance altos.",
+    "description": "Golpes em arco na direção que você está olhando, cortando vários inimigos ao seu redor. Recarga lenta, mas dano e alcance altos.",
     "type": "melee",
-    "shape": "line",
+    "shape": "sword",
     "damage": 24,
-    "range": 100,
-    "lineWidth": 46,
-    "cooldownMs": 650,
+    "range": 80,
+    "arcDegrees": 100,
+    "cooldownMs": 950,
     "fxTint": 0xcfe8ff,
-    "fxDurationMs": 240,
-    "knockback": 240
+    "fxDurationMs": 200,
+    "cameraShake": 0.0018,
+    "knockback": 240,
+    // Corte Duplo (katana_double): desvio angular e atraso entre os
+    // golpes sequenciais do combo — ver Weapon._fireSword
+    "comboOffsetDeg": 24,
+    "comboDelayMs": 90
   },
   {
     "id": "pistol",

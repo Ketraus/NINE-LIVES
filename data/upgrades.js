@@ -135,7 +135,7 @@ export default [
   {
     "id": "katana_double",
     "name": "Corte Duplo",
-    "description": "Seus ataques de katana golpeiam para os dois lados de uma vez. Cada cópia soma mais cortes ao redor do golpe (máx. 4).",
+    "description": "Sua katana passa a golpear em uma sequência de cortes, alternando os lados. Cada cópia soma mais um golpe ao combo (máx. 4).",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "katana",
