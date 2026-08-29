@@ -3,7 +3,7 @@ let nextInstanceId = 1;
 // Tint verde normal (cachorro comum) vs. cinza do Cyberus (ver becomeCyberus).
 const NORMAL_TINT = 0x55ff7a;
 const CYBERUS_TINT = 0x9a9a9a;
-const CYBERUS_SCALE = 1.35; // "um pouco maior", não um monstro gigante
+const CYBERUS_SCALE = 1.5; // maior e mais claramente notável — "ele é um Cerberus"
 
 /**
  * Cachorro aliado, criado pela carta base épica "Purificação" (ver
@@ -37,6 +37,7 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
     this.body.setCircle(this.baseRadius, this.width / 2 - this.baseRadius, this.height / 2 - this.baseRadius);
     this.setDepth(11); // acima do jogador (10) e dos inimigos (9)
     this.setTint(NORMAL_TINT);
+    this._isCyberus = false;
 
     // não deve atravessar parede, igual a inimigos e ao jogador
     scene.mapManager?.addCollider(this);
@@ -46,8 +47,20 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
    *  mergeOnUpgrade): os até-3 cachorros viram só este, um pouco maior e
    *  cinza — a fusão visual dos 3 num só, em vez de 3 cachorros ciano
    *  separados. O corpo físico (circle) é recalculado em cima do
-   *  baseRadius pra acompanhar a nova escala. */
+   *  baseRadius pra acompanhar a nova escala.
+   *
+   *  Idempotente de propósito: pode ser chamado de novo em frames
+   *  seguintes sem custo/efeito colateral (ver AllyDogAbility.update, que
+   *  reafirma a aparência a cada frame enquanto evoDef estiver ativo) —
+   *  isso é o que corrige o bug em que o Cyberus às vezes ficava com a
+   *  aparência de cachorro normal: se a 1ª aplicação falhasse silenciosa
+   *  (ex. textura ainda não pronta no exato frame da fusão), nada
+   *  reaplicava depois. Agora sempre converge pro estado certo.
+   */
   becomeCyberus() {
+    if (this._isCyberus) return;
+    this._isCyberus = true;
+
     this.setScale(CYBERUS_SCALE);
 
     // 'enemy.png' é um círculo VERMELHO sólido. setTint multiplica cores
@@ -88,8 +101,7 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** Move em linha reta até `target` ({x,y}) na velocidade dada. Mesma matemática de Enemy.chase(). */
-  moveToward(target, speed) {
-    const dx = target.x - this.x;
+  moveToward(target, speed) {    const dx = target.x - this.x;
     const dy = target.y - this.y;
     const distSq = dx * dx + dy * dy;
     if (distSq === 0) {

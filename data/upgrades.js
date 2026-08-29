@@ -432,6 +432,9 @@ export default [
         "swordCooldownMs": 1100,
         "swordTint": 0x1b2a6b,
         "swordFxDurationMs": 200,
+        // velocidade do Cyberus fundido — mais rápido que o cachorro normal
+        // (speed: 150 em dog_purify, acima)
+        "cyberusSpeed": 220,
         // 3ª cabeça: laser fino e muito longo, roxo escuro com núcleo mais
         // claro (ver CANNON_COLOR_OUTER/CORE em AllyDogAbility.js) — dura
         // pouco (cannonFxDurationMs) pra ler como descarga, não raio

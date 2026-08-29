@@ -89,15 +89,22 @@ export default class AllyDogAbility {
     if (!this.dog) this.dog = new AllyDog(scene, player.x, player.y);
     if (!this.dog.active) return;
 
+    // Reafirma a aparência do Cyberus a cada frame (não só no instante da
+    // fusão) — becomeCyberus() é idempotente, então isto não tem custo real
+    // depois da 1ª aplicação, mas garante que a cor cinza/tamanho maior
+    // sempre "pegam", mesmo se a 1ª tentativa tivesse falhado silenciosa.
+    if (this.evoDef) this.dog.becomeCyberus();
+
+    const speed = this.evoDef?.cyberusSpeed ?? this.def.speed;
     const target = this._findNearestEnemy(enemyGroup);
     if (target) {
-      this.dog.moveToward(target, this.def.speed);
+      this.dog.moveToward(target, speed);
       const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
       if (dist <= this.def.contactRange) {
         DamageSystem.applyContactDamage(this.dog, target, this.def.damage, this.def.cooldownMs, time);
       }
     } else {
-      this._followPlayer(player);
+      this._followPlayer(player, speed);
     }
 
     if (this.evoDef) {
@@ -473,7 +480,7 @@ export default class AllyDogAbility {
     return found;
   }
 
-  _followPlayer(player) {
+  _followPlayer(player, speed) {
     const targetX = player.x + this.offset.x;
     const targetY = player.y + this.offset.y;
     const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, targetX, targetY);
@@ -481,6 +488,6 @@ export default class AllyDogAbility {
       this.dog.stop();
       return;
     }
-    this.dog.moveToward({ x: targetX, y: targetY }, this.def.speed);
+    this.dog.moveToward({ x: targetX, y: targetY }, speed);
   }
 }
