@@ -403,7 +403,7 @@ export default [
   {
     "id": "dog_purify_evo_cyberus",
     "name": "Cyberus",
-    "description": "Os 3 cachorros se fundem em Cyberus, um cão de 3 cabeças. A 1ª cabeça arremessa uma granada que deixa uma poça de chamas azuis com dano contínuo; a 2ª desfere um corte de espada em arco, num azul bem mais escuro.",
+    "description": "Os 3 cachorros se fundem em Cyberus, um cão de 3 cabeças. A 1ª cabeça arremessa uma granada que deixa uma poça de chamas azuis com dano contínuo; a 2ª desfere um corte de espada em arco, num azul bem mais escuro; a 3ª dispara um laser roxo finíssimo e devastador, longo o bastante pra atravessar boa parte da tela.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "dog_purify",
@@ -431,7 +431,19 @@ export default [
         "swordArcDegrees": 100,
         "swordCooldownMs": 1100,
         "swordTint": 0x1b2a6b,
-        "swordFxDurationMs": 200
+        "swordFxDurationMs": 200,
+        // 3ª cabeça: laser fino e muito longo, roxo escuro com núcleo mais
+        // claro (ver CANNON_COLOR_OUTER/CORE em AllyDogAbility.js) — dura
+        // pouco (cannonFxDurationMs) pra ler como descarga, não raio
+        // contínuo, e atravessa/dana TODOS os inimigos na linha do feixe
+        "cannonDamage": 40,
+        "cannonCooldownMs": 4000,
+        "cannonRange": 320,
+        "cannonLength": 1400,
+        "cannonWidth": 9,
+        "cannonFxDurationMs": 150,
+        "cannonShakeDurationMs": 90,
+        "cannonShakeIntensity": 0.007
       }
     ]
   },

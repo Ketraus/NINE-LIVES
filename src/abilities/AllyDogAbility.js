@@ -25,6 +25,13 @@ const FLAME_COLOR = 0x33bbff;
 const FLAME_FADE_OUT_RATIO = 0.35;
 const FLAME_FADE_BLINK_INTERVAL_MS = 90;
 
+// Visual do laser da 3ª cabeça do Cyberus: roxo bem escuro por fora, núcleo
+// mais claro por dentro — fica aqui (não em data/upgrades.js) pelo mesmo
+// motivo do FLAME_COLOR acima, é puramente estético.
+const CANNON_COLOR_OUTER = 0x2a0845;
+const CANNON_COLOR_CORE = 0xd9a3ff;
+const CANNON_BEAM_DURATION_MS = 140; // curto de propósito: parecer descarga, não feixe contínuo
+
 // Projétil da granada em voo (arremesso de verdade: sai do cachorro, viaja
 // pelo ar, e só explode — cria a poça de chamas — ao ENCOSTAR num inimigo
 // ou ao terminar o trajeto). Puramente estético/timing, por isso também
@@ -73,6 +80,7 @@ export default class AllyDogAbility {
     this.evoDef = null;
     this.lastGrenadeMs = 0;
     this.lastSwordMs = 0;
+    this.lastCannonMs = 0;
     this.flameZones = []; // { x, y, spawnMs, lastTickMs, fx }
     this.grenadesInFlight = []; // { fx, startX, startY, targetX, targetY, startMs, durationMs }
   }
@@ -95,6 +103,7 @@ export default class AllyDogAbility {
     if (this.evoDef) {
       this._updateGrenade(time, target, enemyGroup, scene);
       this._updateSword(time, target, enemyGroup, scene);
+      this._updateCannon(time, target, enemyGroup, scene);
     }
   }
 
@@ -273,6 +282,97 @@ export default class AllyDogAbility {
       ease: 'Cubic.easeOut',
       onComplete: () => g.destroy()
     });
+  }
+
+  /** 3ª cabeça do Cyberus: um laser fino e reto, bem longo, disparado na
+   *  direção do alvo mais próximo — atravessa e causa dano a TODOS os
+   *  inimigos que a linha do feixe encostar no caminho, não só no `target`
+   *  que disparou (mesmo espírito da espada da 2ª cabeça, que corta todo
+   *  mundo na frente). Duração do visual é curta de propósito: deve ler
+   *  como uma descarga brutal, não como um raio contínuo. */
+  _updateCannon(time, target, enemyGroup, scene) {
+    if (!target || time - this.lastCannonMs < this.evoDef.cannonCooldownMs) return;
+    const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
+    if (dist > this.evoDef.cannonRange) return;
+
+    this.lastCannonMs = time;
+    this._fireCannon(scene, target, enemyGroup, time);
+  }
+
+  /** Dispara o feixe de verdade: calcula o segmento (cachorro -> muito além
+   *  do alvo, ver evoDef.cannonLength), desenha o FX e aplica dano a
+   *  qualquer inimigo cuja distância até a linha do feixe seja <=
+   *  cannonWidth. Também dá um pequeno screen shake, pra reforçar o peso
+   *  do disparo (carta mais forte do jogo). */
+  _fireCannon(scene, target, enemyGroup, time) {
+    const aim = new Phaser.Math.Vector2(target.x - this.dog.x, target.y - this.dog.y).normalize();
+    const startX = this.dog.x;
+    const startY = this.dog.y;
+    const endX = startX + aim.x * this.evoDef.cannonLength;
+    const endY = startY + aim.y * this.evoDef.cannonLength;
+
+    this._showCannonFx(scene, startX, startY, endX, endY);
+    scene.cameras.main.shake(this.evoDef.cannonShakeDurationMs, this.evoDef.cannonShakeIntensity);
+
+    enemyGroup.getChildren().slice().forEach((enemy) => {
+      if (!enemy?.active) return;
+      const distToBeam = this._distanceToSegment(enemy.x, enemy.y, startX, startY, endX, endY);
+      if (distToBeam > this.evoDef.cannonWidth) return;
+
+      // sem `source`: dano do Cyberus, mesmo motivo da granada/espada não
+      // contarem pra Sanguessuga (ver topo do arquivo)
+      DamageSystem.applyWeaponHit(enemy, this.evoDef.cannonDamage, undefined, time);
+    });
+  }
+
+  /** Visual do laser: um traço grosso roxo bem escuro por baixo (glow) e um
+   *  núcleo fino mais claro por cima, seguindo a mesma linha — mais um
+   *  flash redondo na origem, pra vender o "disparo" saindo do cachorro.
+   *  Some rápido (fade), reforçando a leitura de descarga curta e não de
+   *  raio sustentado. */
+  _showCannonFx(scene, x1, y1, x2, y2) {
+    const g = scene.add.graphics().setDepth(21);
+
+    g.lineStyle(this.evoDef.cannonWidth * 2, CANNON_COLOR_OUTER, 0.85);
+    g.beginPath();
+    g.moveTo(x1, y1);
+    g.lineTo(x2, y2);
+    g.strokePath();
+
+    g.lineStyle(Math.max(2, this.evoDef.cannonWidth * 0.4), CANNON_COLOR_CORE, 1);
+    g.beginPath();
+    g.moveTo(x1, y1);
+    g.lineTo(x2, y2);
+    g.strokePath();
+
+    const muzzleFlash = scene.add
+      .circle(x1, y1, this.evoDef.cannonWidth * 2.5, CANNON_COLOR_CORE, 0.9)
+      .setDepth(22);
+
+    scene.tweens.add({
+      targets: [g, muzzleFlash],
+      alpha: 0,
+      duration: this.evoDef.cannonFxDurationMs ?? CANNON_BEAM_DURATION_MS,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        g.destroy();
+        muzzleFlash.destroy();
+      }
+    });
+  }
+
+  /** Menor distância de um ponto (px, py) até o segmento de reta (x1,y1)-
+   *  (x2,y2) — usado por _fireCannon pra saber quem o feixe "atravessou",
+   *  já que o laser não é um alvo único como a granada, é uma linha. */
+  _distanceToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSq = dx * dx + dy * dy;
+    let t = lengthSq === 0 ? 0 : ((px - x1) * dx + (py - y1) * dy) / lengthSq;
+    t = Phaser.Math.Clamp(t, 0, 1);
+    const closestX = x1 + t * dx;
+    const closestY = y1 + t * dy;
+    return Phaser.Math.Distance.Between(px, py, closestX, closestY);
   }
 
   _advanceFlameZones(time, enemyGroup) {
