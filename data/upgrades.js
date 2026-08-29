@@ -403,7 +403,7 @@ export default [
   {
     "id": "dog_purify_evo_cyberus",
     "name": "Cyberus",
-    "description": "Os 3 cachorros se fundem em Cyberus, um cão de 3 cabeças. Por enquanto, a 1ª cabeça arremessa uma granada que deixa uma poça de chamas azuis: inimigos que ficarem dentro dela levam dano contínuo.",
+    "description": "Os 3 cachorros se fundem em Cyberus, um cão de 3 cabeças. A 1ª cabeça arremessa uma granada que deixa uma poça de chamas azuis com dano contínuo; a 2ª desfere um corte de espada em arco, num azul bem mais escuro.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "dog_purify",
@@ -411,9 +411,9 @@ export default [
     "effects": [
       // não é unlockAbility: já existem até 3 AllyDogAbility ativas
       // (dog_purify maxStacks: 3) — isto funde as 3 numa só (1 cachorro
-      // maior e cinza) e liga a 1ª cabeça (granada) nela, ver
-      // AllyDogAbility.mergeOnUpgrade/upgrade. Cabeças 2 e 3 ficam pra
-      // depois.
+      // maior e cinza) e liga as cabeças já prontas (granada + espada)
+      // nela, ver AllyDogAbility.mergeOnUpgrade/upgrade/_updateSword.
+      // Cabeça 3 fica pra depois.
       {
         "type": "upgradeAbility",
         "abilityId": "allyDog",
@@ -422,7 +422,16 @@ export default [
         "grenadeDamage": 5,
         "grenadeTickIntervalMs": 500,
         "grenadeDurationMs": 4000,
-        "grenadeRadius": 46
+        "grenadeRadius": 46,
+        // 2ª cabeça: golpe de espada em arco (mesmo teste geométrico da
+        // katana do jogador, ver Weapon._fireArc), só que num azul bem
+        // mais escuro — cor de identidade desta cabeça
+        "swordDamage": 14,
+        "swordRange": 70,
+        "swordArcDegrees": 100,
+        "swordCooldownMs": 1100,
+        "swordTint": 0x1b2a6b,
+        "swordFxDurationMs": 200
       }
     ]
   },

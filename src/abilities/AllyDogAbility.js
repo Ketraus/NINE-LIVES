@@ -65,12 +65,14 @@ export default class AllyDogAbility {
     this.dog = null;
     this.offset = FORMATION_OFFSETS[formationIndex % FORMATION_OFFSETS.length];
 
-    // 1ª cabeça do Cyberus (granada), ligada por upgrade() quando a
-    // evolução "Cyberus" é confirmada — ver AbilityManager._upgrade /
-    // RunManager effect "upgradeAbility". Sem ela, comportamento de
-    // sempre (só perseguir/contato).
-    this.grenadeDef = null;
+    // Dados combinados das cabeças já ligadas do Cyberus (granada +
+    // espada), ligado por upgrade() quando a evolução "Cyberus" é
+    // confirmada — ver AbilityManager._upgrade / RunManager effect
+    // "upgradeAbility". Sem ele, comportamento de sempre (só
+    // perseguir/contato).
+    this.evoDef = null;
     this.lastGrenadeMs = 0;
+    this.lastSwordMs = 0;
     this.flameZones = []; // { x, y, spawnMs, lastTickMs, fx }
     this.grenadesInFlight = []; // { fx, startX, startY, targetX, targetY, startMs, durationMs }
   }
@@ -90,14 +92,17 @@ export default class AllyDogAbility {
       this._followPlayer(player);
     }
 
-    if (this.grenadeDef) this._updateGrenade(time, target, enemyGroup, scene);
+    if (this.evoDef) {
+      this._updateGrenade(time, target, enemyGroup, scene);
+      this._updateSword(time, target, enemyGroup, scene);
+    }
   }
 
-  /** Liga a 1ª cabeça do Cyberus (granada) e aplica o visual de fusão
-   *  (cachorro maior e cinza) nesta cópia — chamado só na instância
-   *  sobrevivente, ver mergeOnUpgrade abaixo. */
+  /** Liga as cabeças já obtidas do Cyberus (granada + espada) e aplica o
+   *  visual de fusão (cachorro maior e cinza) nesta cópia — chamado só na
+   *  instância sobrevivente, ver mergeOnUpgrade abaixo. */
   upgrade(def) {
-    this.grenadeDef = def;
+    this.evoDef = def;
     this.dog?.becomeCyberus();
     this.offset = CYBERUS_OFFSET;
   }
@@ -109,9 +114,8 @@ export default class AllyDogAbility {
    *  antes desta correção. Mantém a primeira instância (com seu AllyDog já
    *  existente) como sobrevivente, destrói o AllyDog das outras e as
    *  remove — AbilityManager troca `this.active` pelo array devolvido
-   *  aqui. Cabeças 2 e 3 do Cyberus ficam pra depois: por ora ele segue
-   *  sendo controlado por esta mesma AllyDogAbility, só com o grenadeDef
-   *  ligado. */
+   *  aqui. Cabeça 3 do Cyberus fica pra depois: por ora ele segue sendo
+   *  controlado por esta mesma AllyDogAbility, só com o evoDef ligado. */
   static mergeOnUpgrade(instances, def) {
     const [survivor, ...extras] = instances;
 
@@ -135,9 +139,9 @@ export default class AllyDogAbility {
     this._advanceFlameZones(time, enemyGroup);
     this._advanceGrenadesInFlight(time, enemyGroup, scene);
 
-    if (!target || time - this.lastGrenadeMs < this.grenadeDef.grenadeCooldownMs) return;
+    if (!target || time - this.lastGrenadeMs < this.evoDef.grenadeCooldownMs) return;
     const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
-    if (dist > this.grenadeDef.grenadeRange) return;
+    if (dist > this.evoDef.grenadeRange) return;
 
     this.lastGrenadeMs = time;
     this._launchGrenade(scene, target.x, target.y, time);
@@ -199,18 +203,90 @@ export default class AllyDogAbility {
     this.flameZones.push({ x, y, spawnMs: time, lastTickMs: 0, fx });
   }
 
+  /** 2ª cabeça do Cyberus: um golpe de espada em arco na direção do alvo,
+   *  mesmo teste geométrico (ângulo dentro de um leque) que a katana do
+   *  jogador usa em Weapon._fireArc, só que partindo do próprio cachorro
+   *  e num azul bem mais escuro (def.swordTint) — cor de identidade desta
+   *  cabeça, diferente do azul claro da poça de chamas da 1ª. Só ativa
+   *  quando o cachorro já está engajado com um alvo dentro do alcance da
+   *  espada (mesmo `target` do ataque de contato) — sem alvo, sem pra
+   *  onde apontar o golpe. */
+  _updateSword(time, target, enemyGroup, scene) {
+    if (!target || time - this.lastSwordMs < this.evoDef.swordCooldownMs) return;
+    const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
+    if (dist > this.evoDef.swordRange) return;
+
+    this.lastSwordMs = time;
+    this._swingSword(scene, target, enemyGroup);
+  }
+
+  /** Faz o corte de verdade: desenha o leque (_showSwordFx) e aplica dano
+   *  a QUALQUER inimigo dentro do arco/alcance, não só no `target` que
+   *  disparou o golpe — igual à katana, que corta todo mundo na frente,
+   *  não só o alvo mirado. */
+  _swingSword(scene, target, enemyGroup) {
+    const aim = new Phaser.Math.Vector2(target.x - this.dog.x, target.y - this.dog.y).normalize();
+    const halfArc = Phaser.Math.DegToRad(this.evoDef.swordArcDegrees) / 2;
+    const range = this.evoDef.swordRange;
+
+    this._showSwordFx(scene, aim, range, halfArc);
+
+    enemyGroup.getChildren().slice().forEach((enemy) => {
+      if (!enemy?.active) return;
+      const toEnemy = new Phaser.Math.Vector2(enemy.x - this.dog.x, enemy.y - this.dog.y);
+      if (toEnemy.length() > range) return;
+
+      const angleBetween = Math.abs(aim.angle() - toEnemy.angle());
+      const normalizedAngle = Math.min(angleBetween, Phaser.Math.PI2 - angleBetween);
+      if (normalizedAngle > halfArc) return;
+
+      // sem `source`: dano do Cyberus, mesmo motivo da granada/contato não
+      // contarem pra Sanguessuga (ver topo do arquivo)
+      DamageSystem.applyWeaponHit(enemy, this.evoDef.swordDamage, undefined, scene.time.now);
+    });
+  }
+
+  /** Visual do corte — mesma técnica de leque desenhado com Graphics que
+   *  Weapon._showSwordSwingFx usa pra katana do jogador (fatia preenchida
+   *  + contorno acompanhando o fio da lâmina), só que nascendo no
+   *  cachorro em vez do jogador, e no azul escuro da 2ª cabeça. */
+  _showSwordFx(scene, aim, range, halfArc) {
+    const baseAngle = aim.angle();
+    const tint = this.evoDef.swordTint ?? 0x1b2a6b;
+    const g = scene.add.graphics({ x: this.dog.x, y: this.dog.y }).setDepth(20);
+
+    g.fillStyle(tint, 0.55);
+    g.slice(0, 0, range, baseAngle - halfArc, baseAngle + halfArc, false);
+    g.fillPath();
+
+    g.lineStyle(5, tint, 0.95);
+    g.beginPath();
+    g.arc(0, 0, range, baseAngle - halfArc, baseAngle + halfArc, false);
+    g.strokePath();
+
+    scene.tweens.add({
+      targets: g,
+      alpha: 0,
+      scaleX: 1.15,
+      scaleY: 1.15,
+      duration: this.evoDef.swordFxDurationMs ?? 200,
+      ease: 'Cubic.easeOut',
+      onComplete: () => g.destroy()
+    });
+  }
+
   _advanceFlameZones(time, enemyGroup) {
     this.flameZones = this.flameZones.filter((zone) => {
       const age = time - zone.spawnMs;
 
-      if (age >= this.grenadeDef.grenadeDurationMs) {
+      if (age >= this.evoDef.grenadeDurationMs) {
         this._destroyFlameFx(zone.fx);
         return false;
       }
 
       this._updateFlameFadeOut(zone, age, time);
 
-      if (time - zone.lastTickMs >= this.grenadeDef.grenadeTickIntervalMs) {
+      if (time - zone.lastTickMs >= this.evoDef.grenadeTickIntervalMs) {
         zone.lastTickMs = time;
         this._damageEnemiesInFlame(zone, enemyGroup, time);
       }
@@ -224,16 +300,16 @@ export default class AllyDogAbility {
     enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(zone.x, zone.y, enemy.x, enemy.y);
-      if (dist <= this.grenadeDef.grenadeRadius) {
+      if (dist <= this.evoDef.grenadeRadius) {
         // sem `source`: dano do Cyberus, igual ao contato normal do
         // cachorro, não conta pra Sanguessuga (ver topo do arquivo)
-        DamageSystem.applyWeaponHit(enemy, this.grenadeDef.grenadeDamage, undefined, time);
+        DamageSystem.applyWeaponHit(enemy, this.evoDef.grenadeDamage, undefined, time);
       }
     });
   }
 
   _createFlameFx(scene, x, y) {
-    const radius = this.grenadeDef.grenadeRadius;
+    const radius = this.evoDef.grenadeRadius;
     const outer = scene.add.circle(0, 0, radius, FLAME_COLOR, 0.25).setStrokeStyle(2, FLAME_COLOR, 0.6);
     const inner = scene.add.circle(0, 0, radius * 0.5, FLAME_COLOR, 0.35);
     const container = scene.add.container(x, y, [outer, inner]).setDepth(8);
@@ -251,10 +327,10 @@ export default class AllyDogAbility {
   }
 
   _updateFlameFadeOut(zone, age, time) {
-    const fadeStartAge = this.grenadeDef.grenadeDurationMs * (1 - FLAME_FADE_OUT_RATIO);
+    const fadeStartAge = this.evoDef.grenadeDurationMs * (1 - FLAME_FADE_OUT_RATIO);
     if (age < fadeStartAge) return;
 
-    const fadeMs = this.grenadeDef.grenadeDurationMs - fadeStartAge;
+    const fadeMs = this.evoDef.grenadeDurationMs - fadeStartAge;
     const fadeProgress = (age - fadeStartAge) / fadeMs;
     const baseAlpha = 1 - fadeProgress;
     const isBlinkOn = Math.floor(time / FLAME_FADE_BLINK_INTERVAL_MS) % 2 === 0;
