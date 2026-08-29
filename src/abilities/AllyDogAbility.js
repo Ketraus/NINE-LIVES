@@ -43,6 +43,13 @@ const GRENADE_ARC_HEIGHT = 18; // "salto" visual do arremesso — puramente est�
 const GRENADE_MIN_TRAVEL_MS = 150;
 const GRENADE_MAX_TRAVEL_MS = 900;
 
+// Comportamento "frio" do Cyberus: depois de atacar um inimigo (com
+// qualquer uma das 3 cabeças), esse alvo fica "esfriando" por um tempo — o
+// cachorro prefere ir pro próximo inimigo livre em vez de ficar preso
+// batendo repetidamente no mesmo (ver _findNearestEnemy/_markAttacked).
+// Não se aplica ao cachorro normal (pré-evolução), só ao Cyberus.
+const TARGET_COOLDOWN_MS = 900;
+
 /**
  * Habilidade da carta base épica "Purificação" (dog_purify): nasce um
  * cachorro aliado ao lado do jogador que persiste pro resto da run. Mesma
@@ -83,6 +90,7 @@ export default class AllyDogAbility {
     this.lastCannonMs = 0;
     this.flameZones = []; // { x, y, spawnMs, lastTickMs, fx }
     this.grenadesInFlight = []; // { fx, startX, startY, targetX, targetY, startMs, durationMs }
+    this.recentTargets = new Map(); // enemy -> timestamp do último ataque (só usado com evoDef, ver _findNearestEnemy)
   }
 
   update(time, player, enemyGroup, scene) {
@@ -96,12 +104,19 @@ export default class AllyDogAbility {
     if (this.evoDef) this.dog.becomeCyberus();
 
     const speed = this.evoDef?.cyberusSpeed ?? this.def.speed;
-    const target = this._findNearestEnemy(enemyGroup);
+    const target = this._findNearestEnemy(enemyGroup, time);
     if (target) {
       this.dog.moveToward(target, speed);
-      const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
-      if (dist <= this.def.contactRange) {
-        DamageSystem.applyContactDamage(this.dog, target, this.def.damage, this.def.cooldownMs, time);
+
+      // O Cyberus não "morde" mais: sem dano de contato pós-evolução, só as
+      // 3 cabeças (granada/espada/canhão) — ver _updateGrenade/_updateSword/
+      // _updateCannon abaixo. O cachorro normal (pré-evolução) continua
+      // batendo por contato como sempre.
+      if (!this.evoDef) {
+        const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
+        if (dist <= this.def.contactRange) {
+          DamageSystem.applyContactDamage(this.dog, target, this.def.damage, this.def.cooldownMs, time);
+        }
       }
     } else {
       this._followPlayer(player, speed);
@@ -160,6 +175,8 @@ export default class AllyDogAbility {
     if (dist > this.evoDef.grenadeRange) return;
 
     this.lastGrenadeMs = time;
+    this._markAttacked(target, time);
+    this.dog.playAttackPulse();
     this._launchGrenade(scene, target.x, target.y, time);
   }
 
@@ -233,6 +250,8 @@ export default class AllyDogAbility {
     if (dist > this.evoDef.swordRange) return;
 
     this.lastSwordMs = time;
+    this._markAttacked(target, time);
+    this.dog.playAttackPulse();
     this._swingSword(scene, target, enemyGroup);
   }
 
@@ -303,6 +322,8 @@ export default class AllyDogAbility {
     if (dist > this.evoDef.cannonRange) return;
 
     this.lastCannonMs = time;
+    this._markAttacked(target, time);
+    this.dog.playAttackPulse();
     this._fireCannon(scene, target, enemyGroup, time);
   }
 
@@ -450,20 +471,54 @@ export default class AllyDogAbility {
     fx.destroy();
   }
 
-  _findNearestEnemy(enemyGroup) {
+  /** Acha o inimigo mais próximo dentro de engageRadius. Com evoDef ativo
+   *  (Cyberus), prefere um inimigo que NÃO foi atacado recentemente (ver
+   *  TARGET_COOLDOWN_MS/_markAttacked) — é o que faz o comportamento
+   *  "frio": chegar, bater com uma cabeça, e ir pro próximo, em vez de
+   *  ficar preso perseguindo/rebatendo o mesmo alvo. Se não houver nenhum
+   *  outro livre, cai de volta pro mais próximo "esfriando" mesmo assim —
+   *  melhor reengajar do que ficar parado sem fazer nada. */
+  _findNearestEnemy(enemyGroup, time) {
     let nearest = null;
     let nearestDist = this.def.engageRadius;
+    let fallback = null;
+    let fallbackDist = this.def.engageRadius;
 
     enemyGroup.children.iterate((enemy) => {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, enemy.x, enemy.y);
-      if (dist <= nearestDist) {
+      if (dist > this.def.engageRadius) return;
+
+      if (this.evoDef && this._isCoolingDown(enemy, time)) {
+        if (dist < fallbackDist) {
+          fallbackDist = dist;
+          fallback = enemy;
+        }
+        return;
+      }
+
+      if (dist < nearestDist) {
         nearestDist = dist;
         nearest = enemy;
       }
     });
 
-    return nearest;
+    return nearest ?? fallback;
+  }
+
+  _isCoolingDown(enemy, time) {
+    const lastMs = this.recentTargets.get(enemy);
+    return lastMs !== undefined && time - lastMs < TARGET_COOLDOWN_MS;
+  }
+
+  /** Marca `enemy` como "recém-atacado" (ver TARGET_COOLDOWN_MS acima) e
+   *  aproveita pra limpar entradas velhas do mapa, pra não crescer sem
+   *  limite ao longo da run inteira. */
+  _markAttacked(enemy, time) {
+    this.recentTargets.set(enemy, time);
+    this.recentTargets.forEach((ts, e) => {
+      if (!e.active || time - ts >= TARGET_COOLDOWN_MS) this.recentTargets.delete(e);
+    });
   }
 
   /** Usado pelo projétil da granada em voo (_advanceGrenadesInFlight) pra

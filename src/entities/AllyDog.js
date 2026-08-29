@@ -3,7 +3,7 @@ let nextInstanceId = 1;
 // Tint verde normal (cachorro comum) vs. cinza do Cyberus (ver becomeCyberus).
 const NORMAL_TINT = 0x55ff7a;
 const CYBERUS_TINT = 0x9a9a9a;
-const CYBERUS_SCALE = 1.5; // maior e mais claramente notável — "ele é um Cerberus"
+const CYBERUS_SCALE = 1.22; // maior que o cachorro normal, mas sem exagerar
 
 /**
  * Cachorro aliado, criado pela carta base épica "Purificação" (ver
@@ -101,7 +101,8 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** Move em linha reta até `target` ({x,y}) na velocidade dada. Mesma matemática de Enemy.chase(). */
-  moveToward(target, speed) {    const dx = target.x - this.x;
+  moveToward(target, speed) {
+    const dx = target.x - this.x;
     const dy = target.y - this.y;
     const distSq = dx * dx + dy * dy;
     if (distSq === 0) {
@@ -114,5 +115,23 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
 
   stop() {
     this.setVelocity(0, 0);
+  }
+
+  /** Feedback visual de "acabei de atacar": um pulso rápido de escala (some
+   *  na hora seguinte, volta ao tamanho normal) — chamado por
+   *  AllyDogAbility toda vez que o Cyberus dispara uma das 3 cabeças
+   *  (granada/espada/canhão), pra deixar claro que aquele foi o momento do
+   *  golpe, não só o cachorro andando perto de um inimigo. */
+  playAttackPulse() {
+    const baseScale = this._isCyberus ? CYBERUS_SCALE : 1;
+    this.scene.tweens.killTweensOf(this);
+    this.setScale(baseScale * 1.22);
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: baseScale,
+      scaleY: baseScale,
+      duration: 130,
+      ease: 'Back.easeOut'
+    });
   }
 }
