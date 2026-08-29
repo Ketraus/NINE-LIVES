@@ -89,7 +89,23 @@ export default class AbilityManager {
   _upgrade(abilityId, def) {
     const AbilityClass = ABILITY_CLASSES[abilityId];
     if (!AbilityClass) return;
-    this.active.filter((a) => a instanceof AbilityClass).forEach((a) => a.upgrade?.(def));
+    const instances = this.active.filter((a) => a instanceof AbilityClass);
+    if (instances.length === 0) return;
+
+    // Ponto de extensão opcional (mesmo padrão de restack/
+    // onFormationChanged acima): algumas evoluções não melhoram cada
+    // instância isoladamente, e sim FUNDEM várias em uma só — ex.: as até
+    // 3 AllyDogAbility da "Purificação" viram 1 único Cyberus quando
+    // evolui. A classe implementa mergeOnUpgrade(instances, def) e devolve
+    // a lista de instâncias que devem continuar em `this.active`; sem o
+    // hook, o comportamento de sempre continua (upgrade() em cada uma).
+    if (typeof AbilityClass.mergeOnUpgrade === 'function') {
+      const survivors = AbilityClass.mergeOnUpgrade(instances, def);
+      this.active = this.active.filter((a) => !(a instanceof AbilityClass)).concat(survivors);
+      return;
+    }
+
+    instances.forEach((a) => a.upgrade?.(def));
   }
 
   /** Chamado todo frame pela GameScene, junto com player.update(). */

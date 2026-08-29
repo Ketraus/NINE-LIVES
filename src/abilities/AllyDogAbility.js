@@ -12,6 +12,11 @@ const FORMATION_OFFSETS = [
   { x: -4, y: 34 }
 ];
 
+// Posição de escolta do Cyberus já fundido (1 cachorro só, maior) — mais
+// central que os offsets de formação acima, que foram pensados pra
+// espalhar 3 cachorros pequenos.
+const CYBERUS_OFFSET = { x: -34, y: 6 };
+
 // Visual da poça de chamas azuis da granada (1ª cabeça do Cyberus,
 // evolução "Cyberus" — dog_purify_evo_cyberus). Fica aqui (não em
 // data/upgrades.js) por ser puramente estético, mesmo padrão do
@@ -19,6 +24,17 @@ const FORMATION_OFFSETS = [
 const FLAME_COLOR = 0x33bbff;
 const FLAME_FADE_OUT_RATIO = 0.35;
 const FLAME_FADE_BLINK_INTERVAL_MS = 90;
+
+// Projétil da granada em voo (arremesso de verdade: sai do cachorro, viaja
+// pelo ar, e só explode — cria a poça de chamas — ao ENCOSTAR num inimigo
+// ou ao terminar o trajeto). Puramente estético/timing, por isso também
+// fica aqui e não em data/upgrades.js.
+const GRENADE_PROJECTILE_SPEED = 480; // px/s — mais rápido que o cachorro anda, é um arremesso
+const GRENADE_PROJECTILE_RADIUS = 7;
+const GRENADE_HIT_RADIUS = 20; // raio de detecção em voo: qualquer inimigo que encostar aqui detona a granada
+const GRENADE_ARC_HEIGHT = 18; // "salto" visual do arremesso — puramente estético, offset renderizado em y
+const GRENADE_MIN_TRAVEL_MS = 150;
+const GRENADE_MAX_TRAVEL_MS = 900;
 
 /**
  * Habilidade da carta base épica "Purificação" (dog_purify): nasce um
@@ -56,6 +72,7 @@ export default class AllyDogAbility {
     this.grenadeDef = null;
     this.lastGrenadeMs = 0;
     this.flameZones = []; // { x, y, spawnMs, lastTickMs, fx }
+    this.grenadesInFlight = []; // { fx, startX, startY, targetX, targetY, startMs, durationMs }
   }
 
   update(time, player, enemyGroup, scene) {
@@ -76,29 +93,108 @@ export default class AllyDogAbility {
     if (this.grenadeDef) this._updateGrenade(time, target, enemyGroup, scene);
   }
 
-  /** Liga a 1ª cabeça do Cyberus (granada) nesta cópia — ver
-   *  AbilityManager._upgrade, chamado em TODAS as AllyDogAbility ativas. */
+  /** Liga a 1ª cabeça do Cyberus (granada) e aplica o visual de fusão
+   *  (cachorro maior e cinza) nesta cópia — chamado só na instância
+   *  sobrevivente, ver mergeOnUpgrade abaixo. */
   upgrade(def) {
     this.grenadeDef = def;
-    this.dog?.setTint(0x66d9ff); // pista visual: virou Cyberus
+    this.dog?.becomeCyberus();
+    this.offset = CYBERUS_OFFSET;
+  }
+
+  /** Extension point lido por AbilityManager._upgrade: quando "Purificação"
+   *  evolui pra Cyberus, as até-3 AllyDogAbility ativas (uma por cópia)
+   *  precisam virar UM cachorro só, maior e cinza — a fusão visual dos 3
+   *  cachorros num Cyberus, em vez de 3 cachorros ciano soltos como era
+   *  antes desta correção. Mantém a primeira instância (com seu AllyDog já
+   *  existente) como sobrevivente, destrói o AllyDog das outras e as
+   *  remove — AbilityManager troca `this.active` pelo array devolvido
+   *  aqui. Cabeças 2 e 3 do Cyberus ficam pra depois: por ora ele segue
+   *  sendo controlado por esta mesma AllyDogAbility, só com o grenadeDef
+   *  ligado. */
+  static mergeOnUpgrade(instances, def) {
+    const [survivor, ...extras] = instances;
+
+    extras.forEach((ability) => {
+      ability.flameZones.forEach((zone) => ability._destroyFlameFx(zone.fx));
+      ability.grenadesInFlight.forEach((g) => g.fx.destroy());
+      ability.dog?.destroy();
+    });
+
+    survivor.upgrade(def);
+    return [survivor];
   }
 
   /** A cada grenadeCooldownMs, se houver um inimigo à vista dentro de
-   *  grenadeRange, arremessa a granada nele — cria uma poça de chamas
-   *  azuis que fica no lugar e causa dano contínuo a quem entrar/ficar
-   *  dentro. Mesmo padrão de zona persistente que TornadoAbility usa. */
+   *  grenadeRange, arremessa a granada nele — o projétil viaja pelo ar e só
+   *  explode (cria a poça de chamas azuis) ao encostar num inimigo ou ao
+   *  fim do trajeto, ver _advanceGrenadesInFlight/_launchGrenade. A poça
+   *  causa dano contínuo a quem entrar/ficar dentro dela — mesmo padrão de
+   *  zona persistente que TornadoAbility usa. */
   _updateGrenade(time, target, enemyGroup, scene) {
     this._advanceFlameZones(time, enemyGroup);
+    this._advanceGrenadesInFlight(time, enemyGroup, scene);
 
     if (!target || time - this.lastGrenadeMs < this.grenadeDef.grenadeCooldownMs) return;
     const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
     if (dist > this.grenadeDef.grenadeRange) return;
 
     this.lastGrenadeMs = time;
-    this._throwGrenade(scene, target.x, target.y, time);
+    this._launchGrenade(scene, target.x, target.y, time);
   }
 
-  _throwGrenade(scene, x, y, time) {
+  /** Cria o projétil visual (bolinha) que sai do cachorro e viaja em linha
+   *  reta até o ponto mirado (com um leve arco pra "ler" como arremesso,
+   *  não deslizamento). A duração escala com a distância, dentro de um
+   *  teto mín/máx pra não ficar nem instantâneo nem eterno em alcances
+   *  extremos. A explosão em si só acontece em _advanceGrenadesInFlight,
+   *  quando o projétil encosta em alguém ou termina o trajeto. */
+  _launchGrenade(scene, targetX, targetY, time) {
+    const startX = this.dog.x;
+    const startY = this.dog.y;
+    const dist = Phaser.Math.Distance.Between(startX, startY, targetX, targetY);
+    const durationMs = Phaser.Math.Clamp(
+      (dist / GRENADE_PROJECTILE_SPEED) * 1000,
+      GRENADE_MIN_TRAVEL_MS,
+      GRENADE_MAX_TRAVEL_MS
+    );
+
+    const fx = scene.add
+      .circle(startX, startY, GRENADE_PROJECTILE_RADIUS, FLAME_COLOR, 0.95)
+      .setStrokeStyle(2, 0xffffff, 0.7)
+      .setDepth(12); // acima do cachorro (11)
+
+    this.grenadesInFlight.push({ fx, startX, startY, targetX, targetY, startMs: time, durationMs });
+  }
+
+  /** Move cada granada em voo (interpolação manual, não Phaser.tweens, pra
+   *  poder checar contato com inimigos a cada frame) e detona a que
+   *  encostar em algum inimigo — ou, se não encostar em ninguém, a que
+   *  completar o trajeto até o ponto mirado originalmente. */
+  _advanceGrenadesInFlight(time, enemyGroup, scene) {
+    this.grenadesInFlight = this.grenadesInFlight.filter((g) => {
+      const progress = Math.min((time - g.startMs) / g.durationMs, 1);
+      g.fx.x = Phaser.Math.Linear(g.startX, g.targetX, progress);
+      // arco: sobe no meio do trajeto e volta a "aterrissar" no fim —
+      // puramente visual, offset de y por cima da linha reta
+      g.fx.y = Phaser.Math.Linear(g.startY, g.targetY, progress) - Math.sin(progress * Math.PI) * GRENADE_ARC_HEIGHT;
+
+      const hitEnemy = this._findEnemyNear(g.fx.x, g.fx.y, GRENADE_HIT_RADIUS, enemyGroup);
+      if (!hitEnemy && progress < 1) return true; // ainda em voo, sem ninguém no caminho
+
+      const explodeX = g.fx.x;
+      const explodeY = g.fx.y;
+      g.fx.destroy();
+      this._explodeGrenade(scene, explodeX, explodeY, time);
+      return false;
+    });
+  }
+
+  /** Cria a poça de chamas persistente no ponto de detonação — chamado só
+   *  daqui pra frente por _advanceGrenadesInFlight, nunca direto de
+   *  _updateGrenade (a explosão agora depende do voo do projétil, não do
+   *  instante do arremesso). */
+  _explodeGrenade(scene, x, y, time) {
     const fx = this._createFlameFx(scene, x, y);
     this.flameZones.push({ x, y, spawnMs: time, lastTickMs: 0, fx });
   }
@@ -185,6 +281,20 @@ export default class AllyDogAbility {
     });
 
     return nearest;
+  }
+
+  /** Usado pelo projétil da granada em voo (_advanceGrenadesInFlight) pra
+   *  saber se encostou em algum inimigo — primeiro que encontrar dentro do
+   *  raio, não necessariamente o mais próximo (o projétil já está bem
+   *  perto de qualquer um que retorne aqui). */
+  _findEnemyNear(x, y, radius, enemyGroup) {
+    let found = null;
+    enemyGroup.children.iterate((enemy) => {
+      if (found || !enemy?.active) return;
+      const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
+      if (dist <= radius) found = enemy;
+    });
+    return found;
   }
 
   _followPlayer(player) {

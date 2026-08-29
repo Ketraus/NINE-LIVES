@@ -410,9 +410,10 @@ export default [
     "type": "evolution",
     "effects": [
       // não é unlockAbility: já existem até 3 AllyDogAbility ativas
-      // (dog_purify maxStacks: 3) — isto liga a 1ª cabeça (granada) em
-      // TODAS elas, mesmo padrão de CatForce 2.0/Terremoto (ver
-      // AllyDogAbility.upgrade). Cabeças 2 e 3 ficam pra depois.
+      // (dog_purify maxStacks: 3) — isto funde as 3 numa só (1 cachorro
+      // maior e cinza) e liga a 1ª cabeça (granada) nela, ver
+      // AllyDogAbility.mergeOnUpgrade/upgrade. Cabeças 2 e 3 ficam pra
+      // depois.
       {
         "type": "upgradeAbility",
         "abilityId": "allyDog",
