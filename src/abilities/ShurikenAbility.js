@@ -29,10 +29,11 @@ const CHAIN_SPARK_COUNT = 5;
  * padrão de SlamAbility.
  *
  * Não evoluída: cada shuriken mira um inimigo próximo DIFERENTE, acerta e
- * some. Evoluída (evolução "Shurivex" — ver upgrade()): toda a rajada mira
- * o MESMO primeiro inimigo e, ao acertar, cada shuriken salta pra um
- * segundo alvo próximo em vez de sumir — ex.: 4 cópias = 4 shurikens no
- * primeiro inimigo, todos saltando em seguida pra um segundo.
+ * some (só repete alvo se não houver inimigos suficientes por perto).
+ * Evoluída (evolução "Shurivex" — ver upgrade()): mesma lógica de mira
+ * (um inimigo diferente por shuriken, repetindo só quando faltam alvos),
+ * mas ao acertar, cada shuriken salta pra um segundo alvo próximo em vez
+ * de sumir.
  *
  * Mesma interface que as outras habilidades (update(time, player,
  * enemyGroup, scene)).
@@ -118,13 +119,13 @@ export default class ShurikenAbility {
   }
 
   /**
-   * Alvos pra uma rajada de `count` shurikens.
-   * Não evoluída: até `count` inimigos DIFERENTES dentro de def.range,
-   * mais próximos primeiro (nunca dois shurikens no mesmo inimigo na
-   * mesma rajada, a menos que faltem alvos vivos).
-   * Evoluída (Shurivex): TODOS os `count` shurikens miram o MESMO inimigo
-   * mais próximo — é o impacto de cada um que depois salta pra um segundo
-   * alvo (ver _create), não a mira inicial que varia.
+   * Alvos pra uma rajada de `count` shurikens — mesma lógica pra
+   * não evoluída e pra Shurivex: até `count` inimigos DIFERENTES dentro de
+   * def.range, mais próximos primeiro. Só repete um inimigo (ciclando pela
+   * lista de candidatos, começando pelo mais próximo) quando não há
+   * inimigos suficientes por perto pra cobrir toda a rajada. Na Shurivex é
+   * o impacto de cada shuriken que depois salta pra um segundo alvo (ver
+   * _create), não a mira inicial.
    */
   _findNearbyTargets(player, enemyGroup, count) {
     const candidates = [];
@@ -136,10 +137,11 @@ export default class ShurikenAbility {
     if (candidates.length === 0) return [];
     candidates.sort((a, b) => a.dist - b.dist);
 
-    if (this.evolved) {
-      return Array(count).fill(candidates[0].enemy);
+    const targets = [];
+    for (let i = 0; i < count; i++) {
+      targets.push(candidates[i % candidates.length].enemy);
     }
-    return candidates.slice(0, count).map((c) => c.enemy);
+    return targets;
   }
 
   /** Inimigo vivo mais próximo de `fromEnemy`, dentro de def.range, que
