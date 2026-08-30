@@ -80,6 +80,8 @@ export default [
     "category": "base",
     "rarity": "epic",
     "maxStacks": 3,
+    "evolvesAtStacks": 3,
+    "evolvesInto": "arsenal_expandido_evo_override",
     "type": "maxCardSlotsBonus",
     "value": 1
   },
@@ -188,6 +190,18 @@ export default [
       { "type": "maxHpPercentBonus", "value": 1.5 },
       { "type": "sizeMultiplier", "value": 1.0 },
       { "type": "speedMultiplier", "value": -0.5 }
+    ]
+  },
+  {
+    "id": "arsenal_expandido_evo_override",
+    "name": "ARSENAL OVERRIDE",
+    "description": "Uma carta \"Restock\" passa a aparecer ao lado do baralho de opções: use-a pra sortear novamente as cartas oferecidas no level-up.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "arsenal_expandido",
+    "type": "evolution",
+    "effects": [
+      { "type": "unlockRestock" }
     ]
   },
   {

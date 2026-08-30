@@ -11,6 +11,13 @@ const ROW_GAP = 24;
 // de CARDS_PER_ROW+1 opções o layout vira grade em vez de fila única.
 const CARDS_PER_ROW = 3;
 
+// Carta "Restock" (evolução ARSENAL OVERRIDE): fica ao lado do baralho de
+// opções, não numa linha/coluna junto das outras — por isso tem largura
+// própria e o grid principal é deslocado pra deixar espaço pra ela na
+// direita (ver show()).
+const RESTOCK_W = 96;
+const RESTOCK_GAP = 22;
+
 // Visual da raridade (ver campo independente `rarity` em data/upgrades.js):
 // cor do contorno/nome da carta + ícone/rótulo mostrados no topo dela.
 const RARITY_COLORS = { common: 0xe6e6e6, rare: 0x4fd1ff, epic: 0xb26bff };
@@ -37,8 +44,15 @@ export default class LevelUpUI {
     this.runManager = runManager;
     this.container = scene.add.container(0, 0).setDepth(300).setVisible(false);
     this._applyZoomCompensation(this.container);
+    // limite do Restock: 1 uso por level-up (zera só quando um NOVO level-up
+    // abre — não em cada redesenho causado pelo próprio Restock, por isso
+    // fica fora de show() e é resetado aqui, no listener do evento).
+    this._restockUsed = false;
 
-    EventBus.on('level-up', ({ options }) => this.show(options));
+    EventBus.on('level-up', ({ options }) => {
+      this._restockUsed = false;
+      this.show(options);
+    });
     EventBus.on('evolution-ready', ({ evolution }) => this.showEvolution(evolution));
   }
 
@@ -60,8 +74,13 @@ export default class LevelUpUI {
   show(options) {
     this._openOverlay();
 
-    const cx = this.scene.scale.width / 2;
+    const screenCx = this.scene.scale.width / 2;
     const cy = this.scene.scale.height / 2;
+    const hasRestock = !!this.runManager.runState.hasRestock;
+    // com Restock ativo, o baralho normal é deslocado pra esquerda pra
+    // sobrar espaço fixo pra ela na direita (não é só mais uma carta na
+    // fila/grade das outras — ver RESTOCK_W/RESTOCK_GAP acima)
+    const cx = hasRestock ? screenCx - (RESTOCK_W + RESTOCK_GAP) / 2 : screenCx;
 
     // quebra as opções em linhas de até CARDS_PER_ROW cartas, pra não
     // estourar a largura da tela quando o level-up oferece mais de 3
@@ -74,7 +93,7 @@ export default class LevelUpUI {
     const startY = cy - totalH / 2 + CARD_H / 2;
 
     const title = this.scene.add
-      .text(cx, startY - CARD_H / 2 - 30, 'SUBIU DE NÍVEL — escolha um upgrade', {
+      .text(screenCx, startY - CARD_H / 2 - 30, 'SUBIU DE NÍVEL — escolha um upgrade', {
         fontSize: '16px',
         color: '#ffffff'
       })
@@ -91,6 +110,12 @@ export default class LevelUpUI {
         this.container.add(this._buildCard(x, rowY, upgrade));
       });
     });
+
+    if (hasRestock) {
+      const fullRowW = CARDS_PER_ROW * CARD_W + (CARDS_PER_ROW - 1) * GAP;
+      const restockX = cx + fullRowW / 2 + RESTOCK_GAP + RESTOCK_W / 2;
+      this.container.add(this._buildRestockCard(restockX, cy, totalH));
+    }
 
     this.container.setVisible(true);
   }
@@ -224,6 +249,76 @@ export default class LevelUpUI {
 
     group.add([glow, bg, name, desc, hint]);
     return group;
+  }
+
+  /**
+   * Carta especial da evolução ARSENAL OVERRIDE: fica plantada ao lado do
+   * baralho normal (não é uma opção de upgrade), altura igual ao bloco
+   * inteiro de cartas normais, e ao clicar sorteia as opções de novo SEM
+   * fechar/pausar/despausar (a tela já está pausada — só troca as cartas).
+   */
+  _buildRestockCard(x, y, h) {
+    const group = this.scene.add.container(x, y);
+    // 1 uso por level-up (ver this._restockUsed) — esgotada, a carta fica
+    // acinzentada e sem clique em vez de simplesmente sumir, pra deixar
+    // claro que ela existe mas já foi gasta nesta tela.
+    const used = this._restockUsed;
+    const accent = used ? 0x555f66 : 0x4fd1ff;
+
+    const bg = this.scene.add
+      .rectangle(0, 0, RESTOCK_W, h, 0x102a2e, used ? 0.6 : 0.95)
+      .setStrokeStyle(2, accent)
+      .setScrollFactor(0);
+
+    const icon = this.scene.add
+      .text(0, -h / 2 + 34, '🔄', { fontSize: '26px' })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setAlpha(used ? 0.5 : 1);
+
+    const name = this.scene.add
+      .text(0, 0, 'RESTOCK', {
+        fontSize: '14px',
+        color: used ? '#8a949b' : '#4fd1ff',
+        fontStyle: 'bold',
+        align: 'center',
+        wordWrap: { width: RESTOCK_W - 16 }
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+
+    const desc = this.scene.add
+      .text(0, h / 2 - 30, used ? 'Já usada\nneste level' : 'Rolar\nde novo', {
+        fontSize: '11px',
+        color: used ? '#8a949b' : '#bfe9f5',
+        align: 'center'
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+
+    group.add([bg, icon, name, desc]);
+
+    if (!used) {
+      bg.setInteractive({ useHandCursor: true });
+      bg.on('pointerover', () => bg.setStrokeStyle(2, 0xffffff));
+      bg.on('pointerout', () => bg.setStrokeStyle(2, 0x4fd1ff));
+      bg.on('pointerdown', () => this._restock());
+    }
+
+    return group;
+  }
+
+  /**
+   * Reamostra as opções do level-up atual e redesenha a tela (mantém
+   * pausado). Limitado a 1 uso por level-up — marca `_restockUsed` ANTES de
+   * chamar show() de novo, pra a carta já nascer desabilitada no redesenho.
+   */
+  _restock() {
+    if (this._restockUsed) return;
+    const options = this.runManager.rerollOptions();
+    if (!options) return;
+    this._restockUsed = true;
+    this.show(options);
   }
 
   _choose(upgrade) {

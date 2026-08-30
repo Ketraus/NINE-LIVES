@@ -58,11 +58,7 @@ export default class RunManager {
   }
 
   _triggerLevelUp() {
-    const pool = this._getAvailableUpgrades();
-    // "Arsenal Expandido" soma ao número base de opções mostradas — ver
-    // BASE_LEVEL_UP_OPTIONS e RunState.maxCardSlotsBonus.
-    const optionCount = BASE_LEVEL_UP_OPTIONS + this.runState.maxCardSlotsBonus;
-    const options = this._pickWeightedUpgrades(pool, optionCount);
+    const options = this._rollLevelUpOptions();
     // Pool vazio (jogador já pegou/maxou todas as cartas disponíveis pra
     // esta arma): não há o que oferecer. Sem este guard, LevelUpUI.show([])
     // ainda pausava o jogo (physics.pause + timeScale=0) esperando um clique
@@ -70,6 +66,27 @@ export default class RunManager {
     // level sobe "de graça" e o jogo simplesmente continua.
     if (options.length === 0) return;
     EventBus.emit('level-up', { options });
+  }
+
+  /** Sorteia as opções de level-up (extraído de _triggerLevelUp pra ser reutilizado pelo Restock). */
+  _rollLevelUpOptions() {
+    const pool = this._getAvailableUpgrades();
+    // "Arsenal Expandido" soma ao número base de opções mostradas — ver
+    // BASE_LEVEL_UP_OPTIONS e RunState.maxCardSlotsBonus.
+    const optionCount = BASE_LEVEL_UP_OPTIONS + this.runState.maxCardSlotsBonus;
+    return this._pickWeightedUpgrades(pool, optionCount);
+  }
+
+  /**
+   * Chamado pela carta "Restock" (evolução ARSENAL OVERRIDE, ver LevelUpUI)
+   * pra sortear de novo as opções mostradas na tela de level-up atual, sem
+   * fechar/pausar/despausar de novo. Se o pool ficar vazio no reroll (raro,
+   * pool quase esgotado), mantém as opções antigas em vez de devolver uma
+   * tela vazia.
+   */
+  rerollOptions() {
+    const options = this._rollLevelUpOptions();
+    return options.length > 0 ? options : null;
   }
 
   /**

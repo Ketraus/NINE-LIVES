@@ -55,6 +55,11 @@ export default class RunState {
     // (BASE_LEVEL_UP_OPTIONS + este valor).
     this.maxCardSlotsBonus = 0;
 
+    // evolução "ARSENAL OVERRIDE" (Arsenal Expandido): libera a carta
+    // "Restock" ao lado do baralho de opções no level-up, que sorteia as
+    // opções de novo (ver LevelUpUI._buildRestockCard / RunManager.rerollOptions)
+    this.hasRestock = false;
+
     // ids de habilidades exclusivas desbloqueadas (ex.: 'slam', 'doubleStrike',
     // 'drone') — cartas do tipo "unlockAbility" só podem ser tiradas uma vez,
     // então RunManager consulta este set pra não reoferecer o que já foi pego
@@ -155,6 +160,9 @@ export default class RunState {
         break;
       case 'unlockAbility':
         this.unlockedAbilities.add(effect.abilityId);
+        break;
+      case 'unlockRestock':
+        this.hasRestock = true;
         break;
       case 'paralyzeOnHit':
         // acumula igual às outras frações (thorns, lifesteal etc.) caso um
