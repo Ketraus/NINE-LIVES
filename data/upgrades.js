@@ -162,6 +162,8 @@ export default [
     "rarity": "rare",
     "weaponId": "katana",
     "maxStacks": 4,
+    "evolvesAtStacks": 4,
+    "evolvesInto": "katana_shuriken_evo_shurivex",
     "type": "unlockAbility",
     "abilityId": "shuriken",
     "cooldownMs": 3000,
@@ -235,6 +237,22 @@ export default [
         "fraction": 0.25,
         "tickIntervalMs": 500,
         "durationMs": 3000
+      }
+    ]
+  },
+  {
+    "id": "katana_shuriken_evo_shurivex",
+    "name": "Shurivex",
+    "description": "Suas shurikens convergem no primeiro inimigo próximo e, ao acertar, cada uma salta pra um segundo alvo em vez de sumir. Rastro cyber roxo.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "katana_shuriken",
+    "type": "evolution",
+    "effects": [
+      {
+        "type": "upgradeAbility",
+        "abilityId": "shuriken",
+        "chainColor": 0xb26bff
       }
     ]
   },
