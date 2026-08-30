@@ -149,6 +149,9 @@ export default [
     "rarity": "rare",
     "weaponId": "fists",
     "maxStacks": 4,
+    // evolução na 4ª cópia (mesmo padrão de GatoDrone/Pancada Sísmica)
+    "evolvesAtStacks": 4,
+    "evolvesInto": "fists_shockwave_evo_blastix",
     "type": "unlockAbility",
     "abilityId": "shockwave",
     "cooldownMs": 3000,
@@ -433,6 +436,29 @@ export default [
       // projétil ficam os mesmos de GatoDrone, só o visual e o perfuro
       // mudam (ver DroneAbility.upgrade)
       { "type": "upgradeAbility", "abilityId": "drone", "pierce": true, "laserColor": 0xb26bff }
+    ]
+  },
+  {
+    "id": "fists_shockwave_evo_blastix",
+    "name": "Blastix",
+    "description": "As ondas de choque agora explodem ao atingir um inimigo, causando dano aos inimigos próximos ao ponto de impacto.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "fists_shockwave",
+    "weaponId": "fists",
+    "type": "evolution",
+    "effects": [
+      // não é unlockAbility: já existe uma ÚNICA ShockwaveAbility ativa
+      // (restack até 4 cópias) — isto melhora ela em vez de somar mais uma
+      // (mesmo padrão de CatForce 2.0/Terremoto). Dano/cooldown/alcance da
+      // onda em si continuam os mesmos; a explosão é só no IMPACTO (não
+      // fica de área), com raio pequeno e fração do dano da onda.
+      {
+        "type": "upgradeAbility",
+        "abilityId": "shockwave",
+        "explosionRadius": 60,
+        "explosionDamageFraction": 0.5
+      }
     ]
   },
   {

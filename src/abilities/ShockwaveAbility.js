@@ -10,6 +10,9 @@ const SHOCKWAVE_COLOR = 0xffb199;
 // viajam, "em cone" (ver _angleOffsets), não em linhas paralelas já
 // afastadas na origem.
 const SHOCKWAVE_SPREAD_DEG = 22;
+// Cor da explosão da evolução "Blastix" (ver upgrade()) — laranja, pra
+// distinguir da onda em si (SHOCKWAVE_COLOR, pêssego).
+const BLASTIX_EXPLOSION_COLOR = 0xff6a2b;
 
 /**
  * Habilidade exclusiva dos Punhos (carta "fists_shockwave"): a cada
@@ -29,6 +32,23 @@ export default class ShockwaveAbility {
     this.lastMs = 0;
     this.waveCount = 1;
     this.group = null;
+    this.enemyGroup = null;
+    // ligados por upgrade() quando "Blastix" é confirmada — ver upgrade()
+    this.evolved = false;
+    this.explosionRadius = 0;
+    this.explosionDamageFraction = 0;
+  }
+
+  /**
+   * Chamado pela evolução Blastix (upgradeAbility, não unlockAbility — ver
+   * AbilityManager._upgrade): melhora ESTA habilidade que já existe.
+   * Cooldown/dano/alcance da onda (this.def) não são tocados — só o
+   * comportamento de impacto (explode ao acertar, ver _createGroup).
+   */
+  upgrade(def) {
+    this.evolved = true;
+    this.explosionRadius = def.explosionRadius;
+    this.explosionDamageFraction = def.explosionDamageFraction;
   }
 
   /**
@@ -51,6 +71,7 @@ export default class ShockwaveAbility {
   /** Cria (uma única vez) o grupo físico das ondas e o overlap contra os
    * inimigos — mesmo padrão de ShurikenAbility._create. */
   _createGroup(scene, enemyGroup, player) {
+    this.enemyGroup = enemyGroup;
     this.group = scene.physics.add.group();
     scene.physics.add.overlap(this.group, enemyGroup, (wave, enemy) => {
       // não atravessa: para no primeiro inimigo que acertar em vez de
@@ -63,9 +84,44 @@ export default class ShockwaveAbility {
         const dir = wave.getData('dir');
         enemy.applyKnockback(dir.x, dir.y, this.def.knockback, scene.time.now);
       }
+      // Blastix: explode NO PONTO de impacto (não fica de área), ferindo
+      // os inimigos vizinhos ao redor — enemy (o alvo direto) já levou o
+      // hit cheio acima, então fica de fora da explosão.
+      if (this.evolved) this._explode(scene, player, wave.x, wave.y, enemy);
       wave.destroy();
     });
     scene.mapManager?.addCollider(this.group, (wave) => wave.destroy());
+  }
+
+  /** Explosão pontual da evolução Blastix ao acertar um inimigo: dano
+   * reduzido (explosionDamageFraction de this.def.damage) a todo inimigo
+   * dentro de explosionRadius do ponto de impacto, exceto o já atingido
+   * pela onda em si. Só um flash rápido (sem poça/persistência), mesmo
+   * espírito de SlamAbility._showFx. */
+  _explode(scene, player, x, y, hitEnemy) {
+    const dmg = this.def.damage * this.explosionDamageFraction;
+    this.enemyGroup.getChildren().forEach((enemy) => {
+      if (enemy === hitEnemy || !enemy.active) return;
+      const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
+      if (dist <= this.explosionRadius) {
+        DamageSystem.applyWeaponHit(enemy, dmg, player, scene.time.now);
+      }
+    });
+    this._showExplosionFx(scene, x, y);
+  }
+
+  _showExplosionFx(scene, x, y) {
+    const fx = scene.add
+      .circle(x, y, this.explosionRadius, BLASTIX_EXPLOSION_COLOR, 0.35)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(17);
+    scene.tweens.add({
+      targets: fx,
+      scale: 1.3,
+      alpha: 0,
+      duration: 220,
+      onComplete: () => fx.destroy()
+    });
   }
 
   /**
