@@ -155,6 +155,21 @@ export default [
     "abilityId": "doubleStrike"
   },
   {
+    "id": "katana_shuriken",
+    "name": "Shuriken",
+    "description": "Arremessa uma shuriken a cada 3s contra um inimigo próximo. Cada cópia soma mais uma shuriken na rajada, cada uma mirando um alvo diferente (máx. 4).",
+    "category": "exclusive",
+    "rarity": "rare",
+    "weaponId": "katana",
+    "maxStacks": 4,
+    "type": "unlockAbility",
+    "abilityId": "shuriken",
+    "cooldownMs": 3000,
+    "damage": 10,
+    "range": 260,
+    "projectileSpeed": 380
+  },
+  {
     "id": "pistol_drone",
     "name": "GatoDrone",
     "description": "Um drone acompanha você e dispara sozinho nos inimigos (ataque mais lento). Cada cópia soma +1 drone (máx. 4).",
