@@ -142,6 +142,21 @@ export default [
     "radius": 90
   },
   {
+    "id": "fists_shockwave",
+    "name": "Shockwave",
+    "description": "Seus socos têm 25% de chance de gerar uma onda de choque que se propaga na direção que você está olhando, causando dano aos inimigos atingidos (área pequena). Cada cópia soma mais uma onda disparada junto, um pouco deslocada das outras (máx. 4).",
+    "category": "exclusive",
+    "rarity": "rare",
+    "weaponId": "fists",
+    "maxStacks": 4,
+    "type": "shockwaveOnAttack",
+    "chance": 0.25,
+    "damage": 10,
+    "width": 56,
+    "distance": 280,
+    "speed": 560
+  },
+  {
     "id": "katana_double",
     "name": "Corte Duplo",
     "description": "Sua katana passa a golpear em uma sequência de cortes, alternando os lados. Cada cópia soma mais um golpe ao combo (máx. 4).",
