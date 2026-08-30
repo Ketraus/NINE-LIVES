@@ -34,6 +34,14 @@ export default class RunState {
     this.paralyzeOnHitDurationMs = 0; // duração da paralisia quando ela procar (ver DamageSystem._applyParalyze)
     this.dodgeChance = 0; // chance (0-1) de desviar de um ataque por completo, sem tomar dano nenhum (evolução "Sexto Sentido" do Reflexo Felino)
 
+    // evolução "Hemorragia" (Sanguessuga): fração do dano do ataque
+    // aplicada como Sangramento no alvo, e a cadência/duração dos ticks
+    // (ver DamageSystem._applyBleed / Enemy.applyBleed). fraction em 0 =
+    // evolução não obtida.
+    this.bleedFraction = 0;
+    this.bleedTickIntervalMs = 0;
+    this.bleedDurationMs = 0;
+
     // evolução "Corte Fantasma" (Visão Aguçada, katana): chance por golpe de
     // também acertar inimigos fora da faixa reta da espada, dentro de um
     // raio ao redor do jogador, até um número máximo de alvos "avulsos"
@@ -163,6 +171,13 @@ export default class RunState {
         break;
       case 'unlockRestock':
         this.hasRestock = true;
+        break;
+      case 'unlockBleed':
+        // atribuição direta, não soma: única fonte possível hoje
+        // (Hemorragia), mesmo raciocínio de strayHits/bulletTimeOnAttack.
+        this.bleedFraction = effect.fraction ?? this.bleedFraction;
+        this.bleedTickIntervalMs = effect.tickIntervalMs ?? this.bleedTickIntervalMs;
+        this.bleedDurationMs = effect.durationMs ?? this.bleedDurationMs;
         break;
       case 'paralyzeOnHit':
         // acumula igual às outras frações (thorns, lifesteal etc.) caso um

@@ -136,6 +136,7 @@ export default class EnemySpawner {
     const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
     this.group.children.iterate((enemy) => {
       enemy?.chase(this.player, nowMs, speedMultiplier);
+      enemy?.updateBleed(nowMs);
     });
   }
 }

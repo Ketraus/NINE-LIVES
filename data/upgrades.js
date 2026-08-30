@@ -92,6 +92,8 @@ export default [
     "category": "base",
     "rarity": "epic",
     "maxStacks": 3,
+    "evolvesAtStacks": 3,
+    "evolvesInto": "lifesteal_up_evo_hemorrhage",
     "type": "lifestealFraction",
     "value": 0.05
   },
@@ -202,6 +204,23 @@ export default [
     "type": "evolution",
     "effects": [
       { "type": "unlockRestock" }
+    ]
+  },
+  {
+    "id": "lifesteal_up_evo_hemorrhage",
+    "name": "Hemorragia",
+    "description": "Seus ataques causam Sangramento: o alvo sofre 25% do dano do ataque a cada 0,5s, durante 3s. Não gera cura da Sanguessuga; reaplicar reinicia a duração (não acumula).",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "lifesteal_up",
+    "type": "evolution",
+    "effects": [
+      {
+        "type": "unlockBleed",
+        "fraction": 0.25,
+        "tickIntervalMs": 500,
+        "durationMs": 3000
+      }
     ]
   },
   {

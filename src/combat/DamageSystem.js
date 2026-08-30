@@ -61,6 +61,7 @@ export default class DamageSystem {
     target.playHitReaction?.();
     this._applyLifesteal(source, damage);
     this._applyParalyze(target, source, nowMs);
+    this._applyBleed(target, source, damage, nowMs);
     return true;
   }
 
@@ -89,6 +90,29 @@ export default class DamageSystem {
     if (target.paralyzedUntil === undefined) return;
     if (Math.random() >= chance) return;
     target.paralyzedUntil = nowMs + source.runState.paralyzeOnHitDurationMs;
+  }
+
+  /**
+   * Aplica Sangramento em `target` (carta "Hemorragia", evolução da
+   * Sanguessuga — ver RunState.bleedFraction/bleedDurationMs/
+   * bleedTickIntervalMs). O dano por tick usa `damage` BRUTO (o mesmo valor
+   * cru que _applyLifesteal usa — dano do ataque que aplicou, não o que
+   * sobrou depois de escudo/redução do alvo), conforme pedido. Precisa de
+   * `nowMs` pra agendar os ticks (ver Enemy.applyBleed); sem ele (alguns
+   * chamadores de applyWeaponHit não passam, ex.: espinhos/drone/pancada
+   * sísmica), o Sangramento simplesmente não é aplicado nesse hit — mesmo
+   * padrão de _applyParalyze.
+   */
+  static _applyBleed(target, source, damage, nowMs) {
+    const fraction = source?.runState?.bleedFraction;
+    if (!fraction || nowMs === undefined) return;
+    if (typeof target.applyBleed !== 'function') return;
+    target.applyBleed(
+      damage * fraction,
+      nowMs,
+      source.runState.bleedDurationMs,
+      source.runState.bleedTickIntervalMs
+    );
   }
 
   /**

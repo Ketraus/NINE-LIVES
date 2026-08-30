@@ -7,6 +7,10 @@ let nextInstanceId = 1;
 // evolução do Overclock). Azul escuro pra ficar claramente diferente do
 // flash branco de "levei dano" e da cor normal de cada inimigo.
 const PARALYZE_TINT = 0x1a1a66;
+// Tint aplicado enquanto o inimigo está sangrando (carta "Hemorragia" —
+// evolução da Sanguessuga). Vermelho escuro, visualmente distinto do azul
+// da paralisia e do flash branco de dano.
+const BLEED_TINT = 0x8a0000;
 
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
@@ -45,9 +49,42 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // "Overcharge" — evolução do Overclock, ver DamageSystem._applyParalyze)
     // e chase() não o move. 0 = nunca paralisado.
     this.paralyzedUntil = 0;
-    // espelha se PARALYZE_TINT está aplicado agora — evita ficar chamando
-    // setTint todo frame à toa enquanto paralisado (ver chase())
-    this._paralyzeTintActive = false;
+
+    // sangramento (carta "Hemorragia" — evolução da Sanguessuga, ver
+    // DamageSystem._applyBleed / applyBleed abaixo). Até bleedUntil o
+    // inimigo toma bleedTickDamage a cada bleedTickIntervalMs; 0 = sem
+    // sangramento ativo. Não empilha: aplicar de novo só reinicia estes
+    // três campos (ver applyBleed).
+    this.bleedUntil = 0;
+    this.bleedTickDamage = 0;
+    this.bleedTickIntervalMs = 500;
+    this.nextBleedTickAt = 0;
+
+    // cor de tint "de status" (paralisia/sangramento) atualmente aplicada —
+    // usado só pra não chamar setTint todo frame à toa quando nada mudou
+    // (ver _refreshStatusTint). Começa igual à cor normal porque o
+    // construtor já chamou setTint(def.color) acima.
+    this._currentStatusTint = def.color;
+  }
+
+  /**
+   * Decide e aplica o tint "de status" certo pro instante atual, com
+   * prioridade paralisia > sangramento > cor normal (as duas primeiras não
+   * podem ficar mascaradas uma pela outra — ver bug que isto substitui,
+   * onde chase() e o antigo update de sangramento brigavam pelo mesmo
+   * setTint). Só chama setTint quando o resultado realmente muda de um
+   * frame pro outro.
+   */
+  _refreshStatusTint(nowMs) {
+    const desired = nowMs < this.paralyzedUntil
+      ? PARALYZE_TINT
+      : nowMs < this.bleedUntil
+        ? BLEED_TINT
+        : this.def.color;
+    if (desired !== this._currentStatusTint) {
+      this._currentStatusTint = desired;
+      this.setTint(desired);
+    }
   }
 
   /**
@@ -70,16 +107,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   chase(target, nowMs = 0, speedMultiplier = 1) {
     if (!this.active || this.healthSystem.isDead()) return;
 
-    // tint de paralisia: liga/desliga independente do knockback, pra ficar
-    // visível mesmo nos primeiros instantes em que os dois se sobrepõem
-    // (ex.: soco que paralisa também empurra). Só chama setTint na
-    // TRANSIÇÃO de estado — não todo frame — pra não brigar com o flash
-    // branco de playHitReaction() sem necessidade.
     const isParalyzed = nowMs < this.paralyzedUntil;
-    if (isParalyzed !== this._paralyzeTintActive) {
-      this._paralyzeTintActive = isParalyzed;
-      this.setTint(isParalyzed ? PARALYZE_TINT : this.def.color);
-    }
+    this._refreshStatusTint(nowMs);
 
     if (nowMs < this.knockbackUntil) return; // ainda sendo empurrado, não sobrescreve a velocity
     if (isParalyzed) {
@@ -93,6 +122,44 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const dist = Math.sqrt(distSq);
     const speed = this.def.speed * speedMultiplier;
     this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+  }
+
+  /**
+   * Aplica (ou reaplica) Sangramento — carta "Hemorragia", evolução da
+   * Sanguessuga. Chamado por DamageSystem._applyBleed a cada ataque do
+   * jogador que causa Sangramento. Não empilha: uma nova aplicação apenas
+   * SOBRESCREVE o dano por tick e REINICIA a duração — nunca soma um
+   * segundo sangramento por cima do primeiro (regra pedida).
+   * @param {number} tickDamage - dano de cada tick (já calculado como
+   *   fração do dano do ataque que aplicou — ver DamageSystem._applyBleed)
+   * @param {number} nowMs - scene.time.now
+   * @param {number} durationMs
+   * @param {number} tickIntervalMs
+   */
+  applyBleed(tickDamage, nowMs, durationMs, tickIntervalMs) {
+    if (!this.active || this.healthSystem.isDead()) return;
+    this.bleedTickDamage = tickDamage;
+    this.bleedTickIntervalMs = tickIntervalMs;
+    this.bleedUntil = nowMs + durationMs;
+    this.nextBleedTickAt = nowMs + tickIntervalMs;
+  }
+
+  /**
+   * Chamado todo frame pelo EnemySpawner.updateAll (junto de chase()).
+   * Aplica o dano de cada tick de Sangramento que já venceu e atualiza o
+   * tint de status. O dano vai DIRETO pra healthSystem.takeDamage — não
+   * passa por DamageSystem.applyWeaponHit — de propósito: não deve gerar
+   * cura da Sanguessuga, nem rolar paralisia/esquiva de novo (regra pedida:
+   * "o Sangramento causa dano adicional, mas não gera cura pela
+   * Sanguessuga").
+   */
+  updateBleed(nowMs) {
+    if (!this.active || this.healthSystem.isDead()) return;
+    this._refreshStatusTint(nowMs);
+    if (nowMs >= this.bleedUntil) return;
+    if (nowMs < this.nextBleedTickAt) return;
+    this.nextBleedTickAt += this.bleedTickIntervalMs;
+    this.healthSystem.takeDamage(this.bleedTickDamage);
   }
 
   /**
@@ -125,14 +192,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   playHitReaction() {
     if (!this.active) return;
 
-    // flash branco rápido (volta pra cor normal do inimigo — ou pro tint de
-    // paralisia, se ainda estiver paralisado quando o timer disparar, ex.:
-    // um segundo golpe que renova a paralisia enquanto ela já estava ativa)
+    // flash branco rápido (volta pro tint de status certo — normal,
+    // paralisado ou sangrando, conforme o que ainda estiver ativo quando
+    // o timer disparar — ver _refreshStatusTint)
     this.setTintFill(0xffffff);
     this.scene.time.delayedCall(70, () => {
       if (!this.active) return;
-      const stillParalyzed = this.scene.time.now < this.paralyzedUntil;
-      this.setTint(stillParalyzed ? PARALYZE_TINT : this.def.color);
+      const nowMs = this.scene.time.now;
+      this._currentStatusTint = null; // força setTint mesmo se o resultado "bater" com o que já estava antes do flash
+      this._refreshStatusTint(nowMs);
     });
 
     // "pop" de impacto: estica/encolhe rápido e volta ao normal — sensação
