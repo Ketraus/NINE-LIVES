@@ -53,15 +53,17 @@ export default class ShockwaveAbility {
   _createGroup(scene, enemyGroup, player) {
     this.group = scene.physics.add.group();
     scene.physics.add.overlap(this.group, enemyGroup, (wave, enemy) => {
-      const hitSet = wave.getData('hitSet');
-      if (hitSet.has(enemy)) return;
-      hitSet.add(enemy);
+      // não atravessa: para no primeiro inimigo que acertar em vez de
+      // seguir viajando e acertando mais gente pelo caminho (diferente
+      // da Shuriken/laser do GatoDrone, que perfuram de propósito)
+      if (!wave.active) return;
 
       const hit = DamageSystem.applyWeaponHit(enemy, wave.getData('damage'), player, scene.time.now);
       if (hit && this.def.knockback) {
         const dir = wave.getData('dir');
         enemy.applyKnockback(dir.x, dir.y, this.def.knockback, scene.time.now);
       }
+      wave.destroy();
     });
     scene.mapManager?.addCollider(this.group, (wave) => wave.destroy());
   }
@@ -117,7 +119,6 @@ export default class ShockwaveAbility {
     wave.setBlendMode(Phaser.BlendModes.ADD);
     wave.setTint(SHOCKWAVE_COLOR);
     wave.setAlpha(0.85);
-    wave.setData('hitSet', new Set());
     wave.setData('damage', this.def.damage);
     wave.setData('dir', dir.clone());
     wave.setVelocity(dir.x * this.def.speed, dir.y * this.def.speed);
