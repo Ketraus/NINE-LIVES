@@ -72,23 +72,6 @@ export default class WeaponManager {
       // punhos (shape "arc", só ela chama _fireArc)
       bulletTime: this.runState.bulletTimeChance > 0
         ? { chance: this.runState.bulletTimeChance, durationMs: this.runState.bulletTimeDurationMs }
-        : null,
-      // config da carta exclusiva "Shockwave" (punhos, rara — maxStacks 4)
-      // ou null se não obtida; Weapon.js ignora se a arma não for os
-      // punhos (mesmo branch de bulletTime, shape "arc"). waveCount vem
-      // direto de upgradeCounts (mesmo padrão de doubleStrikeStacks acima):
-      // 1 cópia = 1 onda por disparo, 4 cópias = 4 ondas de uma vez, um
-      // pouco deslocadas entre si (ver Weapon._fireShockwave) — a chance
-      // de 25% continua sendo UMA rolagem só decidindo se a salva toda sai.
-      shockwave: this.runState.shockwaveChance > 0
-        ? {
-            chance: this.runState.shockwaveChance,
-            damage: this.runState.shockwaveDamage,
-            width: this.runState.shockwaveWidth,
-            distance: this.runState.shockwaveDistance,
-            speed: this.runState.shockwaveSpeed,
-            waveCount: this.runState.upgradeCounts.fists_shockwave || 1
-          }
         : null
     });
 

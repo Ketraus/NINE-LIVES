@@ -5,17 +5,6 @@ import DamageSystem from '../combat/DamageSystem.js';
 // um bônus de cobertura/alcance e não um segundo corte de graça no mesmo dano.
 const STRAY_DAMAGE_FRACTION = 0.5;
 
-// Carta exclusiva "Shockwave" (punhos, ver Weapon._fireShockwave): a onda
-// reaproveita a textura hit_fx esticada (mesma técnica do laser evoluído
-// do GatoDrone, ver DroneAbility._createBullet) em vez de gerar uma
-// textura própria — cor quente, no mesmo tom do fxTint padrão dos punhos.
-const SHOCKWAVE_COLOR = 0xffb199;
-// Ângulo entre cada onda extra da salva, em graus — todas nascem no MESMO
-// ponto (as mãos do jogador) e se abrem em leque a partir daí conforme
-// viajam, "em cone" (ver _shockwaveAngleOffsets), não em linhas paralelas
-// já afastadas na origem.
-const SHOCKWAVE_SPREAD_DEG = 22;
-
 /**
  * Arma melee (punhos, katana, ...): em vez de uma hitbox física, checa
  * geometricamente quais inimigos estão na "área do golpe" no momento do
@@ -66,15 +55,6 @@ export default class Weapon {
         this._showBulletTimeFx(scene);
       }
 
-      // carta "Shockwave" (punhos, rara): UMA rolagem de 25% por soco
-      // decide se a salva de onda(s) sai (não depende do soco ter
-      // acertado alguém — é um efeito à parte do dano do próprio soco).
-      // Quantas ondas saem de uma vez quando proca é quem soma por cópia,
-      // não a chance em si (ver Weapon._fireShockwave). null se a carta
-      // não foi obtida.
-      if (statMods.shockwave && Math.random() < statMods.shockwave.chance) {
-        this._fireShockwave(scene, player, enemyGroup, aim, statMods.shockwave);
-      }
     }
   }
 
@@ -263,98 +243,6 @@ export default class Weapon {
       hitEnemies.add(enemy);
       struck += 1;
     });
-  }
-
-  /**
-   * Carta exclusiva "Shockwave" (punhos, rara — maxStacks 4): quando a
-   * chance de 25% procar (uma ÚNICA rolagem, ver fire()), dispara
-   * `def.waveCount` ondas TODAS DE UMA VEZ (sem stagger, diferente da
-   * rajada da Shuriken) — todas nascendo no MESMO ponto (as mãos do
-   * jogador, player.x/y), não espalhadas lado a lado na origem. O que
-   * varia entre elas é o ÂNGULO de saída (ver _shockwaveAngleOffsets): a
-   * primeira sempre reta no eixo da mira (o "meio"), e cada cópia extra
-   * abre mais uma pro lado (alternando direita/esquerda, ângulo crescendo
-   * a cada par — mesmo padrão de Weapon._fireSword pro combo da katana).
-   * Como todas partem do mesmo ponto mas com direções ligeiramente
-   * diferentes, elas se AFASTAM conforme viajam — abrem "em leque/cone" a
-   * partir da origem, não chegam já abertas. Cada onda causa dano a cada
-   * inimigo que tocar pelo caminho (uma vez só por inimigo, ver hitSet —
-   * mesmo padrão de ShurikenAbility). Área pequena de propósito: largura
-   * moderada (def.width) e alcance curto (def.distance) — é um bônus de
-   * cobertura na direção do soco, não uma segunda arma de longo alcance.
-   */
-  _fireShockwave(scene, player, enemyGroup, aim, def) {
-    this._ensureShockwaveGroup(scene, enemyGroup);
-    this._shockwavePlayer = player;
-
-    this._shockwaveAngleOffsets(def.waveCount).forEach((angleOffset) => {
-      const waveDir = aim.clone().rotate(angleOffset);
-      this._spawnShockwave(scene, player.x, player.y, waveDir, def);
-    });
-  }
-
-  /** Ângulos (radianos) de cada onda da salva em relação à mira, todas
-   * partindo do mesmo ponto — 1 onda = [0] (reto); a partir da 2ª,
-   * alterna lado (direita/esquerda) com o desvio crescendo a cada par,
-   * igual ao combo da katana (ver Weapon._fireSword: `side`/`angleOffset`). */
-  _shockwaveAngleOffsets(count) {
-    const step = Phaser.Math.DegToRad(SHOCKWAVE_SPREAD_DEG);
-    const offsets = [];
-    for (let i = 0; i < count; i++) {
-      const side = i === 0 ? 0 : i % 2 === 1 ? 1 : -1;
-      offsets.push(step * side * Math.ceil(i / 2));
-    }
-    return offsets;
-  }
-
-  /** Uma única onda de choque, nascendo em (x, y) e viajando na direção
-   * `dir` — ver _fireShockwave pra como x/y (sempre as mãos do jogador) e
-   * dir (ângulo em leque) de cada onda da salva são calculados. Some
-   * sozinha ao esgotar def.distance (calculado a partir de def.speed) ou
-   * ao esbarrar numa parede do mapa (ver _ensureShockwaveGroup). */
-  _spawnShockwave(scene, x, y, dir, def) {
-    const wave = this._shockwaveGroup.create(x, y, 'hit_fx');
-    wave.setDepth(16);
-    wave.body.setAllowGravity(false);
-    wave.body.setSize(def.width, def.width, true);
-    wave.setRotation(dir.angle());
-    // esticado tipo "onda": comprido no eixo do movimento, estreito na
-    // perpendicular — mesma técnica do laser evoluído do GatoDrone
-    wave.setScale(def.width / 34, def.width / 90);
-    wave.setBlendMode(Phaser.BlendModes.ADD);
-    wave.setTint(SHOCKWAVE_COLOR);
-    wave.setAlpha(0.85);
-    wave.setData('hitSet', new Set());
-    wave.setData('damage', def.damage);
-    wave.setData('dir', dir.clone());
-    wave.setVelocity(dir.x * def.speed, dir.y * def.speed);
-
-    const lifetimeMs = (def.distance / def.speed) * 1000;
-    scene.tweens.add({
-      targets: wave,
-      alpha: 0,
-      duration: lifetimeMs,
-      onComplete: () => wave.destroy()
-    });
-  }
-
-  /** Cria (uma única vez) o grupo físico da onda de choque e o overlap
-   * contra os inimigos — mesmo padrão de ShurikenAbility._create. */
-  _ensureShockwaveGroup(scene, enemyGroup) {
-    if (this._shockwaveGroup) return;
-    this._shockwaveGroup = scene.physics.add.group();
-    scene.physics.add.overlap(this._shockwaveGroup, enemyGroup, (wave, enemy) => {
-      const hitSet = wave.getData('hitSet');
-      if (hitSet.has(enemy)) return;
-      hitSet.add(enemy);
-
-      const hit = DamageSystem.applyWeaponHit(enemy, wave.getData('damage'), this._shockwavePlayer, scene.time.now);
-      if (hit && this.def.knockback) {
-        const dir = wave.getData('dir');
-        enemy.applyKnockback(dir.x, dir.y, this.def.knockback, scene.time.now);
-      }
-    });
-    scene.mapManager?.addCollider(this._shockwaveGroup, (wave) => wave.destroy());
   }
 
   /**

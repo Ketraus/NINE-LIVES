@@ -5,6 +5,7 @@ import AllyDogAbility from './AllyDogAbility.js';
 import TornadoAbility from './TornadoAbility.js';
 import AuraShockAbility from './AuraShockAbility.js';
 import ShurikenAbility from './ShurikenAbility.js';
+import ShockwaveAbility from './ShockwaveAbility.js';
 
 /**
  * Ponto de extensão central pras habilidades exclusivas de arma (as cartas
@@ -31,7 +32,8 @@ const ABILITY_CLASSES = {
   allyDog: AllyDogAbility,
   tornadoWalk: TornadoAbility,
   auraShock: AuraShockAbility,
-  shuriken: ShurikenAbility
+  shuriken: ShurikenAbility,
+  shockwave: ShockwaveAbility
 };
 
 export default class AbilityManager {

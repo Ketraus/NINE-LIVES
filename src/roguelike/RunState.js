@@ -57,18 +57,6 @@ export default class RunState {
     this.bulletTimeChance = 0;
     this.bulletTimeDurationMs = 0;
 
-    // carta exclusiva "Shockwave" (punhos, rara): chance fixa de 25% por
-    // soco de lançar onda(s) de choque na direção da mira, causando dano
-    // aos inimigos no caminho (área pequena, ver Weapon._fireShockwave).
-    // chance em 0 = carta não obtida; cada cópia soma mais uma onda por
-    // disparo (ver upgradeCounts.fists_shockwave em WeaponManager), não
-    // mais chance.
-    this.shockwaveChance = 0;
-    this.shockwaveDamage = 0;
-    this.shockwaveWidth = 0;
-    this.shockwaveDistance = 0;
-    this.shockwaveSpeed = 0;
-
     // bônus ao número de opções de carta mostradas em cada level-up (carta
     // "Arsenal Expandido": pegar ela faz o PRÓXIMO level-up em diante
     // oferecer +1 opção). Consultado por RunManager._triggerLevelUp
@@ -216,19 +204,6 @@ export default class RunState {
         // ("Reflexos de Predador"), atribuição direta em vez de acúmulo.
         this.bulletTimeChance = effect.chance ?? this.bulletTimeChance;
         this.bulletTimeDurationMs = effect.durationMs ?? this.bulletTimeDurationMs;
-        break;
-      case 'shockwaveOnAttack':
-        // carta "Shockwave" (punhos, rara — maxStacks 4): a chance de 25%
-        // NÃO acumula por cópia (mesmo raciocínio de strayHits/bulletTime,
-        // atribuição direta) — o que cada cópia extra soma é mais uma onda
-        // disparada de uma vez só quando a chance procar (ver WeaponManager
-        // .waveCount, lido direto de upgradeCounts.fists_shockwave, e
-        // Weapon._fireShockwave).
-        this.shockwaveChance = effect.chance ?? this.shockwaveChance;
-        this.shockwaveDamage = effect.damage ?? this.shockwaveDamage;
-        this.shockwaveWidth = effect.width ?? this.shockwaveWidth;
-        this.shockwaveDistance = effect.distance ?? this.shockwaveDistance;
-        this.shockwaveSpeed = effect.speed ?? this.shockwaveSpeed;
         break;
       default:
         break;
