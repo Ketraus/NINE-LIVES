@@ -60,11 +60,54 @@ export default class EnemySpawner {
 
     const availableDefs = this.enemyDefs.filter((def) => !def.minSpawnTimeMs || nowMs >= def.minSpawnTimeMs);
     const def = Phaser.Utils.Array.GetRandom(availableDefs.length > 0 ? availableDefs : this.enemyDefs);
-    const pos = this._findSpawnPosition();
+    return this._createAt(def, this._findSpawnPosition());
+  }
+
+  /**
+   * Cria de fato um Enemy num ponto e registra ele no grupo/colisor —
+   * extraído de spawnOne pra ser reaproveitado por spawnByDefId (cheat
+   * "spawn" do DevConsole, F9), que escolhe o tipo na mão em vez de
+   * sortear e ignora o teto de maxAlive de propósito (é um comando
+   * explícito do testador, não o SpawnDirector automático).
+   */
+  _createAt(def, pos) {
     const enemy = new Enemy(this.scene, pos.x, pos.y, def);
     this.group.add(enemy);
     this.mapManager.addCollider(enemy);
     return enemy;
+  }
+
+  /**
+   * Cheat (DevConsole "spawn <inimigoId> [quantidade]"): cria `count`
+   * inimigos de um tipo específico, ignorando `minSpawnTimeMs` e o teto
+   * `maxAlive` (é um pedido explícito do testador). Usa a mesma lógica de
+   * posição fora da câmera que o spawn normal (_findSpawnPosition), então
+   * eles aparecem "de fora da tela" como qualquer inimigo, só que do tipo
+   * pedido.
+   * @returns {number} quantos foram de fato criados
+   */
+  spawnByDefId(defId, count = 1) {
+    const def = this.enemyDefs.find((d) => d.id === defId);
+    if (!def) return 0;
+    const n = Math.max(1, Math.floor(count));
+    for (let i = 0; i < n; i++) {
+      this._createAt(def, this._findSpawnPosition());
+    }
+    return n;
+  }
+
+  /**
+   * Cheat (DevConsole "killall"): mata todos os inimigos vivos AGORA,
+   * chamando o mesmo Enemy.die() do fluxo normal — dá XP e conta kill
+   * normalmente, só acontece tudo de uma vez. Copia a lista antes de
+   * iterar porque die()/destroy() remove o inimigo do grupo, o que
+   * bagunçaria uma iteração direta sobre group.getChildren().
+   * @returns {number} quantos inimigos foram eliminados
+   */
+  killAll() {
+    const alive = this.group.getChildren().filter((e) => e.active);
+    alive.forEach((enemy) => enemy.die());
+    return alive.length;
   }
 
   /**

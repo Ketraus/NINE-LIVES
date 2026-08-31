@@ -118,6 +118,8 @@ export default class DevConsole {
         this._log('heal — cura o jogador pra vida máxima');
         this._log('god — liga/desliga invencibilidade');
         this._log('kill — mata o jogador na hora');
+        this._log('spawn <inimigoId> [quantidade] — spawna N inimigos específicos');
+        this._log('killall — elimina todos os inimigos da arena');
         break;
 
       case 'list': {
@@ -195,6 +197,32 @@ export default class DevConsole {
       case 'kill':
         this._log(this.runManager.cheatKillPlayer().message);
         break;
+
+      case 'spawn': {
+        const [enemyId, qtyRaw] = args;
+        if (!enemyId) {
+          this._log('Uso: spawn <inimigoId> [quantidade]. Ids: ' + this.scene.enemySpawner.enemyDefs.map((d) => d.id).join(', '));
+          break;
+        }
+        const qty = qtyRaw === undefined ? 1 : Number(qtyRaw);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          this._log('Quantidade inválida.');
+          break;
+        }
+        const spawned = this.scene.enemySpawner.spawnByDefId(enemyId, qty);
+        if (spawned === 0) {
+          this._log(`Inimigo "${enemyId}" não existe. Ids: ` + this.scene.enemySpawner.enemyDefs.map((d) => d.id).join(', '));
+        } else {
+          this._log(`${spawned}x "${enemyId}" spawnado(s).`);
+        }
+        break;
+      }
+
+      case 'killall': {
+        const killed = this.scene.enemySpawner.killAll();
+        this._log(`${killed} inimigo(s) eliminado(s).`);
+        break;
+      }
 
       default:
         this._log(`Comando desconhecido: "${cmd}". Digite "help".`);
