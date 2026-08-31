@@ -10,7 +10,7 @@
 // runner 35/tank 15), o tank vai de 0% a 15% suavemente, não pula direto.
 // Depois do último ponto, a composição fica travada nos valores dele.
 export default [
-  { t: 0, weights: { grunt: 100, cyber_hound: 50 } }, // 0:00 — só grunt
+  { t: 0, weights: { grunt: 100 } }, // 0:00 — só grunt
   { t: 60000, weights: { grunt: 70, cyber_hound: 30 } }, // 1:00 — runner entra
   { t: 180000, weights: { grunt: 50, cyber_hound: 35, cyber_brute: 15 } }, // 3:00 — tank entra
   { t: 360000, weights: { grunt: 25, cyber_hound: 40, cyber_brute: 35 } } // 6:00

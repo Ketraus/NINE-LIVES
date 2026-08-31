@@ -19,6 +19,7 @@ import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
 import upgradesData from '../../data/upgrades.js';
 import spawnPhasesData from '../../data/spawnPhases.js';
+import spawnCurvesData from '../../data/spawnCurves.js';
 
 const XP_ORB_PICKUP_RANGE_HINT = 4; // margem extra no corpo físico do orb
 const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
@@ -185,7 +186,7 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.enemySpawner.group, this.enemySpawner.group);
     // SpawnDirector cronometra a run e decide quando/quantos inimigos pedir;
     // EnemySpawner só sabe criar (ver src/roguelike/SpawnDirector.js)
-    this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData);
+    this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData, spawnCurvesData);
     this._lastRunTimeSeconds = -1;
     this.spawnDirector.start();
   }
