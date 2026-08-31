@@ -18,6 +18,7 @@ export default class DamageSystem {
    * @returns {boolean} true se o dano foi de fato aplicado
    */
   static applyContactDamage(attacker, target, damage, cooldownMs, nowMs) {
+    if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (target.invulnerableUntil && nowMs < target.invulnerableUntil) return false;
 
@@ -55,6 +56,7 @@ export default class DamageSystem {
    * @returns {boolean} true se o dano foi de fato aplicado (alvo vivo/ativo)
    */
   static applyWeaponHit(target, damage, source, nowMs) {
+    if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (this._rollDodge(target)) return false;
     target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0));

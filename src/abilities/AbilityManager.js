@@ -50,6 +50,33 @@ export default class AbilityManager {
 
     EventBus.on('ability-unlocked', ({ abilityId, def }) => this._unlock(abilityId, def));
     EventBus.on('ability-upgraded', ({ abilityId, def }) => this._upgrade(abilityId, def));
+    // cheat "resetcards" do DevConsole (F9, ver RunManager.cheatResetCards):
+    // desmonta toda habilidade ativa (drone, cachorro, tornado etc.)
+    EventBus.on('ability-reset', () => this.reset());
+  }
+
+  /**
+   * Desmonta todas as habilidades ativas — melhor esforço genérico (cada
+   * classe guarda seus sprites em propriedades com nomes um pouco
+   * diferentes: dog, sprite, group, bulletGroup, fx, tornadoes[].fx), sem
+   * precisar de um método destroy() próprio em cada uma. Só o cheat
+   * "resetcards" chama isto.
+   */
+  reset() {
+    this.active.forEach((ability) => {
+      try {
+        ability.dog?.destroy();
+        ability.sprite?.destroy();
+        ability.fx?.destroy?.();
+        ability.bulletGroup?.clear(true, true);
+        ability.group?.clear(true, true);
+        ability.tornadoes?.forEach((t) => t.fx?.destroy?.());
+      } catch (e) {
+        // melhor esforço — uma habilidade que falhar ao limpar não deve
+        // impedir as outras de serem removidas
+      }
+    });
+    this.active = [];
   }
 
   _unlock(abilityId, def) {

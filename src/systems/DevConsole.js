@@ -66,7 +66,7 @@ export default class DevConsole {
 
     if (!this._greeted) {
       this._log(`Classe atual: ${this.runManager.runState.weaponId}.`);
-      this._log('Comandos: give <cartaId> [quantidade] | list | help');
+      this._log('Digite "help" pra ver os comandos.');
       this._greeted = true;
     }
   }
@@ -110,7 +110,14 @@ export default class DevConsole {
     switch (cmd.toLowerCase()) {
       case 'help':
         this._log('give <cartaId> [quantidade] — dá N cópias de uma carta (padrão: 1)');
+        this._log('remove <cartaId> [quantidade] — remove N cópias de uma carta (padrão: 1)');
+        this._log('resetcards — limpa todas as cartas/upgrades da run atual');
         this._log('list — lista as cartas disponíveis pra sua classe atual');
+        this._log('xp <quantidade> — ganha XP de verdade (pode subir de nível)');
+        this._log('levelup [quantidade] — sobe N níveis na hora (padrão: 1)');
+        this._log('heal — cura o jogador pra vida máxima');
+        this._log('god — liga/desliga invencibilidade');
+        this._log('kill — mata o jogador na hora');
         break;
 
       case 'list': {
@@ -134,6 +141,60 @@ export default class DevConsole {
         this._log(result.message);
         break;
       }
+
+      case 'remove': {
+        const [cardId, qtyRaw] = args;
+        if (!cardId) {
+          this._log('Uso: remove <cartaId> [quantidade]');
+          break;
+        }
+        const qty = qtyRaw === undefined ? 1 : Number(qtyRaw);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          this._log('Quantidade inválida.');
+          break;
+        }
+        const result = this.runManager.cheatRemoveCard(cardId, qty);
+        this._log(result.message);
+        break;
+      }
+
+      case 'resetcards':
+        this._log(this.runManager.cheatResetCards().message);
+        break;
+
+      case 'xp': {
+        const [amountRaw] = args;
+        const amount = Number(amountRaw);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          this._log('Uso: xp <quantidade>');
+          break;
+        }
+        this._log(this.runManager.cheatAddXp(amount).message);
+        break;
+      }
+
+      case 'levelup': {
+        const [countRaw] = args;
+        const count = countRaw === undefined ? 1 : Number(countRaw);
+        if (!Number.isFinite(count) || count <= 0) {
+          this._log('Quantidade inválida.');
+          break;
+        }
+        this._log(this.runManager.cheatLevelUp(count).message);
+        break;
+      }
+
+      case 'heal':
+        this._log(this.runManager.cheatHeal().message);
+        break;
+
+      case 'god':
+        this._log(this.runManager.cheatToggleGodMode().message);
+        break;
+
+      case 'kill':
+        this._log(this.runManager.cheatKillPlayer().message);
+        break;
 
       default:
         this._log(`Comando desconhecido: "${cmd}". Digite "help".`);

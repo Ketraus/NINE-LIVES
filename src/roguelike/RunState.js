@@ -18,7 +18,17 @@ export default class RunState {
     this.xp = 0;
     this.xpToNext = 12;
     this.kills = 0;
+    this.wave = 1;
+    this.resetUpgrades();
+  }
 
+  /**
+   * Zera só a parte de cartas/upgrades (multiplicadores, contagens,
+   * habilidades desbloqueadas), sem mexer em level/xp/kills/wave. Extraído
+   * de reset() pra ser reaproveitado pelo cheat "resetcards" do DevConsole
+   * (F9) — reseta o build sem reiniciar a run inteira.
+   */
+  resetUpgrades() {
     // multiplicadores/bônus que upgrades (cartas) alteram
     this.damageMultiplier = 0;
     this.speedMultiplier = 0;
@@ -82,9 +92,6 @@ export default class RunState {
     // RunManager consulta pra saber quando uma carta completou o número de
     // cópias necessário pra evoluir (ver RunManager._findPendingEvolution)
     this.upgradeCounts = {};
-
-    // pronto para o futuro, não usado ainda neste protótipo
-    this.wave = 1;
   }
 
   registerKill() {
@@ -101,6 +108,95 @@ export default class RunState {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Sobe 1 nível sem exigir XP de verdade — usado só pelo cheat "levelup"
+   * do DevConsole (F9). Mesma progressão de xpToNext que addXp usa, mas
+   * sem disparar a tela de escolha de cartas (RunManager.cheatLevelUp
+   * decide isso, este método só mexe nos números).
+   */
+  forceLevelUp() {
+    this.xp = 0;
+    this.level += 1;
+    this.xpToNext = Math.round(this.xpToNext * 1.2);
+  }
+
+  /**
+   * Inverso de applyUpgrade — usado só pelo cheat "remove" do DevConsole
+   * (F9). Desfaz até `times` cópias de uma carta BASE (evoluções não
+   * podem ser removidas direto, ver RunManager.cheatRemoveCard),
+   * subtraindo o mesmo valor por cópia que _applyEffect somou. Efeitos
+   * sem contrapartida numérica simples (unlockAbility, unlockRestock,
+   * unlockBleed, strayHits, bulletTimeOnAttack) só têm a contagem/flag
+   * desfeita quando chega a 0 cópias — a instância/visual já spawnada
+   * (ex.: drone, cachorro) não é desmontada aqui, isso é papel do cheat
+   * "resetcards" (ver AbilityManager.reset via evento 'ability-reset').
+   * @returns {number} quantas cópias foram de fato removidas
+   */
+  removeUpgrade(upgrade, times = 1) {
+    const owned = this.upgradeCounts[upgrade.id] || 0;
+    const toRemove = Math.min(times, owned);
+    if (toRemove <= 0) return 0;
+
+    const effects = upgrade.type === 'evolution' ? upgrade.effects : [upgrade];
+    for (let i = 0; i < toRemove; i++) {
+      effects.forEach((effect) => this._removeEffect(effect));
+      this.upgradeCounts[upgrade.id] -= 1;
+    }
+    if (this.upgradeCounts[upgrade.id] <= 0) {
+      delete this.upgradeCounts[upgrade.id];
+      this.ownedUpgradeIds.delete(upgrade.id);
+    }
+    return toRemove;
+  }
+
+  _removeEffect(effect) {
+    switch (effect.type) {
+      case 'damageMultiplier':
+        this.damageMultiplier -= effect.value;
+        break;
+      case 'speedMultiplier':
+        this.speedMultiplier -= effect.value;
+        break;
+      case 'cooldownMultiplier':
+        this.cooldownMultiplier = Math.max(0, this.cooldownMultiplier - effect.value);
+        break;
+      case 'rangeMultiplier':
+        this.rangeMultiplier -= effect.value;
+        break;
+      case 'maxHpBonus':
+        this.maxHpBonus -= effect.value;
+        break;
+      case 'maxHpPercentBonus':
+        this.maxHpPercentBonus -= effect.value;
+        break;
+      case 'sizeMultiplier':
+        this.sizeMultiplier -= effect.value;
+        break;
+      case 'thornsDamage':
+        this.thornsDamage -= effect.value;
+        break;
+      case 'lifestealFraction':
+        this.lifestealFraction -= effect.value;
+        break;
+      case 'damageReductionFraction':
+        this.damageReductionFraction = Math.max(0, this.damageReductionFraction - effect.value);
+        break;
+      case 'maxCardSlotsBonus':
+        this.maxCardSlotsBonus -= effect.value;
+        break;
+      case 'dodgeChance':
+        this.dodgeChance = Math.max(0, this.dodgeChance - effect.value);
+        break;
+      case 'paralyzeOnHit':
+        this.paralyzeOnHitChance = Math.max(0, this.paralyzeOnHitChance - (effect.chance ?? 0));
+        break;
+      default:
+        // unlockAbility/unlockRestock/unlockBleed/strayHits/bulletTimeOnAttack:
+        // sem valor numérico incremental por cópia pra desfazer aqui.
+        break;
+    }
   }
 
   /**

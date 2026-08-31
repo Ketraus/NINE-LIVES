@@ -416,4 +416,102 @@ export default class RunManager {
   restart() {
     this.runState.reset();
   }
+
+  /**
+   * Recalcula vida máxima e tamanho do Player a partir dos bônus atuais
+   * de RunState — chamado depois de remover/resetar cartas (cheatRemoveCard/
+   * cheatResetCards), já que essas ações mudam maxHpBonus/maxHpPercentBonus/
+   * sizeMultiplier sem passar pelos efeitos normais de _applyRuntimeEffect.
+   */
+  _syncPlayerFromRunState() {
+    const hs = this.player.healthSystem;
+    const newMax = Math.max(1, Math.round(BASE_MAX_HP * (1 + this.runState.maxHpPercentBonus)) + this.runState.maxHpBonus);
+    hs.maxHp = newMax;
+    hs.current = Math.min(hs.current, hs.maxHp);
+    hs.onChange(hs.current, hs.maxHp);
+    this.player.applySize(this.runState.sizeMultiplier);
+  }
+
+  /** Cheat (DevConsole "xp"): dá XP de verdade, reaproveitando collectXp (mesmo caminho do XP ganho em jogo). */
+  cheatAddXp(amount) {
+    const qty = Math.max(1, Math.floor(amount));
+    this.collectXp(qty);
+    return { ok: true, message: `+${qty} XP (nível ${this.runState.level}, ${this.runState.xp}/${this.runState.xpToNext}).` };
+  }
+
+  /** Cheat (DevConsole "levelup"): sobe N níveis instantaneamente, sem oferecer cartas (só os números). */
+  cheatLevelUp(count = 1) {
+    const n = Math.max(1, Math.floor(count));
+    for (let i = 0; i < n; i++) this.runState.forceLevelUp();
+    EventBus.emit('xp-changed', { xp: this.runState.xp, xpToNext: this.runState.xpToNext, level: this.runState.level });
+    return { ok: true, message: `Nível agora: ${this.runState.level}.` };
+  }
+
+  /** Cheat (DevConsole "heal"): cura o jogador pra vida máxima atual. */
+  cheatHeal() {
+    const hs = this.player.healthSystem;
+    hs.heal(hs.maxHp);
+    return { ok: true, message: `Vida restaurada (${hs.current}/${hs.maxHp}).` };
+  }
+
+  /** Cheat (DevConsole "god"): liga/desliga invencibilidade (ver checagem em DamageSystem). */
+  cheatToggleGodMode() {
+    this.player.godMode = !this.player.godMode;
+    return { ok: true, message: `God Mode ${this.player.godMode ? 'ATIVADO' : 'desativado'}.` };
+  }
+
+  /** Cheat (DevConsole "kill"): mata o jogador na hora, pra testar a tela de Game Over. */
+  cheatKillPlayer() {
+    const hs = this.player.healthSystem;
+    hs.takeDamage(hs.current + 9999);
+    return { ok: true, message: 'Jogador morto (dano forçado).' };
+  }
+
+  /**
+   * Cheat (DevConsole "remove"): desfaz até `quantity` cópias de uma carta
+   * BASE já obtida (ver RunState.removeUpgrade). Evoluções não podem ser
+   * removidas direto — só via "resetcards".
+   */
+  cheatRemoveCard(cardId, quantity = 1) {
+    const upgrade = this.upgradeDefs.find((u) => u.id === cardId);
+    if (!upgrade) {
+      return { ok: false, message: `Carta "${cardId}" não existe. Digite "list" pra ver os ids.` };
+    }
+    if (upgrade.category === 'evolution') {
+      return { ok: false, message: `"${upgrade.name}" é uma evolução, não dá pra remover direto — use "resetcards".` };
+    }
+    const owned = this.runState.upgradeCounts[cardId] || 0;
+    if (owned === 0) {
+      return { ok: false, message: `Você não tem "${upgrade.name}".` };
+    }
+
+    const removed = this.runState.removeUpgrade(upgrade, Math.max(1, Math.floor(quantity)));
+    this._syncPlayerFromRunState();
+    const left = this.runState.upgradeCounts[cardId] || 0;
+    return { ok: true, message: `-${removed}x "${upgrade.name}" (restam ${left}).` };
+  }
+
+  /**
+   * Cheat (DevConsole "resetcards"): limpa todas as cartas/upgrades da run
+   * atual (RunState.resetUpgrades), recalcula vida/tamanho do Player e
+   * pede pro AbilityManager desmontar as habilidades ativas (drone,
+   * cachorro, escudo etc. — ver evento 'ability-reset'). Level/XP/kills
+   * não são afetados, só o build.
+   */
+  cheatResetCards() {
+    this.runState.resetUpgrades();
+    this._syncPlayerFromRunState();
+    const hs = this.player.healthSystem;
+    hs.heal(hs.maxHp);
+
+    if (this.player.shieldSystem) {
+      this.player.shieldSystem = null;
+      this.player.shieldFx?.destroy();
+      this.player.shieldFx = null;
+      EventBus.emit('player-shield-changed', { current: 0, max: 0 });
+    }
+    EventBus.emit('ability-reset');
+
+    return { ok: true, message: 'Todas as cartas e upgrades foram resetados.' };
+  }
 }

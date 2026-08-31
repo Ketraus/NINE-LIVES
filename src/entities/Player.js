@@ -76,6 +76,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.weaponManager = null; // injetado pela GameScene depois de criado
     this.isDead = false;
+    // God Mode (cheat "god" do DevConsole, F9): checado em DamageSystem
+    // .applyContactDamage/applyWeaponHit — nenhum dano passa enquanto true.
+    this.godMode = false;
     this.lastHorizontalDir = 1; // direção horizontal "travada" pra armas tipo katana (1 = direita, -1 = esquerda)
 
     // escudo (carta "Escudo Energético"): null até a habilidade ser
