@@ -1,4 +1,5 @@
 import Enemy from './Enemy.js';
+import SwarmSystem from './SwarmSystem.js';
 
 const DEFAULT_MAX_ALIVE = 14; // trava inicial da quantidade simultânea, até o SpawnDirector assumir o controle via setMaxAlive()
 // Quanto além da borda da câmera o inimigo precisa nascer pra garantir que
@@ -25,13 +26,16 @@ export default class EnemySpawner {
    * @param {import('../../maps/MapManager.js').default} mapManager
    * @param {Player} player
    * @param {Array} enemyDefs - conteúdo de data/enemies.js
+   * @param {Object} [flockingConfig] - conteúdo de data/flockingConfig.js,
+   *   repassado pro SwarmSystem (comportamento de enxame, ver updateAll)
    */
-  constructor(scene, mapManager, player, enemyDefs) {
+  constructor(scene, mapManager, player, enemyDefs, flockingConfig) {
     this.scene = scene;
     this.mapManager = mapManager;
     this.player = player;
     this.enemyDefs = enemyDefs;
     this.maxAlive = DEFAULT_MAX_ALIVE;
+    this.swarmSystem = new SwarmSystem(flockingConfig);
 
     this.group = scene.physics.add.group({ runChildUpdate: false });
 
@@ -207,21 +211,30 @@ export default class EnemySpawner {
   }
 
   /**
-   * Chamado no update da GameScene: faz todos perseguirem o jogador.
-   * Repassa o multiplicador de velocidade da câmera lenta só-inimigos
-   * (scene.slowmoSystem — evolução "Reflexos de Predador", punhos, ver
-   * src/systems/SlowmoSystem.js) pra cada Enemy.chase(); 1 (velocidade
-   * normal) se a run não tiver essa evolução ou ela não estiver ativa agora.
+   * Chamado no update da GameScene: faz todos perseguirem o jogador com
+   * comportamento de enxame (SwarmSystem — Perseguição + Coesão +
+   * Separação + Densidade, pesos por tipo em def.flocking). O grid
+   * espacial é reconstruído UMA vez por frame aqui (não por inimigo) e
+   * reaproveitado por todo mundo, senão cada computeMoveDir() varreria
+   * o grupo inteiro de novo. Repassa o multiplicador de velocidade da
+   * câmera lenta só-inimigos (scene.slowmoSystem — evolução "Reflexos de
+   * Predador", punhos, ver src/systems/SlowmoSystem.js) pra cada
+   * Enemy.chase(); 1 (velocidade normal) se a run não tiver essa
+   * evolução ou ela não estiver ativa agora.
    */
   updateAll(nowMs) {
     const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
-    this.group.children.iterate((enemy) => {
+    const active = this.group.getChildren().filter((e) => e.active);
+    this.swarmSystem.rebuild(active);
+
+    active.forEach((enemy) => {
       if (this.frozen) {
-        enemy?.setVelocity(0, 0);
+        enemy.setVelocity(0, 0);
       } else {
-        enemy?.chase(this.player, nowMs, speedMultiplier);
+        const moveDir = this.swarmSystem.computeMoveDir(enemy, this.player);
+        enemy.chase(this.player, nowMs, speedMultiplier, moveDir);
       }
-      enemy?.updateBleed(nowMs);
+      enemy.updateBleed(nowMs);
     });
   }
 

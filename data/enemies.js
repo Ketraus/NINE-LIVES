@@ -8,7 +8,8 @@ export default [
     "contactDamage": 6,
     "contactCooldownMs": 900,
     "xpReward": 8,
-    "color": 15680580
+    "color": 15680580,
+    "flocking": { "seek": 1.0, "cohesion": 0.35, "separation": 0.9, "density": 0.6 }
   },
   {
     "id": "cyber_hound",
@@ -20,7 +21,8 @@ export default [
     "contactCooldownMs": 800,
     "xpReward": 4,
     "color": 11526834,
-    "minSpawnTimeMs": 35000
+    "minSpawnTimeMs": 35000,
+    "flocking": { "seek": 1.3, "cohesion": 0.1, "separation": 0.6, "density": 1.0 }
   },
   {
     "id": "cyber_brute",
@@ -32,7 +34,8 @@ export default [
     "contactCooldownMs": 1000,
     "xpReward": 20,
     "color": 6045240,
-    "minSpawnTimeMs": 60000
+    "minSpawnTimeMs": 60000,
+    "flocking": { "seek": 0.9, "cohesion": 0.5, "separation": 0.4, "density": 0.15 }
   }
 ]
 ;

@@ -20,6 +20,7 @@ import weaponsData from '../../data/weapons.js';
 import upgradesData from '../../data/upgrades.js';
 import spawnPhasesData from '../../data/spawnPhases.js';
 import spawnCurvesData from '../../data/spawnCurves.js';
+import flockingConfigData from '../../data/flockingConfig.js';
 
 const XP_ORB_PICKUP_RANGE_HINT = 4; // margem extra no corpo físico do orb
 const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
@@ -178,7 +179,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _buildEnemies() {
-    this.enemySpawner = new EnemySpawner(this, this.mapManager, this.player, enemiesData);
+    this.enemySpawner = new EnemySpawner(this, this.mapManager, this.player, enemiesData, flockingConfigData);
     // Inimigos colidem entre si (mas continuam atravessáveis pelo jogador —
     // aquilo é overlap, não collider, ver _buildCollisions) pra não ficarem
     // empilhados uns dentro dos outros; a física arcade já separa sozinha

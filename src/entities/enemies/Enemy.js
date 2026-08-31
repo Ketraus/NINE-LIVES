@@ -88,9 +88,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Persegue o alvo (o jogador) em linha reta. IA simples de propósito — é
-   * o protótipo. Matemática feita na mão (em vez de Phaser.Math.Vector2)
-   * pra não alocar um objeto novo por inimigo a cada frame — com poucos
+   * Move o inimigo por um frame. IA "principal" continua sendo perseguir
+   * o alvo (o jogador) — mas quando `moveDir` é passado (SwarmSystem, ver
+   * EnemySpawner.updateAll), ele já vem combinando Perseguição + Coesão +
+   * Separação + Densidade com os pesos do tipo deste inimigo
+   * (def.flocking), e chase() só aplica essa direção final na velocity,
+   * sem recalcular nada de enxame aqui — este método continua sendo só o
+   * dono de paralisia/knockback/tint, não da IA de movimento em si.
+   * Matemática feita na mão (em vez de Phaser.Math.Vector2) pra não
+   * alocar um objeto novo por inimigo a cada frame — com poucos
    * inimigos isso não importa nada, mas em enxames grandes (dezenas+) esse
    * lixo extra de memória é o tipo de coisa que pesa mais em celular do
    * que no PC, por causa da garbage collection.
@@ -103,8 +109,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    *   src/systems/SlowmoSystem.js); 1 = velocidade normal. Só afeta a
    *   perseguição normal — knockback e paralisia (abaixo) já ignoram
    *   `def.speed` de qualquer forma, então não precisam disto.
+   * @param {{x: number, y: number}} [moveDir] - direção já normalizada
+   *   vinda de SwarmSystem.computeMoveDir(). Se omitido, cai no seek puro
+   *   de sempre (compat: cheat "spawn" antes do 1º frame, testes, etc.).
    */
-  chase(target, nowMs = 0, speedMultiplier = 1) {
+  chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {
     if (!this.active || this.healthSystem.isDead()) return;
 
     const isParalyzed = nowMs < this.paralyzedUntil;
@@ -115,12 +124,20 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.setVelocity(0, 0); // paralisado: para no lugar, não persegue
       return;
     }
+
+    const speed = this.def.speed * speedMultiplier;
+
+    if (moveDir) {
+      this.setVelocity(moveDir.x * speed, moveDir.y * speed);
+      return;
+    }
+
+    // fallback: seek puro direto pro alvo (sem enxame) — mesmo comportamento de antes do SwarmSystem
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const distSq = dx * dx + dy * dy;
     if (distSq === 0) return;
     const dist = Math.sqrt(distSq);
-    const speed = this.def.speed * speedMultiplier;
     this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
   }
 
