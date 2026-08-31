@@ -122,6 +122,7 @@ export default class DevConsole {
         this._log('killall — elimina todos os inimigos da arena');
         this._log('listenemies — lista os tipos de inimigo disponíveis (id, hp, velocidade, dano)');
         this._log('freeze — liga/desliga o congelamento de todos os inimigos');
+        this._log('settime <segundos> — ajusta o tempo decorrido da run (afeta dificuldade e vitória aos 10:00)');
         break;
 
       case 'list': {
@@ -236,6 +237,18 @@ export default class DevConsole {
       case 'freeze': {
         const frozen = this.scene.enemySpawner.toggleFrozen();
         this._log(`Freeze ${frozen ? 'ATIVADO' : 'desativado'} — inimigos ${frozen ? 'parados' : 'liberados'}.`);
+        break;
+      }
+
+      case 'settime': {
+        const [secRaw] = args;
+        const sec = Number(secRaw);
+        if (!Number.isFinite(sec) || sec < 0) {
+          this._log('Uso: settime <segundos>');
+          break;
+        }
+        this.scene.spawnDirector.setElapsedMs(sec * 1000);
+        this._log(`Tempo de run ajustado pra ${sec}s.`);
         break;
       }
 

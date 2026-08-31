@@ -154,6 +154,22 @@ export default class SpawnDirector {
   }
 
   /**
+   * Cheat (DevConsole "settime"): ajusta o relógio da run pra um tempo
+   * decorrido específico, sem mexer em pausedMs/pauseStartedAt — só
+   * recalcula startTime pra que getElapsedMs() passe a devolver targetMs
+   * a partir de agora. Afeta tudo que lê getElapsedMs() (CAP_CURVE/
+   * INTERVAL_CURVE/BATCH_CURVE aqui, minSpawnTimeMs dos inimigos em
+   * EnemySpawner, e a checagem de vitória aos 10:00 em GameScene) — é
+   * assim que dá pra pular direto pro fim do jogo (ou voltar pro início)
+   * pra testar.
+   */
+  setElapsedMs(targetMs) {
+    const now = this._now();
+    const currentPauseMs = this.pauseStartedAt != null ? now - this.pauseStartedAt : 0;
+    this.startTime = now - this.pausedMs - currentPauseMs - Math.max(0, targetMs);
+  }
+
+  /**
    * Reagenda a cada disparo (em vez de um addEvent com loop:true de delay
    * fixo) porque o intervalo muda com o tempo — cada leva precisa recalcular
    * o delay da PRÓXIMA leva com base na dificuldade atual.
