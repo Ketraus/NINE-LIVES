@@ -214,15 +214,13 @@ export default [
   {
     "id": "pistol_fragmentation",
     "name": "Fragmentação",
-    "description": "Sua pistola vira uma escopeta: dispara 3 projéteis ao mesmo tempo, cada um numa direção levemente diferente. Cada projétil causa menos dano e tem alcance reduzido, mas acertar mais de um no mesmo inimigo soma o dano total — em troca, o disparo fica mais lento. Cada cópia soma mais um projétil ao leque (máx. 4).",
+    "description": "Sua pistola vira uma escopeta: dispara 3 projéteis ao mesmo tempo, cada um numa direção levemente diferente. Cada projétil causa menos dano e tem alcance reduzido, mas acertar mais de um no mesmo inimigo soma o dano total — em troca, o disparo fica bem mais lento. Cada cópia soma mais um projétil ao leque (máx. 4).",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "pistol",
-    // última carta exclusiva do jogo: não evolui (sem evolvesAtStacks/
-    // evolvesInto) — o comportamento em si já é lido por stacks direto em
-    // WeaponManager/RangedWeapon.js, mesmo padrão de katana_double
-    // (doubleStrike), então não passa pelo AbilityManager
     "maxStacks": 4,
+    "evolvesAtStacks": 4,
+    "evolvesInto": "pistol_fragmentation_evo_smartshot",
     "type": "unlockAbility",
     "abilityId": "fragmentation"
   },
@@ -231,6 +229,24 @@ export default [
   // sozinhas via evento 'evolution-ready' quando a carta base (`evolvesFrom`)
   // completa EVOLUTION_STACK_THRESHOLD cópias (ver RunManager). `effects` é
   // uma lista porque uma evolução costuma dar mais de um bônus de uma vez.
+  {
+    "id": "pistol_fragmentation_evo_smartshot",
+    "name": "SMARTSHOT",
+    "description": "Os projéteis da Fragmentação ganham uma segunda chance: depois de uma certa distância, se ainda não acertaram ninguém, mudam de rumo pro inimigo mais próximo em vez de ir embora. Sem ninguém por perto, seguem reto.",
+    "category": "evolution",
+    "rarity": "epic",
+    "evolvesFrom": "pistol_fragmentation",
+    "weaponId": "pistol",
+    "type": "evolution",
+    "effects": [
+      // não é unlockAbility de habilidade autônoma: o leque de projéteis
+      // já é lido direto pelo WeaponManager (statMods.fragmentation) — isto
+      // só liga a flag que faz RangedWeapon._trySmartRetarget redirecionar
+      // a bala pro inimigo mais próximo a meio caminho do voo (mesmo
+      // padrão de "danceOfCuts" na evolução da katana)
+      { "type": "unlockAbility", "abilityId": "smartShot" }
+    ]
+  },
   {
     "id": "hp_up_evo_colosso",
     "name": "COLOSSO",

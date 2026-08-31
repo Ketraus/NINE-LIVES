@@ -35,16 +35,24 @@ const LASER_TEX_HEIGHT = 8;
 const CHAIN_SHOT_JUMPS = 1;
 
 // ---- "Fragmentação" (pistol_fragmentation, ver data/upgrades.js) ----
-// Cada projétil do leque causa uma fração do dano normal e viaja bem
-// menos longe (lifetime reduzido em vez de mexer no alcance de MIRA, que
-// continua o mesmo pra achar o alvo) — mas como são vários, acertar mais
-// de um no mesmo inimigo soma mais dano total que o tiro único. Ângulo
-// entre projéteis adjacentes do leque; mesmo padrão "em cone a partir da
-// origem" do ShockwaveAbility._angleOffsets (nascem todos no mesmo ponto,
-// direções levemente diferentes).
-const FRAGMENTATION_DAMAGE_FRACTION = 0.45;
+// Cada projétil do leque causa uma fração do dano normal (mas maior que
+// 1x: com o dano base da pistola em 5, 3 balas × (5 × 4/3) = 20 se as 3
+// conectarem no mesmo alvo) e viaja bem menos longe (lifetime reduzido em
+// vez de mexer no alcance de MIRA, que continua o mesmo pra achar o
+// alvo). Ângulo entre projéteis adjacentes do leque — mesmo padrão "em
+// cone a partir da origem" do ShockwaveAbility._angleOffsets (nascem
+// todos no mesmo ponto, direções levemente diferentes, leque mais fechado
+// que a v1 pra não espalhar tanto).
+const FRAGMENTATION_DAMAGE_FRACTION = 4 / 3;
 const FRAGMENTATION_LIFETIME_FRACTION = 0.55;
-const FRAGMENTATION_SPREAD_DEG = 13;
+const FRAGMENTATION_SPREAD_DEG = 7;
+
+// ---- "SMARTSHOT" (pistol_fragmentation_evo_smartshot) ----
+// Ponto do voo (fração do lifetime total da bala) em que uma bala que
+// ainda não acertou ninguém ganha a "segunda chance": procura o inimigo
+// mais próximo dentro de chainRange e muda de direção pra ele; sem
+// ninguém por perto, segue reto (nada muda).
+const SMART_SHOT_TRIGGER_FRACTION = 0.5;
 
 export default class RangedWeapon {
   /** @param {object} def - entrada de data/weapons.js (type: "ranged") */
@@ -68,9 +76,9 @@ export default class RangedWeapon {
     // mais próximo, só abre a saída em várias direções a partir dali).
     // Sem a carta, pelletCount vem null/0 e cai no tiro único de sempre.
     if (statMods.fragmentation) {
-      this._fireFragmentationVolley(scene, player, dir, damage, statMods);
+      this._fireFragmentationVolley(scene, player, enemyGroup, dir, damage, statMods);
     } else {
-      this._spawnBullet(scene, player, dir, damage, statMods, {});
+      this._spawnBullet(scene, player, enemyGroup, dir, damage, statMods, {});
     }
 
     return true;
@@ -79,13 +87,12 @@ export default class RangedWeapon {
   /**
    * Leque de projéteis da "Fragmentação" (statMods.fragmentation.pelletCount
    * — 1 cópia = 3, cada cópia extra soma +1, ver WeaponManager). Cada bala
-   * causa só FRAGMENTATION_DAMAGE_FRACTION do dano normal e vive bem menos
+   * causa FRAGMENTATION_DAMAGE_FRACTION do dano normal e vive bem menos
    * tempo (FRAGMENTATION_LIFETIME_FRACTION), então acerta de perto — daí a
-   * sensação de escopeta: dano total maior só se VÁRIAS conectarem no
-   * mesmo alvo. Ângulos em leque a partir de `dir`, mesmo padrão de
-   * ShockwaveAbility._angleOffsets (1ª reta, demais alternando lado).
+   * sensação de escopeta. Ângulos em leque a partir de `dir`, mesmo padrão
+   * de ShockwaveAbility._angleOffsets (1ª reta, demais alternando lado).
    */
-  _fireFragmentationVolley(scene, player, dir, damage, statMods) {
+  _fireFragmentationVolley(scene, player, enemyGroup, dir, damage, statMods) {
     const pelletCount = statMods.fragmentation.pelletCount;
     const pelletDamage = damage * FRAGMENTATION_DAMAGE_FRACTION;
     const step = Phaser.Math.DegToRad(FRAGMENTATION_SPREAD_DEG);
@@ -94,7 +101,7 @@ export default class RangedWeapon {
       const side = i === 0 ? 0 : i % 2 === 1 ? 1 : -1;
       const angleOffset = step * side * Math.ceil(i / 2);
       const pelletDir = dir.clone().rotate(angleOffset);
-      this._spawnBullet(scene, player, pelletDir, pelletDamage, statMods, {
+      this._spawnBullet(scene, player, enemyGroup, pelletDir, pelletDamage, statMods, {
         lifetimeMs: DEFAULT_PROJECTILE_LIFETIME_MS * FRAGMENTATION_LIFETIME_FRACTION,
         scale: 0.8
       });
@@ -108,7 +115,7 @@ export default class RangedWeapon {
    * deixam a Fragmentação encolher o alcance/tamanho de cada bala sem
    * mexer no tiro normal.
    */
-  _spawnBullet(scene, player, dir, damage, statMods, overrides) {
+  _spawnBullet(scene, player, enemyGroup, dir, damage, statMods, overrides) {
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
     const tint = this.def.projectileTint ?? DEFAULT_PROJECTILE_TINT;
     const textureKey = this._ensureBulletTexture(scene, tint);
@@ -150,8 +157,33 @@ export default class RangedWeapon {
     bullet.setData('chainJumpsLeft', statMods.chainShot ? CHAIN_SHOT_JUMPS : 0);
     bullet.setData('chainRange', this.def.range * (1 + statMods.rangeMultiplier));
 
+    // "SMARTSHOT": a meio caminho do tempo de vida, se a bala ainda não
+    // acertou ninguém, dá uma última chance de mirar em quem estiver por
+    // perto em vez de simplesmente ir embora — ver _trySmartRetarget.
+    if (statMods.smartShot) {
+      const triggerMs = lifetimeMs * SMART_SHOT_TRIGGER_FRACTION;
+      scene.time.delayedCall(triggerMs, () => this._trySmartRetarget(bullet, enemyGroup));
+    }
+
     // projétil não deve viver pra sempre caso erre todo mundo
     scene.time.delayedCall(lifetimeMs, () => bullet.destroy());
+  }
+
+  /**
+   * "SMARTSHOT" (evolução de Fragmentação): dá à bala uma segunda chance
+   * de mirar em alguém antes de sumir sem acertar nada. Só mexe em balas
+   * que ainda estão vivas e que ainda não acertaram ninguém (hitEnemies
+   * vazio) — uma bala que já conectou segue seu curso normal (ou seu
+   * salto normal de "Instinto Caçador", se houver). Sem inimigo dentro de
+   * chainRange, não faz nada: a bala continua reto, como sempre.
+   */
+  _trySmartRetarget(bullet, enemyGroup) {
+    if (!bullet.active) return;
+    if (bullet.getData('hitEnemies').length > 0) return;
+
+    const nearest = this._findNearestEnemy(bullet.x, bullet.y, enemyGroup, bullet.getData('chainRange'));
+    if (!nearest) return;
+    this._retarget(bullet, nearest);
   }
 
   /**

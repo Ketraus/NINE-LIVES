@@ -15,8 +15,8 @@ import RangedWeapon from './RangedWeapon.js';
  */
 // "Fragmentação" (pistol_fragmentation): cadência de tiro mais lenta em
 // troca do leque de projéteis (ver RangedWeapon._fireFragmentationVolley)
-// — cooldown do tiro sobe 60% enquanto a carta estiver ativa.
-const FRAGMENTATION_COOLDOWN_MULTIPLIER = 1.6;
+// — cooldown do tiro mais que dobra enquanto a carta estiver ativa.
+const FRAGMENTATION_COOLDOWN_MULTIPLIER = 2.4;
 
 export default class WeaponManager {
   /**
@@ -73,6 +73,9 @@ export default class WeaponManager {
       // cópia = 3 projéteis no leque, cada cópia extra soma +1 (máx. 4
       // cópias = 6, ver data/upgrades.js maxStacks)
       fragmentation: fragmentationStacks > 0 ? { pelletCount: fragmentationStacks + 2 } : null,
+      // true só depois da evolução "SMARTSHOT" (Fragmentação, pistola);
+      // RangedWeapon.js ignora se a arma não for a pistola
+      smartShot: this.runState.unlockedAbilities.has('smartShot'),
       // config da evolução "Corte Fantasma" (Visão Aguçada, katana) ou null
       // se não obtida; Weapon.js ignora se a arma não for a katana (shape
       // "line", só ela chama _fireLine/_applyStrayHits)
