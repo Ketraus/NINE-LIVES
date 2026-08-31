@@ -70,14 +70,17 @@ const BATCH_CURVE = [
 ];
 
 /**
- * Dono do "quando" e "quantos" da sobrevivência por tempo: cronometra a
- * run e, com base no tempo decorrido, decide a frequência das levas de
- * spawn e quantos inimigos cada leva pede. NÃO sabe nada sobre COMO um
- * inimigo é criado, posicionado ou de que tipo é — isso continua 100% em
- * EnemySpawner.spawnOne() (que também segue sendo quem decide se pode
- * spawnar mais, via setMaxAlive(), e quem garante que todo spawn nasce
- * fora da visão da câmera — ver _findSpawnPosition() lá). Este é só o
- * metrônomo; o spawner é quem toca o instrumento.
+ * Dono do "quando", "quantos" e "de que tipo" da sobrevivência por tempo:
+ * cronometra a run e, com base no tempo decorrido, decide a frequência das
+ * levas de spawn, quantos inimigos cada leva pede E os pesos de cada tipo
+ * de inimigo na hora do sorteio (ver _currentWeights/data/spawnPhases.js).
+ * NÃO sabe nada sobre COMO um inimigo é criado, posicionado ou sorteado de
+ * fato — isso continua 100% em EnemySpawner.spawnOne() (que também segue
+ * sendo quem decide se pode spawnar mais, via setMaxAlive(), quem faz o
+ * sorteio ponderado a partir dos pesos recebidos, e quem garante que todo
+ * spawn nasce fora da visão da câmera — ver _findSpawnPosition() lá). Este
+ * é só o metrônomo (e o "roteirista" da composição da horda); o spawner é
+ * quem toca o instrumento.
  *
  * Inimigos já vivos nunca são tocados aqui — cada leva só ADICIONA novos
  * via spawnOne(), então quem já estava na tela continua vivo normalmente.
@@ -91,10 +94,15 @@ export default class SpawnDirector {
   /**
    * @param {Phaser.Scene} scene
    * @param {import('../entities/enemies/EnemySpawner.js').default} enemySpawner
+   * @param {Array} [spawnPhases] - conteúdo de data/spawnPhases.js; pontos
+   *   {t, weights} com o peso de cada tipo de inimigo ao longo do tempo de
+   *   run (ver _currentWeights). Opcional só por segurança — sem ele, cai
+   *   no sorteio uniforme antigo (EnemySpawner.spawnOne sem weights).
    */
-  constructor(scene, enemySpawner) {
+  constructor(scene, enemySpawner, spawnPhases = []) {
     this.scene = scene;
     this.enemySpawner = enemySpawner;
+    this.spawnPhases = spawnPhases;
     this.startTime = null;
     this.timerEvent = null;
     this.pausedMs = 0; // soma de todo tempo já pausado (tela de cartas), descontado do relógio da run
@@ -201,8 +209,12 @@ export default class SpawnDirector {
     // maior por uma ou duas levas, até alcançar o novo teto.
     const deficit = cap - this.enemySpawner.getAliveCount();
     const amount = Math.max(this._currentBatchSize(), deficit);
+    // a fase atual (pesos por tipo, ver _currentWeights) é escolhida uma
+    // vez por leva e vale pra todos os inimigos dela — evita recalcular a
+    // mesma interpolação `amount` vezes seguidas
+    const weights = this._currentWeights();
     for (let i = 0; i < amount; i++) {
-      this.enemySpawner.spawnOne(this.getElapsedMs());
+      this.enemySpawner.spawnOne(this.getElapsedMs(), weights);
     }
   }
 
@@ -212,6 +224,46 @@ export default class SpawnDirector {
 
   _currentBatchSize() {
     return Math.round(this._lerpCurve(BATCH_CURVE, this.getElapsedMs()));
+  }
+
+  /**
+   * Escolhe a fase atual da horda: interpola os pesos por id de inimigo
+   * entre os dois pontos de spawnPhases (data/spawnPhases.js) que cercam o
+   * tempo decorrido, igual em espírito ao _lerpCurve (suave, sem degraus),
+   * mas por objeto {id: peso} em vez de um número só — um id ausente num
+   * dos dois pontos entra com peso 0 nele (ainda não "chegou" ou já não
+   * existe mais nessa fase). Antes do primeiro ponto ou depois do último,
+   * usa os pesos daquele ponto direto, sem interpolar.
+   * @returns {Object<string, number>|null} pesos por id de inimigo, ou
+   *   null se não houver spawnPhases configuradas (EnemySpawner cai pro
+   *   sorteio uniforme antigo nesse caso)
+   */
+  _currentWeights() {
+    if (!this.spawnPhases || this.spawnPhases.length === 0) return null;
+
+    const elapsedMs = this.getElapsedMs();
+    if (elapsedMs <= this.spawnPhases[0].t) return this.spawnPhases[0].weights;
+
+    const last = this.spawnPhases[this.spawnPhases.length - 1];
+    if (elapsedMs >= last.t) return last.weights;
+
+    for (let i = 0; i < this.spawnPhases.length - 1; i++) {
+      const a = this.spawnPhases[i];
+      const b = this.spawnPhases[i + 1];
+      if (elapsedMs >= a.t && elapsedMs <= b.t) {
+        const progress = (elapsedMs - a.t) / (b.t - a.t);
+        const ids = new Set([...Object.keys(a.weights), ...Object.keys(b.weights)]);
+        const result = {};
+        ids.forEach((id) => {
+          const wa = a.weights[id] ?? 0;
+          const wb = b.weights[id] ?? 0;
+          result[id] = wa + (wb - wa) * progress;
+        });
+        return result;
+      }
+    }
+
+    return last.weights; // inalcançável na prática, só por segurança
   }
 
   /**

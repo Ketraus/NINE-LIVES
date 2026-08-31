@@ -57,16 +57,48 @@ export default class EnemySpawner {
    * pelo SpawnDirector — quantas vezes e com que frequência é decisão dele,
    * não deste método.
    * @param {number} [nowMs] - tempo decorrido de run (SpawnDirector.getElapsedMs());
-   *   usado só pra filtrar tipos com `def.minSpawnTimeMs` ainda não liberado
+   *   usado só como fallback (filtro por `def.minSpawnTimeMs`) quando `weights` não é passado
+   * @param {Object<string, number>|null} [weights] - pesos por id de
+   *   inimigo pra esta leva (SpawnDirector._currentWeights, vindo de
+   *   data/spawnPhases.js). Se vier null/vazio, cai no sorteio uniforme
+   *   antigo filtrado por minSpawnTimeMs — mantém o spawner funcionando
+   *   mesmo sem fases configuradas.
    * @returns {Enemy|null}
    */
-  spawnOne(nowMs = 0) {
+  spawnOne(nowMs = 0, weights = null) {
     // enxame sob controle: se já tem gente demais viva, pula esse ciclo
     if (this.group.countActive(true) >= this.maxAlive) return null;
 
-    const availableDefs = this.enemyDefs.filter((def) => !def.minSpawnTimeMs || nowMs >= def.minSpawnTimeMs);
-    const def = Phaser.Utils.Array.GetRandom(availableDefs.length > 0 ? availableDefs : this.enemyDefs);
+    const def = weights ? this._pickWeighted(weights) : this._pickUniform(nowMs);
+    if (!def) return null;
     return this._createAt(def, this._findSpawnPosition());
+  }
+
+  /**
+   * Sorteio ponderado: cada id em `weights` com peso > 0 entra na roleta
+   * proporcional ao seu valor (não precisa somar 100 — é tudo relativo ao
+   * total). Ids com peso 0/ausente ou que não existem em enemyDefs não
+   * entram no sorteio.
+   */
+  _pickWeighted(weights) {
+    const entries = this.enemyDefs
+      .map((def) => ({ def, weight: weights[def.id] ?? 0 }))
+      .filter((e) => e.weight > 0);
+    if (entries.length === 0) return null;
+
+    const total = entries.reduce((sum, e) => sum + e.weight, 0);
+    let roll = Phaser.Math.FloatBetween(0, total);
+    for (const entry of entries) {
+      if (roll < entry.weight) return entry.def;
+      roll -= entry.weight;
+    }
+    return entries[entries.length - 1].def; // sobra de arredondamento de ponto flutuante
+  }
+
+  /** Sorteio antigo (uniforme, filtrado por minSpawnTimeMs) — só usado quando não há spawnPhases. */
+  _pickUniform(nowMs) {
+    const availableDefs = this.enemyDefs.filter((def) => !def.minSpawnTimeMs || nowMs >= def.minSpawnTimeMs);
+    return Phaser.Utils.Array.GetRandom(availableDefs.length > 0 ? availableDefs : this.enemyDefs);
   }
 
   /**
