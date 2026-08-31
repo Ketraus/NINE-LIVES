@@ -34,6 +34,12 @@ export default class EnemySpawner {
     this.maxAlive = DEFAULT_MAX_ALIVE;
 
     this.group = scene.physics.add.group({ runChildUpdate: false });
+
+    // Freeze (cheat "freeze" do DevConsole, F9): true = inimigos param no
+    // lugar (chase() não roda), mas o resto do jogo continua normal — o
+    // jogador ainda se move/ataca, e um inimigo congelado ainda pode levar
+    // dano ou até morrer normalmente, só não persegue nem anda.
+    this.frozen = false;
   }
 
   /** Muda o teto de inimigos vivos simultaneamente. Chamado pelo SpawnDirector. */
@@ -178,8 +184,18 @@ export default class EnemySpawner {
   updateAll(nowMs) {
     const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
     this.group.children.iterate((enemy) => {
-      enemy?.chase(this.player, nowMs, speedMultiplier);
+      if (this.frozen) {
+        enemy?.setVelocity(0, 0);
+      } else {
+        enemy?.chase(this.player, nowMs, speedMultiplier);
+      }
       enemy?.updateBleed(nowMs);
     });
+  }
+
+  /** Cheat (DevConsole "freeze"): liga/desliga o congelamento de todos os inimigos. */
+  toggleFrozen() {
+    this.frozen = !this.frozen;
+    return this.frozen;
   }
 }

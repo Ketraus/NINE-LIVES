@@ -120,6 +120,8 @@ export default class DevConsole {
         this._log('kill — mata o jogador na hora');
         this._log('spawn <inimigoId> [quantidade] — spawna N inimigos específicos');
         this._log('killall — elimina todos os inimigos da arena');
+        this._log('listenemies — lista os tipos de inimigo disponíveis (id, hp, velocidade, dano)');
+        this._log('freeze — liga/desliga o congelamento de todos os inimigos');
         break;
 
       case 'list': {
@@ -221,6 +223,19 @@ export default class DevConsole {
       case 'killall': {
         const killed = this.scene.enemySpawner.killAll();
         this._log(`${killed} inimigo(s) eliminado(s).`);
+        break;
+      }
+
+      case 'listenemies': {
+        this.scene.enemySpawner.enemyDefs.forEach((d) => {
+          this._log(`${d.id} — ${d.name} (hp ${d.hp}, vel ${d.speed}, dano ${d.contactDamage})`);
+        });
+        break;
+      }
+
+      case 'freeze': {
+        const frozen = this.scene.enemySpawner.toggleFrozen();
+        this._log(`Freeze ${frozen ? 'ATIVADO' : 'desativado'} — inimigos ${frozen ? 'parados' : 'liberados'}.`);
         break;
       }
 
