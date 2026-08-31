@@ -34,6 +34,18 @@ const LASER_TEX_HEIGHT = 8;
 // carta em vez de uma constante fixa aqui.
 const CHAIN_SHOT_JUMPS = 1;
 
+// ---- "Fragmentação" (pistol_fragmentation, ver data/upgrades.js) ----
+// Cada projétil do leque causa uma fração do dano normal e viaja bem
+// menos longe (lifetime reduzido em vez de mexer no alcance de MIRA, que
+// continua o mesmo pra achar o alvo) — mas como são vários, acertar mais
+// de um no mesmo inimigo soma mais dano total que o tiro único. Ângulo
+// entre projéteis adjacentes do leque; mesmo padrão "em cone a partir da
+// origem" do ShockwaveAbility._angleOffsets (nascem todos no mesmo ponto,
+// direções levemente diferentes).
+const FRAGMENTATION_DAMAGE_FRACTION = 0.45;
+const FRAGMENTATION_LIFETIME_FRACTION = 0.55;
+const FRAGMENTATION_SPREAD_DEG = 13;
+
 export default class RangedWeapon {
   /** @param {object} def - entrada de data/weapons.js (type: "ranged") */
   constructor(def) {
@@ -50,14 +62,62 @@ export default class RangedWeapon {
 
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();
+
+    // "Fragmentação": em vez de 1 bala normal, dispara pelletCount balas
+    // mais fracas num leque em volta de `dir` (mira continua no inimigo
+    // mais próximo, só abre a saída em várias direções a partir dali).
+    // Sem a carta, pelletCount vem null/0 e cai no tiro único de sempre.
+    if (statMods.fragmentation) {
+      this._fireFragmentationVolley(scene, player, dir, damage, statMods);
+    } else {
+      this._spawnBullet(scene, player, dir, damage, statMods, {});
+    }
+
+    return true;
+  }
+
+  /**
+   * Leque de projéteis da "Fragmentação" (statMods.fragmentation.pelletCount
+   * — 1 cópia = 3, cada cópia extra soma +1, ver WeaponManager). Cada bala
+   * causa só FRAGMENTATION_DAMAGE_FRACTION do dano normal e vive bem menos
+   * tempo (FRAGMENTATION_LIFETIME_FRACTION), então acerta de perto — daí a
+   * sensação de escopeta: dano total maior só se VÁRIAS conectarem no
+   * mesmo alvo. Ângulos em leque a partir de `dir`, mesmo padrão de
+   * ShockwaveAbility._angleOffsets (1ª reta, demais alternando lado).
+   */
+  _fireFragmentationVolley(scene, player, dir, damage, statMods) {
+    const pelletCount = statMods.fragmentation.pelletCount;
+    const pelletDamage = damage * FRAGMENTATION_DAMAGE_FRACTION;
+    const step = Phaser.Math.DegToRad(FRAGMENTATION_SPREAD_DEG);
+
+    for (let i = 0; i < pelletCount; i++) {
+      const side = i === 0 ? 0 : i % 2 === 1 ? 1 : -1;
+      const angleOffset = step * side * Math.ceil(i / 2);
+      const pelletDir = dir.clone().rotate(angleOffset);
+      this._spawnBullet(scene, player, pelletDir, pelletDamage, statMods, {
+        lifetimeMs: DEFAULT_PROJECTILE_LIFETIME_MS * FRAGMENTATION_LIFETIME_FRACTION,
+        scale: 0.8
+      });
+    }
+  }
+
+  /**
+   * Cria e lança um único projétil físico — usado tanto pelo tiro único
+   * padrão quanto por cada bala do leque da Fragmentação (ver
+   * _fireFragmentationVolley). `overrides.lifetimeMs`/`overrides.scale`
+   * deixam a Fragmentação encolher o alcance/tamanho de cada bala sem
+   * mexer no tiro normal.
+   */
+  _spawnBullet(scene, player, dir, damage, statMods, overrides) {
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
     const tint = this.def.projectileTint ?? DEFAULT_PROJECTILE_TINT;
     const textureKey = this._ensureBulletTexture(scene, tint);
+    const lifetimeMs = overrides.lifetimeMs ?? DEFAULT_PROJECTILE_LIFETIME_MS;
 
     const bullet = this.bulletGroup.create(player.x, player.y, textureKey);
     bullet
       .setDepth(15)
-      .setScale(this.def.projectileScale ?? 1)
+      .setScale((this.def.projectileScale ?? 1) * (overrides.scale ?? 1))
       // ADD faz o raio "brilhar" contra o fundo em vez de só colar uma
       // textura em cima — é o que dá a sensação de laser/energia
       .setBlendMode(Phaser.BlendModes.ADD)
@@ -88,12 +148,10 @@ export default class RangedWeapon {
     // do salto usa o mesmo alcance (já com rangeMultiplier) do tiro em si,
     // já que a evolução parte justamente de Visão Aguçada
     bullet.setData('chainJumpsLeft', statMods.chainShot ? CHAIN_SHOT_JUMPS : 0);
-    bullet.setData('chainRange', range);
+    bullet.setData('chainRange', this.def.range * (1 + statMods.rangeMultiplier));
 
     // projétil não deve viver pra sempre caso erre todo mundo
-    scene.time.delayedCall(DEFAULT_PROJECTILE_LIFETIME_MS, () => bullet.destroy());
-
-    return true;
+    scene.time.delayedCall(lifetimeMs, () => bullet.destroy());
   }
 
   /**

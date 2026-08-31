@@ -211,6 +211,21 @@ export default [
     "range": 200,
     "projectileSpeed": 320
   },
+  {
+    "id": "pistol_fragmentation",
+    "name": "Fragmentação",
+    "description": "Sua pistola vira uma escopeta: dispara 3 projéteis ao mesmo tempo, cada um numa direção levemente diferente. Cada projétil causa menos dano e tem alcance reduzido, mas acertar mais de um no mesmo inimigo soma o dano total — em troca, o disparo fica mais lento. Cada cópia soma mais um projétil ao leque (máx. 4).",
+    "category": "exclusive",
+    "rarity": "rare",
+    "weaponId": "pistol",
+    // última carta exclusiva do jogo: não evolui (sem evolvesAtStacks/
+    // evolvesInto) — o comportamento em si já é lido por stacks direto em
+    // WeaponManager/RangedWeapon.js, mesmo padrão de katana_double
+    // (doubleStrike), então não passa pelo AbilityManager
+    "maxStacks": 4,
+    "type": "unlockAbility",
+    "abilityId": "fragmentation"
+  },
 
   // ---------- evoluções: nunca aparecem entre as 3 opções normais, só ----------
   // sozinhas via evento 'evolution-ready' quando a carta base (`evolvesFrom`)
@@ -456,7 +471,7 @@ export default [
       {
         "type": "upgradeAbility",
         "abilityId": "shockwave",
-        "explosionRadius": 60,
+        "explosionRadius": 70,
         "explosionDamageFraction": 0.5
       }
     ]

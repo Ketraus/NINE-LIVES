@@ -13,6 +13,11 @@ import RangedWeapon from './RangedWeapon.js';
  * uma arma nova só precisa de uma entrada em data/weapons.js e, se o
  * `type` já existir, nem precisa de código novo aqui.
  */
+// "Fragmentação" (pistol_fragmentation): cadência de tiro mais lenta em
+// troca do leque de projéteis (ver RangedWeapon._fireFragmentationVolley)
+// — cooldown do tiro sobe 60% enquanto a carta estiver ativa.
+const FRAGMENTATION_COOLDOWN_MULTIPLIER = 1.6;
+
 export default class WeaponManager {
   /**
    * @param {Phaser.Scene} scene
@@ -34,8 +39,14 @@ export default class WeaponManager {
   /** Chamado todo frame por Player.update() — o cooldown interno decide se ataca de fato. */
   tryAttack(player) {
     const now = this.scene.time.now;
-    const cooldown =
-      this.currentWeapon.def.cooldownMs * (1 - this.runState.cooldownMultiplier);
+    // quantidade de cópias já pegas da carta exclusiva "pistol_fragmentation"
+    // — 0 se não obtida (RangedWeapon.js ignora se a arma não for a pistola)
+    const fragmentationStacks = this.runState.upgradeCounts.pistol_fragmentation || 0;
+    let cooldown = this.currentWeapon.def.cooldownMs * (1 - this.runState.cooldownMultiplier);
+    // tiro fica mais lento em troca do leque de projéteis (ver
+    // RangedWeapon._fireFragmentationVolley) — aplicado por cima do
+    // cooldown normal, não substitui os outros multiplicadores
+    if (fragmentationStacks > 0) cooldown *= FRAGMENTATION_COOLDOWN_MULTIPLIER;
 
     if (now - this.lastAttackMs < cooldown) return;
 
@@ -57,6 +68,11 @@ export default class WeaponManager {
       // pistola); RangedWeapon.js ignora este campo se a arma não for a
       // pistola (só ela usa RangedWeapon pra começo de conversa)
       chainShot: this.runState.unlockedAbilities.has('chainShot'),
+      // config da "Fragmentação" (pistol_fragmentation) ou null se não
+      // obtida; RangedWeapon.js ignora se a arma não for a pistola. 1
+      // cópia = 3 projéteis no leque, cada cópia extra soma +1 (máx. 4
+      // cópias = 6, ver data/upgrades.js maxStacks)
+      fragmentation: fragmentationStacks > 0 ? { pelletCount: fragmentationStacks + 2 } : null,
       // config da evolução "Corte Fantasma" (Visão Aguçada, katana) ou null
       // se não obtida; Weapon.js ignora se a arma não for a katana (shape
       // "line", só ela chama _fireLine/_applyStrayHits)
