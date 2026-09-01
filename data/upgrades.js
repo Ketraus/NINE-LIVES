@@ -214,7 +214,7 @@ export default [
   {
     "id": "pistol_fragmentation",
     "name": "Fragmentação",
-    "description": "Sua pistola vira uma escopeta: dispara 3 projéteis ao mesmo tempo, cada um numa direção levemente diferente. Cada projétil causa menos dano e tem alcance reduzido, mas acertar mais de um no mesmo inimigo soma o dano total — em troca, o disparo fica bem mais lento. Cada cópia soma mais um projétil ao leque (máx. 4).",
+    "description": "Sua pistola vira uma escopeta.",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "pistol",
@@ -413,7 +413,7 @@ export default [
   {
     "id": "range_up_evo_katana_stray",
     "name": "Corte Fantasma",
-    "description": "Seus cortes ganham a chance de também acertar até 3 inimigos fora da faixa da espada, dentro de uma área ao seu redor.",
+    "description": "Seus cortes ganham a chance de também acertar até 3 inimigos fora da faixa da espada.,",
     "category": "evolution",
     "rarity": "epic",
     // segunda evolução possível de Visão Aguçada (ver range_up acima) — só
@@ -435,7 +435,7 @@ export default [
   {
     "id": "range_up_evo_fists_bullet_time",
     "name": "Reflexos de Predador",
-    "description": "7% de chance a cada soco de deixar os inimigos em câmera lenta por 1s — você continua se movendo normalmente.",
+    "description": "7% de chance a cada soco de deixar os inimigos em câmera lenta por 1s.",
     "category": "evolution",
     "rarity": "epic",
     // terceira evolução possível de Visão Aguçada — só pra punhos (ver
@@ -453,7 +453,7 @@ export default [
   {
     "id": "pistol_drone_evo_catforce",
     "name": "CatForce 2.0",
-    "description": "Os 4 drones passam a disparar lasers roxos que atravessam todos os inimigos no caminho. Dano e cadência de tiro continuam os mesmos.",
+    "description": "Os 4 drones passam a disparar lasers roxos que atravessam todos os inimigos no caminho.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "pistol_drone",
