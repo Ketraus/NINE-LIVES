@@ -17,7 +17,7 @@ export default [
   {
     "id": "katana",
     "name": "Katana",
-    "description": "Golpes em arco na direção que você está olhando, cortando vários inimigos ao seu redor. Recarga lenta, mas dano e alcance altos.",
+    "description": "Golpes em arco, corte vários inimigos ao seu redor.",
     "type": "melee",
     "shape": "sword",
     "damage": 24,
