@@ -10,15 +10,16 @@
  * levas de spawn, quantos inimigos cada leva pede E os pesos de cada tipo
  * de inimigo na hora do sorteio (ver _currentWeights/data/spawnPhases.js).
  * NÃO sabe nada sobre COMO um inimigo é criado, posicionado ou sorteado de
- * fato — isso continua 100% em EnemySpawner.spawnOne() (que também segue
+ * fato — isso continua 100% em EnemySpawner.spawnBatch() (que também segue
  * sendo quem decide se pode spawnar mais, via setMaxAlive(), quem faz o
- * sorteio ponderado a partir dos pesos recebidos, e quem garante que todo
- * spawn nasce fora da visão da câmera — ver _findSpawnPosition() lá). Este
- * é só o metrônomo (e o "roteirista" da composição da horda); o spawner é
- * quem toca o instrumento.
+ * sorteio ponderado a partir dos pesos recebidos, quem garante que todo
+ * spawn nasce fora da visão da câmera, e quem agrupa cada leva em pequenos
+ * blocos por setor ao redor do jogador — ver EnemySpawner.spawnBatch()).
+ * Este é só o metrônomo (e o "roteirista" da composição da horda); o
+ * spawner é quem toca o instrumento.
  *
  * Inimigos já vivos nunca são tocados aqui — cada leva só ADICIONA novos
- * via spawnOne(), então quem já estava na tela continua vivo normalmente.
+ * via spawnBatch(), então quem já estava na tela continua vivo normalmente.
  * Também controla, via EnemySpawner.setMaxAlive(), o teto de quantos
  * inimigos podem estar vivos ao mesmo tempo — esse teto cresce com o
  * tempo seguindo spawnCurves.capCurve (data/spawnCurves.js), então o
@@ -43,7 +44,7 @@ export default class SpawnDirector {
    * @param {Array} [spawnPhases] - conteúdo de data/spawnPhases.js; pontos
    *   {t, weights} com o peso de cada tipo de inimigo ao longo do tempo de
    *   run (ver _currentWeights). Opcional só por segurança — sem ele, cai
-   *   no sorteio uniforme antigo (EnemySpawner.spawnOne sem weights).
+   *   no sorteio uniforme antigo (EnemySpawner.spawnBatch sem weights).
    * @param {Object} [spawnCurves] - conteúdo de data/spawnCurves.js
    *   (absoluteMaxAlive/capCurve/intervalCurve/batchCurve). É AQUI que se
    *   edita teto de vivos, frequência de leva e tamanho de leva — não
@@ -164,9 +165,11 @@ export default class SpawnDirector {
     // vez por leva e vale pra todos os inimigos dela — evita recalcular a
     // mesma interpolação `amount` vezes seguidas
     const weights = this._currentWeights();
-    for (let i = 0; i < amount; i++) {
-      this.enemySpawner.spawnOne(this.getElapsedMs(), weights);
-    }
+    // spawnBatch (não mais um loop de spawnOne aqui) é quem decide COMO
+    // esses `amount` inimigos chegam — agrupados em pequenos blocos, cada
+    // um nascendo de um lado ao redor do jogador (ver EnemySpawner.
+    // spawnBatch); esta classe continua só decidindo QUANTOS.
+    this.enemySpawner.spawnBatch(amount, this.getElapsedMs(), weights);
   }
 
   _currentIntervalMs() {
