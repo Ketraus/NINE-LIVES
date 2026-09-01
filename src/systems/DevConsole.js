@@ -122,6 +122,7 @@ export default class DevConsole {
         this._log('killall — elimina todos os inimigos da arena');
         this._log('listenemies — lista os tipos de inimigo disponíveis (id, hp, velocidade, dano)');
         this._log('freeze — liga/desliga o congelamento de todos os inimigos');
+        this._log('autospawn — liga/desliga as levas automáticas (spawn manual continua funcionando)');
         this._log('settime <segundos> — ajusta o tempo decorrido da run (afeta dificuldade e vitória aos 10:00)');
         break;
 
@@ -237,6 +238,12 @@ export default class DevConsole {
       case 'freeze': {
         const frozen = this.scene.enemySpawner.toggleFrozen();
         this._log(`Freeze ${frozen ? 'ATIVADO' : 'desativado'} — inimigos ${frozen ? 'parados' : 'liberados'}.`);
+        break;
+      }
+
+      case 'autospawn': {
+        const enabled = this.scene.spawnDirector.toggleAutoSpawn();
+        this._log(`Spawn automático ${enabled ? 'ATIVADO' : 'DESATIVADO'} — use "spawn <id>" pra inimigos manuais.`);
         break;
       }
 

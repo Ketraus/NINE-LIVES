@@ -59,6 +59,14 @@ export default class SpawnDirector {
     this.timerEvent = null;
     this.pausedMs = 0; // soma de todo tempo já pausado (tela de cartas), descontado do relógio da run
     this.pauseStartedAt = null; // timestamp de quando a pausa atual começou, ou null se não está pausado
+
+    // Cheat (DevConsole "autospawn"): true = levas automáticas continuam
+    // sendo agendadas normalmente (_scheduleNextBatch/timerEvent), mas
+    // _spawnBatch() não chama enemySpawner.spawnBatch() enquanto isto for
+    // false — só spawns manuais (cheat "spawn", ver EnemySpawner.
+    // spawnByDefId) continuam criando inimigos. Não pausa o relógio da
+    // run nem o teto de vivos (setMaxAlive ainda roda), só a criação.
+    this.autoSpawnEnabled = true;
   }
 
   /**
@@ -151,6 +159,8 @@ export default class SpawnDirector {
     const cap = this._currentMaxAlive();
     this.enemySpawner.setMaxAlive(cap);
 
+    if (!this.autoSpawnEnabled) return; // cheat "autospawn" desligado: só spawn manual (ver toggleAutoSpawn)
+
     // Quando o teto sobe bastante entre uma leva e outra, o lote normal
     // (pequeno, pra não sufocar) demoraria muitos ciclos pra alcançar o
     // novo teto — daria a impressão de "poucos inimigos" logo depois da
@@ -170,6 +180,14 @@ export default class SpawnDirector {
     // um nascendo de um lado ao redor do jogador (ver EnemySpawner.
     // spawnBatch); esta classe continua só decidindo QUANTOS.
     this.enemySpawner.spawnBatch(amount, this.getElapsedMs(), weights);
+  }
+
+  /** Cheat (DevConsole "autospawn"): liga/desliga as levas automáticas
+   * (ver guard em _spawnBatch); "spawn <id>" manual continua funcionando
+   * sempre, independente deste estado. */
+  toggleAutoSpawn() {
+    this.autoSpawnEnabled = !this.autoSpawnEnabled;
+    return this.autoSpawnEnabled;
   }
 
   _currentIntervalMs() {

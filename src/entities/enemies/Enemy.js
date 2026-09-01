@@ -1,5 +1,6 @@
 import HealthSystem from '../../combat/HealthSystem.js';
 import EventBus from '../../systems/EventBus.js';
+import DamageSystem from '../../combat/DamageSystem.js';
 
 let nextInstanceId = 1;
 
@@ -65,6 +66,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // (ver _refreshStatusTint). Começa igual à cor normal porque o
     // construtor já chamou setTint(def.color) acima.
     this._currentStatusTint = def.color;
+
+    // Exploder (def.explodes = true, ver data/enemies.js): máquina de
+    // estados própria só deste tipo — 'chasing' (comportamento normal,
+    // ver chase()) -> 'preparing' (parado, piscando, ver _startPreparing)
+    // -> _explode() aplica dano em área via DamageSystem e chama die().
+    // Nenhum outro inimigo é afetado por isto (guard `def.explodes` em
+    // chase() abaixo).
+    this.explodeState = 'chasing';
+    this.explodePrepUntil = 0;
   }
 
   /**
@@ -115,6 +125,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    */
   chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {
     if (!this.active || this.healthSystem.isDead()) return;
+
+    // Exploder: enquanto preparando/explodindo, a máquina de estados
+    // própria assume o movimento (fica parado) e chase() normal não roda.
+    if (this.def.explodes && this._updateExplosive(target, nowMs)) return;
 
     const isParalyzed = nowMs < this.paralyzedUntil;
     this._refreshStatusTint(nowMs);
@@ -236,6 +250,117 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       ease: 'Quad.easeOut',
       onComplete: () => { if (this.active) this.setScale(1, 1); }
     });
+  }
+
+  /**
+   * Estado do Exploder (só roda quando def.explodes = true). Retorna
+   * true quando assumiu o movimento deste frame (charging/preparing/
+   * exploding), indicando pra chase() não rodar a perseguição normal
+   * por cima.
+   * - 'chasing': deixa chase() perseguir devagar/normal (SwarmSystem);
+   *   passa a 'charging' ao entrar em def.explodeChargeRadius.
+   * - 'charging': a "XANBLAU" — larga o enxame e arranca em linha reta
+   *   pro alvo bem mais rápido (def.speed * explodeChargeSpeedMultiplier)
+   *   até entrar em def.explodeTriggerRadius, aí vira 'preparing'.
+   * - 'preparing': para no lugar, piscando (sinal visual), até
+   *   explodePrepUntil vencer -> _explode().
+   */
+  _updateExplosive(target, nowMs) {
+    if (this.explodeState === 'preparing') {
+      this.setVelocity(0, 0);
+      if (nowMs >= this.explodePrepUntil) this._explode(target, nowMs);
+      return true;
+    }
+    if (this.explodeState === 'exploding') return true; // já explodindo, die() está a caminho
+
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+
+    if (this.explodeState === 'charging') {
+      if (dist <= this.def.explodeTriggerRadius) {
+        this._startPreparing(nowMs);
+        return true;
+      }
+      this._seekAt(target, this.def.speed * this.def.explodeChargeSpeedMultiplier);
+      return true;
+    }
+
+    // 'chasing': ainda no ritmo normal (SwarmSystem/chase() cuida do
+    // movimento, ver chamador). Só decide QUANDO trocar de estado.
+    if (dist <= this.def.explodeTriggerRadius) {
+      this._startPreparing(nowMs);
+      return true;
+    }
+    if (dist <= this.def.explodeChargeRadius) {
+      this._startCharging();
+      this._seekAt(target, this.def.speed * this.def.explodeChargeSpeedMultiplier);
+      return true;
+    }
+    return false; // ainda longe: segue perseguição normal (fora daqui)
+  }
+
+  /** Seek em linha reta pro alvo numa velocidade dada — usado pela
+   * arrancada da 'charging' (ignora flocking/SwarmSystem de propósito,
+   * é um bote direto, não um enxame). */
+  _seekAt(target, speed) {
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist === 0) { this.setVelocity(0, 0); return; }
+    this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+  }
+
+  /** Início da arrancada ("XANBLAU"): flash branco + esticada rápida,
+   * só pra marcar visualmente o instante em que ele "desiste" de vir
+   * devagar e parte pra cima do jogador. */
+  _startCharging() {
+    this.explodeState = 'charging';
+    this.scene.tweens.killTweensOf(this);
+    this.setTintFill(0xffffff);
+    this.scene.time.delayedCall(90, () => {
+      if (!this.active) return;
+      this._currentStatusTint = null;
+      this._refreshStatusTint(this.scene.time.now);
+    });
+    this.setScale(1, 1);
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: 1.5,
+      scaleY: 0.65,
+      duration: 90,
+      yoyo: true,
+      ease: 'Back.easeOut',
+      onComplete: () => { if (this.active) this.setScale(1, 1); }
+    });
+  }
+
+  /** Início da preparação: para no lugar e pisca em laranja de aviso. */
+  _startPreparing(nowMs) {
+    this.explodeState = 'preparing';
+    this.explodePrepUntil = nowMs + this.def.explodePrepMs;
+    this.setVelocity(0, 0);
+    this.scene.tweens.killTweensOf(this);
+    this.scene.tweens.add({
+      targets: this,
+      alpha: { from: 1, to: 0.35 },
+      scaleX: 1.25,
+      scaleY: 1.25,
+      duration: 110,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
+  /** Fim da preparação: dano em área (via DamageSystem) e morte. */
+  _explode(target, nowMs) {
+    this.explodeState = 'exploding';
+    this.scene.tweens.killTweensOf(this);
+    this.setAlpha(1);
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist <= this.def.explodeRadius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this.def.explodeDamage, this, nowMs);
+    }
+    this.die();
   }
 
   die() {

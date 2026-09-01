@@ -36,6 +36,26 @@ export default [
     "color": 6045240,
     "minSpawnTimeMs": 60000,
     "flocking": { "seek": 0.9, "cohesion": 0.5, "separation": 0.4, "density": 0.15 }
+  },
+  {
+    "id": "exploder",
+    "name": "Exploder",
+    "sprite": "enemy",
+    "hp": 14,
+    "speed": 45,
+    "contactDamage": 5,
+    "contactCooldownMs": 900,
+    "xpReward": 10,
+    "color": 16737792,
+    "minSpawnTimeMs": 90000,
+    "flocking": { "seek": 1.0, "cohesion": 0.3, "separation": 0.7, "density": 0.5 },
+    "explodes": true,
+    "explodeChargeRadius": 220,
+    "explodeChargeSpeedMultiplier": 3.2,
+    "explodeTriggerRadius": 55,
+    "explodePrepMs": 850,
+    "explodeRadius": 75,
+    "explodeDamage": 20
   }
 ]
 ;
