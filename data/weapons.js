@@ -6,7 +6,7 @@ export default [
     "type": "melee",
     "shape": "arc",
     "damage": 8,
-    "range": 44,
+    "range": 65,
     "arcDegrees": 140,
     "cooldownMs": 200,
     "fxTint": 0xffb199,
