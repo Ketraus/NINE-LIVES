@@ -2,7 +2,7 @@ export default [
   {
     "id": "fists",
     "name": "Punhos",
-    "description": "Corpo a corpo puro: curto alcance, mas dano alto e impacto forte.",
+    "description": "Corpo a corpo puro, curto alcance, dano alto e impacto forte.",
     "type": "melee",
     "shape": "arc",
     "damage": 8,
@@ -47,7 +47,7 @@ export default [
   {
     "id": "pistol",
     "name": "Pistola",
-    "description": "Dispara em inimigos próximos. Menos dano, mas alcance bem maior.",
+    "description": "Dispara em inimigos próximos.",
     "type": "ranged",
     "damage": 5,
     "range": 220,

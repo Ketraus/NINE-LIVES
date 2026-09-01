@@ -100,7 +100,7 @@ export default [
   {
     "id": "dog_purify",
     "name": "Purificação",
-    "description": "Ao ser obtida, um cachorro infectado é purificado e se torna seu aliado: segue você e ataca outros inimigos. Cada cópia soma +1 cachorro aliado (máx. 3).",
+    "description": "Ao ser obtida, um cachorro infectado é purificado e se torna seu aliado.",
     "category": "base",
     "rarity": "epic",
     "maxStacks": 3,
@@ -126,7 +126,7 @@ export default [
   {
     "id": "fists_slam",
     "name": "Pancada Sísmica",
-    "description": "A cada poucos segundos, um golpe forte em área ao seu redor. Cada cópia deixa o golpe mais frequente (máx. 4).",
+    "description": "A cada poucos segundos, um golpe forte em área ao seu redor.",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "fists",
@@ -144,7 +144,7 @@ export default [
   {
     "id": "fists_shockwave",
     "name": "Shockwave",
-    "description": "A cada 3s, seus punhos disparam sozinhos uma onda de choque na direção que você está olhando, causando pouco dano aos inimigos atingidos (área pequena). Cada cópia soma mais uma onda disparada junto, um pouco mais aberta que a anterior (máx. 4).",
+    "description": "A cada 3s, seus punhos disparam sozinhos uma onda de choque na direção que você está olhando.",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "fists",
@@ -163,7 +163,7 @@ export default [
   {
     "id": "katana_double",
     "name": "Corte Duplo",
-    "description": "Sua katana passa a golpear em uma sequência de cortes, alternando os lados. Cada cópia soma mais um golpe ao combo (máx. 4).",
+    "description": "Sua katana passa a golpear em uma sequência de cortes, alternando os lados.",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "katana",
@@ -176,7 +176,7 @@ export default [
   {
     "id": "katana_shuriken",
     "name": "Shuriken",
-    "description": "Arremessa uma shuriken a cada 3s contra um inimigo próximo. Cada cópia soma mais uma shuriken na rajada, cada uma mirando um alvo diferente (máx. 4).",
+    "description": "Arremessa uma shuriken a cada 3s contra um inimigo próximo.",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "katana",
@@ -193,7 +193,7 @@ export default [
   {
     "id": "pistol_drone",
     "name": "GatoDrone",
-    "description": "Um drone acompanha você e dispara sozinho nos inimigos (ataque mais lento). Cada cópia soma +1 drone (máx. 4).",
+    "description": "Um drone acompanha você e dispara sozinho nos inimigos.",
     "category": "exclusive",
     "rarity": "rare",
     "weaponId": "pistol",
@@ -232,7 +232,7 @@ export default [
   {
     "id": "pistol_fragmentation_evo_smartshot",
     "name": "SMARTSHOT",
-    "description": "Os projéteis da Fragmentação ganham uma segunda chance: depois de uma certa distância, se ainda não acertaram ninguém, mudam de rumo pro inimigo mais próximo em vez de ir embora. Sem ninguém por perto, seguem reto.",
+    "description": "Os projéteis da Fragmentação ganham uma segunda chance.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "pistol_fragmentation",
@@ -264,7 +264,7 @@ export default [
   {
     "id": "arsenal_expandido_evo_override",
     "name": "ARSENAL OVERRIDE",
-    "description": "Uma carta \"Restock\" passa a aparecer ao lado do baralho de opções: use-a pra sortear novamente as cartas oferecidas no level-up.",
+    "description": "Uma carta de Restock passa a aparecer ao lado do baralho de opções.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "arsenal_expandido",
@@ -276,7 +276,7 @@ export default [
   {
     "id": "lifesteal_up_evo_hemorrhage",
     "name": "Hemorragia",
-    "description": "Seus ataques causam Sangramento: o alvo sofre 25% do dano do ataque a cada 0,5s, durante 3s. Não gera cura da Sanguessuga; reaplicar reinicia a duração (não acumula).",
+    "description": "Seus ataques causam Sangramento: o alvo sofre 25% do dano do ataque a cada 0,5s, durante 3s.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "lifesteal_up",
@@ -293,7 +293,7 @@ export default [
   {
     "id": "katana_shuriken_evo_shurivex",
     "name": "Shurivex",
-    "description": "Suas shurikens convergem no primeiro inimigo próximo e, ao acertar, cada uma salta pra um segundo alvo em vez de sumir. Rastro cyber roxo.",
+    "description": "Suas shurikens convergem no primeiro inimigo próximo.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "katana_shuriken",
@@ -330,7 +330,7 @@ export default [
   {
     "id": "speed_up_evo_tornado",
     "name": "Vórtice Turbo",
-    "description": "Ao andar, você gera tornados fixos que causam dano em área a cada 2,5s de caminhada (duram 1,5s e acertam vários inimigos ao mesmo tempo).",
+    "description": "Ao andar, você gera tornados fixos que causam dano em área.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "speed_up",
@@ -352,7 +352,7 @@ export default [
   {
     "id": "thorns_up_evo_sobrecarga",
     "name": "Sobrecarga",
-    "description": "Uma aura de choque envolve você: qualquer inimigo dentro dela toma 4 de dano a cada 200ms, além do dano de contato e dos espinhos normais.",
+    "description": "Uma aura de choque envolve você.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "thorns_up",
@@ -372,7 +372,7 @@ export default [
   {
     "id": "armor_up_evo_shield",
     "name": "Escudo Energético",
-    "description": "Um escudo recarregável envolve você e absorve dano antes da sua vida. Depois de alguns segundos sem ser atingido, ele recarrega sozinho.",
+    "description": "Um escudo recarregável envolve você e absorve dano antes da sua vida.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "armor_up",
@@ -472,7 +472,7 @@ export default [
   {
     "id": "fists_shockwave_evo_blastix",
     "name": "Blastix",
-    "description": "As ondas de choque agora explodem ao atingir um inimigo, causando dano aos inimigos próximos ao ponto de impacto.",
+    "description": "As ondas de choque agora explodem ao atingir um inimigo.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "fists_shockwave",
@@ -495,7 +495,7 @@ export default [
   {
     "id": "fists_slam_evo_terremoto",
     "name": "Terremoto",
-    "description": "A Pancada Sísmica vira um tremor: área de impacto maior e, logo em seguida, uma onda de choque que arremessa os inimigos pra longe, causando dano em área.",
+    "description": "A Pancada Sísmica vira um tremor.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "fists_slam",
@@ -525,7 +525,7 @@ export default [
   {
     "id": "katana_double_evo_danca_cortes",
     "name": "Dança de Cortes",
-    "description": "Os cortes do combo ficam vermelho vivo, e o último golpe da sequência vem maior, mais forte e com um impacto avassalador.",
+    "description": "Os cortes do combo ficam vermelho vivo, e o último golpe fica avassalador.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "katana_double",
@@ -542,7 +542,7 @@ export default [
   {
     "id": "dog_purify_evo_cyberus",
     "name": "Cyberus",
-    "description": "Os 3 cachorros se fundem em Cyberus, um cão de 3 cabeças. A 1ª cabeça arremessa uma granada que deixa uma poça de chamas azuis com dano contínuo; a 2ª desfere um corte de espada em arco, num azul bem mais escuro; a 3ª dispara um laser roxo finíssimo e devastador, longo o bastante pra atravessar boa parte da tela.",
+    "description": "Os 3 cachorros se fundem em Cyberus, um cão de 3 cabeças.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "dog_purify",
@@ -592,7 +592,7 @@ export default [
   {
     "id": "cooldown_down_evo_sixth_sense",
     "name": "Sexto Sentido",
-    "description": "20% de chance de desviar completamente de um ataque — ao desviar, você fica momentaneamente transparente.",
+    "description": "20% de chance de desviar completamente de um ataque.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "cooldown_down",
