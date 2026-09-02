@@ -87,6 +87,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.arenaBirthMs = null;
       this.arenaGraphics = null;
       this.arenaNextCrushTickAt = 0;
+      // Movimento em "rajadas" (ver _updateSealerMovement/_decideSealerMoveDir):
+      // recalcular a direção TODO frame com base na posição exata do
+      // jogador dava um círculo perfeito (a IA clássica de "fuja na
+      // direção oposta" vira órbita estável quando o perseguidor segue
+      // colado). Trocando por decisões a cada poucos décimos de segundo,
+      // com um pouco de ruído no ângulo, o movimento fica em zigues
+      // curtos em vez de uma curva contínua.
+      this.sealerMoveDir = { x: 0, y: 0 };
+      this.sealerNextDecisionAt = 0;
     }
   }
 
@@ -143,8 +152,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // própria assume o movimento (fica parado) e chase() normal não roda.
     if (this.def.explodes && this._updateExplosive(target, nowMs)) return;
 
-    // Sealer: nunca persegue o jogador (fica de olho é na horda — foge
-    // dela, ver _updateArena). Só cuida de fugir + desenhar/fechar a arena.
+    // Sealer: nunca persegue o jogador — foge dele (mantendo-se mais pro
+    // meio da arena, ver _computeSealerMovement). Só cuida disso +
+    // desenhar/fechar a arena.
     if (this.def.sealer) { this._updateArena(target, nowMs, speedMultiplier); return; }
 
     const isParalyzed = nowMs < this.paralyzedUntil;
@@ -262,8 +272,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // (ver applyKnockback), não sobrescreve a velocity este frame, igual
     // ao resto dos inimigos.
     if (nowMs >= this.knockbackUntil) {
-      const flee = this._computeFleeFromHorde(this.def.speed * speedMultiplier);
-      this.setVelocity(flee.x, flee.y);
+      this._updateSealerMovement(target, radius, nowMs, speedMultiplier);
     }
 
     this._containWithinArena(target, radius);
@@ -286,28 +295,83 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  /** Direção de fuga do Sealer: média das direções "pra longe" de cada
-   * outro inimigo próximo (só quem está dentro de FLEE_RANGE — não foge
-   * da horda inteira do mapa, só de quem está perto o bastante pra
-   * "incomodar"). Sem ninguém perto, fica parado (velocity zero) — aí é
-   * só o jogador se aproximar pra acertar o golpe. */
-  _computeFleeFromHorde(speed) {
-    const FLEE_RANGE = 260;
-    const others = this.scene.enemySpawner?.group.getChildren().filter((e) => e !== this && e.active) || [];
-    let sx = 0, sy = 0, count = 0;
-    others.forEach((enemy) => {
-      const dx = this.x - enemy.x;
-      const dy = this.y - enemy.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > 0 && dist < FLEE_RANGE) {
-        sx += dx / dist;
-        sy += dy / dist;
-        count++;
+  /**
+   * Só redecide a direção do Sealer a cada ~0,5–0,9s (não todo frame — ver
+   * comentário no constructor sobre por que isso mata o efeito "andando em
+   * círculo perfeito"). Entre uma decisão e outra, ele segue reto na
+   * última direção escolhida, o que já parece mais "de propósito" do que
+   * uma curva suave e contínua.
+   */
+  _updateSealerMovement(target, radius, nowMs, speedMultiplier) {
+    if (nowMs >= this.sealerNextDecisionAt) {
+      this.sealerNextDecisionAt = nowMs + Phaser.Math.Between(500, 900);
+      this.sealerMoveDir = this._decideSealerMoveDir(target, radius);
+    }
+    const speed = this.def.speed * speedMultiplier;
+    this.setVelocity(this.sealerMoveDir.x * speed, this.sealerMoveDir.y * speed);
+  }
+
+  /**
+   * Uma "decisão" do Sealer: se o jogador estiver longe, na maior parte
+   * das vezes ele só fica parado (só um tanto das vezes dá um passeio
+   * curto e aleatório) — nada de ficar orbitando à toa sem motivo. Se o
+   * jogador estiver perto, foge na direção oposta, mas com um ÂNGULO
+   * ALEATÓRIO por cima (jitter) em vez da direção "matematicamente
+   * perfeita" pra longe — é o ruído que quebra a sensação de robô. Perto
+   * da borda da arena, mistura um pouco de "puxada pro centro" (mesma
+   * ideia de antes), só que agora também com jitter.
+   */
+  _decideSealerMoveDir(target, radius) {
+    const FLEE_TRIGGER_RANGE = 340;
+    const dpx = this.x - target.x;
+    const dpy = this.y - target.y;
+    const distFromPlayer = Math.sqrt(dpx * dpx + dpy * dpy);
+
+    // vetor radial (do centro da arena pro Sealer) — usado tanto pro
+    // passeio ocioso quanto pro desvio de parede abaixo
+    const dcx = this.x - this.arenaCenter.x;
+    const dcy = this.y - this.arenaCenter.y;
+    const distFromCenter = Math.sqrt(dcx * dcx + dcy * dcy);
+    const edgeFactor = Phaser.Math.Clamp(distFromCenter / radius, 0, 1); // 0 centro, 1 borda
+    const nx = distFromCenter > 0 ? dcx / distFromCenter : 1;
+    const ny = distFromCenter > 0 ? dcy / distFromCenter : 0;
+
+    if (distFromPlayer >= FLEE_TRIGGER_RANGE) {
+      // jogador longe: maioria das vezes parado; quando anda, é sempre
+      // pra dentro (rumo ao centro, com ruído) — nunca reto pra parede
+      // à toa, senão ficaria se enfiando no canto mesmo sem motivo.
+      if (Math.random() < 0.55) return { x: 0, y: 0 };
+      const angle = Math.atan2(-ny, -nx) + Phaser.Math.FloatBetween(-0.9, 0.9);
+      return { x: Math.cos(angle), y: Math.sin(angle) };
+    }
+
+    // direção "ingênua" de fuga: pra longe do jogador
+    const fx0 = dpx / (distFromPlayer || 1);
+    const fy0 = dpy / (distFromPlayer || 1);
+
+    let fx = fx0;
+    let fy = fy0;
+
+    // Perto da borda, se essa fuga aponta CONTRA a parede (produto
+    // escalar positivo com a normal radial), troca por uma corrida
+    // TANGENTE — desliza pela borda em vez de empurrar contra ela. Isso é
+    // o que elimina o efeito "bobão preso no canto": em vez de vibrar
+    // parado contra o limite (a fuga pede pra sair, a contenção da arena
+    // empurra de volta, todo frame), ele passa a contornar a parede,
+    // ainda se afastando do jogador, só que pelo lado.
+    if (edgeFactor > 0.5) {
+      const outward = fx0 * nx + fy0 * ny;
+      if (outward > 0) {
+        const tx = -ny;
+        const ty = nx;
+        const side = (fx0 * tx + fy0 * ty) >= 0 ? 1 : -1;
+        fx = tx * side;
+        fy = ty * side;
       }
-    });
-    if (count === 0) return { x: 0, y: 0 };
-    const len = Math.sqrt(sx * sx + sy * sy) || 1;
-    return { x: (sx / len) * speed, y: (sy / len) * speed };
+    }
+
+    const angle = Math.atan2(fy, fx) + Phaser.Math.FloatBetween(-0.25, 0.25);
+    return { x: Math.cos(angle), y: Math.sin(angle) };
   }
 
   /** Empurra `body` (jogador ou outro inimigo) de volta pra dentro do
