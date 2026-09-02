@@ -10,6 +10,7 @@
 // Pra adicionar mais aparições, só acrescentar mais valores na lista
 // (ex.: [240000, 480000] pra 4:00 e 8:00).
 export default [
-  240000, 480000 // 4:00 e 8:00
+  240000, // 4:00
+  480000 // 8:00
   
 ];
