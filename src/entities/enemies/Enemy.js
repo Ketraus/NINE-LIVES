@@ -318,8 +318,19 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setTintFill(0xffffff);
     this.scene.time.delayedCall(90, () => {
       if (!this.active) return;
+      // Do fim do flash branco até bater no alvo (ou virar 'preparing'),
+      // o Exploder fica com tint vermelho pulsante — sinal visual claro
+      // de que ele está correndo pra cima do jogador pra se explodir.
       this._currentStatusTint = null;
-      this._refreshStatusTint(this.scene.time.now);
+      this.scene.tweens.add({
+        targets: this,
+        alpha: { from: 1, to: 0.5 },
+        duration: 80,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+        onUpdate: () => { if (this.active && this.explodeState === 'charging') this.setTintFill(0xff1a1a); }
+      });
     });
     this.setScale(1, 1);
     this.scene.tweens.add({
