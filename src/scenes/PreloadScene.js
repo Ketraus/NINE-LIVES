@@ -1,3 +1,4 @@
+import cardArtIds from '../../data/cardArt.js';
 
 export default class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -6,6 +7,11 @@ export default class PreloadScene extends Phaser.Scene {
 
   preload() {
     this._buildLoadingBar();
+
+    // arte das cartas normais (comuns/épicas/raras/evoluções) — só carrega
+    // as que já estão na lista de data/cardArt.js; o resto continua sem
+    // ícone (ver LevelUpUI._buildCard) até a Ketlin entregar
+    cardArtIds.forEach((id) => this.load.image(`card_${id}`, `assets/ui/cards/${id}.png`));
 
     // sprites placeholder
     this.load.image('player', 'assets/sprites/player.png');

@@ -24,6 +24,12 @@ const RARITY_COLORS = { common: 0xe6e6e6, rare: 0x4fd1ff, epic: 0xb26bff };
 const RARITY_ICONS = { common: '⚪', rare: '🔵', epic: '🟣' };
 const RARITY_LABELS = { common: 'COMUM', rare: 'RARA', epic: 'ÉPICA' };
 
+// tamanho do quadrado de arte dentro da carta normal/evolução (ver
+// data/cardArt.js) — só desenhado se a textura 'card_<id>' foi carregada;
+// carta sem arte ainda fica exatamente como hoje, sem espaço reservado.
+const CARD_ART_SIZE = 56;
+const EVOLUTION_ART_SIZE = 72;
+
 /**
  * Mostra as cartas de progressão, pausa a física enquanto escolhe, aplica
  * a escolha via RunManager e despausa. Dois modos, dois eventos:
@@ -201,6 +207,17 @@ export default class LevelUpUI {
 
     const children = [bg, name, desc, tag];
 
+    // arte da carta (ver data/cardArt.js) — só entra se já foi carregada;
+    // fica entre o nome e a descrição, no mesmo espaço que hoje fica vazio
+    const artKey = `card_${upgrade.id}`;
+    if (this.scene.textures.exists(artKey)) {
+      const art = this.scene.add
+        .image(0, -CARD_H / 2 + 64, artKey)
+        .setDisplaySize(CARD_ART_SIZE, CARD_ART_SIZE)
+        .setScrollFactor(0);
+      children.push(art);
+    }
+
     bg.on('pointerover', () => bg.setStrokeStyle(2, 0xffffff));
     bg.on('pointerout', () => bg.setStrokeStyle(2, accentColor));
     bg.on('pointerdown', () => this._choose(upgrade));
@@ -243,11 +260,24 @@ export default class LevelUpUI {
       .setOrigin(0.5)
       .setScrollFactor(0);
 
+    const children = [glow, bg, name, desc, hint];
+
+    // mesma arte da carta base (ver data/cardArt.js) — a evolução usa o
+    // id dela mesma (ex.: 'hp_up_evo_colosso'), não o id da carta base
+    const artKey = `card_${evolution.id}`;
+    if (this.scene.textures.exists(artKey)) {
+      const art = this.scene.add
+        .image(0, -h / 2 + 82, artKey)
+        .setDisplaySize(EVOLUTION_ART_SIZE, EVOLUTION_ART_SIZE)
+        .setScrollFactor(0);
+      children.push(art);
+    }
+
     bg.on('pointerover', () => bg.setStrokeStyle(3, 0xffffff));
     bg.on('pointerout', () => bg.setStrokeStyle(3, 0xffd166));
     bg.on('pointerdown', () => this._chooseEvolution(evolution));
 
-    group.add([glow, bg, name, desc, hint]);
+    group.add(children);
     return group;
   }
 
