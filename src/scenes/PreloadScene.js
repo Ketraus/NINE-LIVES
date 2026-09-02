@@ -13,6 +13,11 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
+    // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
+    this.load.image('card_fists', 'assets/ui/card_fists.png');
+    this.load.image('card_katana', 'assets/ui/card_katana.png');
+    this.load.image('card_pistol', 'assets/ui/card_pistol.png');
+
     // mapa feito no Tiled (tileset embutido no JSON)
     this.load.image('tileset', 'assets/maps/tileset.png');
     this.load.tilemapTiledJSON('map', 'assets/maps/map.json');
