@@ -292,7 +292,7 @@ export default [
   },
   {
     "id": "katana_shuriken_evo_shurivex",
-    "name": "Shurivex",
+    "name": "NeoShuriken",
     "description": "Suas shurikens convergem no primeiro inimigo próximo.",
     "category": "evolution",
     "rarity": "epic",

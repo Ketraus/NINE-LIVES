@@ -24,7 +24,7 @@ export default class PreloadScene extends Phaser.Scene {
     // com esses nomes exatos e descomentar as duas linhas abaixo; nada
     // mais no código precisa mudar (MusicManager já está pronto pra usar
     // estas chaves em MainMenuScene e GameScene).
-    // this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
+     this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
     // this.load.audio('music_game', 'assets/music/game_theme.mp3');
 
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
