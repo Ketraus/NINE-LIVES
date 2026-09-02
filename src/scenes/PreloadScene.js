@@ -13,6 +13,14 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
+    // música de fundo (ver src/systems/MusicManager.js) — a Ketlin ainda
+    // vai mandar os arquivos. Quando chegarem, salvar em assets/music/
+    // com esses nomes exatos e descomentar as duas linhas abaixo; nada
+    // mais no código precisa mudar (MusicManager já está pronto pra usar
+    // estas chaves em MainMenuScene e GameScene).
+    // this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
+    // this.load.audio('music_game', 'assets/music/game_theme.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');

@@ -1,3 +1,4 @@
+import MusicManager from '../systems/MusicManager.js';
 
 export default class MainMenuScene extends Phaser.Scene {
   constructor() {
@@ -6,6 +7,8 @@ export default class MainMenuScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
+
+    MusicManager.play(this, 'music_menu');
 
     this.add
       .text(width / 2, height / 2 - 40, 'NINE LIVES', {

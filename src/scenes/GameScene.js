@@ -1,4 +1,5 @@
 import EventBus from '../systems/EventBus.js';
+import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
 import Player from '../entities/Player.js';
 import EnemySpawner from '../entities/enemies/EnemySpawner.js';
@@ -38,6 +39,11 @@ export default class GameScene extends Phaser.Scene {
     // limpa listeners de uma partida anterior (esta scene pode restartar
     // várias vezes e EventBus é um singleton compartilhado)
     EventBus.removeAllListeners();
+
+    // troca pra música da run (no-op se o arquivo ainda não foi
+    // carregado, ver MusicManager); scene.restart() (morte + R) cai aqui
+    // de novo, mas MusicManager.play já ignora se for a mesma faixa
+    MusicManager.play(this, 'music_game');
 
     // guarda pra poder repassar no restart (tecla R) sem perder a arma escolhida
     this.weaponId = data?.weaponId || this.weaponId || null;
