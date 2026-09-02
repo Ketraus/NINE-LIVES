@@ -61,18 +61,19 @@ export default [
     "id": "sealer",
     "name": "Fechador de Arena (Sealer)",
     "sprite": "enemy",
-    "hp": 70,
+    "hp": 150,
     "speed": 55,
     "contactDamage": 6,
     "contactCooldownMs": 1000,
-    "xpReward": 45,
+    "xpReward": 50,
     "color": 10170623,
     "minSpawnTimeMs": 150000,
     "flocking": { "seek": 0, "cohesion": 0, "separation": 0.2, "density": 0 },
     "sealer": true,
+    "scale": 1.5,
     "arenaStartRadius": 650,
     "arenaMinRadius": 110,
-    "arenaShrinkDurationMs": 40000,
+    "arenaShrinkDurationMs": 60000,
     "arenaCrushDamagePerSecond": 10
   }
 ]

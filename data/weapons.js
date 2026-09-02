@@ -1,7 +1,7 @@
 export default [
   {
     "id": "fists",
-    "name": "Punhos",
+    "name": "Paws",
     "description": "Corpo a corpo puro, curto alcance, dano alto e impacto forte.",
     "type": "melee",
     "shape": "arc",
@@ -46,7 +46,7 @@ export default [
   },
   {
     "id": "pistol",
-    "name": "Pistola",
+    "name": "Laser Gun",
     "description": "Dispara em inimigos próximos.",
     "type": "ranged",
     "damage": 5,

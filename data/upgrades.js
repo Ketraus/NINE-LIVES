@@ -12,7 +12,7 @@ export default [
   },
   {
     "id": "speed_up",
-    "name": "Patas Turbo",
+    "name": "Passo Rápido",
     "description": "+15% de velocidade de movimento",
     "category": "base",
     "rarity": "common",
@@ -32,7 +32,7 @@ export default [
   },
   {
     "id": "cooldown_down",
-    "name": "Reflexo Felino",
+    "name": "Ferocidade",
     "description": "-15% no tempo de recarga do ataque",
     "category": "base",
     "rarity": "common",
@@ -42,7 +42,7 @@ export default [
   },
   {
     "id": "range_up",
-    "name": "Visão Aguçada",
+    "name": "Olhar Felino",
     "description": "+20% no alcance do ataque",
     "category": "base",
     "rarity": "common",
@@ -52,7 +52,7 @@ export default [
   },
   {
     "id": "thorns_up",
-    "name": "Pelo Condutor",
+    "name": "Eletro-Gato",
     "description": "+4 de dano de contra-ataque ao ser atingido",
     "category": "base",
     "rarity": "common",
@@ -87,7 +87,7 @@ export default [
   },
   {
     "id": "lifesteal_up",
-    "name": "Sanguessuga",
+    "name": "Sede de Sangue",
     "description": "5% do dano causado pelo jogador é convertido em HP (máx. 3 cópias).",
     "category": "base",
     "rarity": "epic",
@@ -162,7 +162,7 @@ export default [
   },
   {
     "id": "katana_double",
-    "name": "Corte Duplo",
+    "name": "Multi-Blade",
     "description": "Sua katana passa a golpear em uma sequência de cortes, alternando os lados.",
     "category": "exclusive",
     "rarity": "rare",
@@ -213,7 +213,7 @@ export default [
   },
   {
     "id": "pistol_fragmentation",
-    "name": "Fragmentação",
+    "name": "Split Bullet",
     "description": "Sua pistola vira uma escopeta.",
     "category": "exclusive",
     "rarity": "rare",
@@ -231,7 +231,7 @@ export default [
   // uma lista porque uma evolução costuma dar mais de um bônus de uma vez.
   {
     "id": "pistol_fragmentation_evo_smartshot",
-    "name": "SMARTSHOT",
+    "name": "Smartshot",
     "description": "Os projéteis da Fragmentação ganham uma segunda chance.",
     "category": "evolution",
     "rarity": "epic",
@@ -263,7 +263,7 @@ export default [
   },
   {
     "id": "arsenal_expandido_evo_override",
-    "name": "ARSENAL OVERRIDE",
+    "name": "Restock",
     "description": "Uma carta de Restock passa a aparecer ao lado do baralho de opções.",
     "category": "evolution",
     "rarity": "epic",
@@ -329,7 +329,7 @@ export default [
   },
   {
     "id": "speed_up_evo_tornado",
-    "name": "Vórtice Turbo",
+    "name": "Tornado",
     "description": "Ao andar, você gera tornados fixos que causam dano em área.",
     "category": "evolution",
     "rarity": "epic",
@@ -371,7 +371,7 @@ export default [
   },
   {
     "id": "armor_up_evo_shield",
-    "name": "Escudo Energético",
+    "name": "Barreira",
     "description": "Um escudo recarregável envolve você e absorve dano antes da sua vida.",
     "category": "evolution",
     "rarity": "epic",
@@ -471,7 +471,7 @@ export default [
   },
   {
     "id": "fists_shockwave_evo_blastix",
-    "name": "Blastix",
+    "name": "Blastwave",
     "description": "As ondas de choque agora explodem ao atingir um inimigo.",
     "category": "evolution",
     "rarity": "epic",
