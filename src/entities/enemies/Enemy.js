@@ -37,6 +37,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setDepth(9);
     this.setTint(def.color);
 
+    // Escala base opcional (def.scale, ex.: Sealer maior pra se destacar
+    // do resto da horda). 1 = tamanho normal. Guardada à parte porque as
+    // animações de "pop" (hit/explode abaixo) resetam pra este valor em
+    // vez de sempre (1,1), senão elas atropelariam o tamanho do Sealer.
+    this.baseScale = def.scale || 1;
+    this.setScale(this.baseScale, this.baseScale);
+
     this.healthSystem = new HealthSystem(def.hp, {
       onDeath: () => this.die()
     });
@@ -432,15 +439,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // muito rápidos (ex.: pistola automática) deixam o sprite "tremendo"
     // ao empilhar tweens concorrentes na mesma propriedade.
     this.scene.tweens.killTweensOf(this);
-    this.setScale(1, 1);
+    this.setScale(this.baseScale, this.baseScale);
     this.scene.tweens.add({
       targets: this,
-      scaleX: 1.22,
-      scaleY: 0.8,
+      scaleX: 1.22 * this.baseScale,
+      scaleY: 0.8 * this.baseScale,
       duration: 55,
       yoyo: true,
       ease: 'Quad.easeOut',
-      onComplete: () => { if (this.active) this.setScale(1, 1); }
+      onComplete: () => { if (this.active) this.setScale(this.baseScale, this.baseScale); }
     });
   }
 

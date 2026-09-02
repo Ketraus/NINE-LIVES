@@ -191,8 +191,13 @@ export default class SpawnDirector {
     // devagar) o déficit é pequeno e quem manda é o ritmo normal; só
     // quando o teto sobe rápido (últimos minutos) é que este lote fica
     // maior por uma ou duas levas, até alcançar o novo teto.
+    // Deficit limitado a 2x o lote normal: sem isso, o catch-up após a
+    // arena do Sealer (que segura os spawns por até 40s) descarrega o
+    // déficit inteiro numa leva só, artificial. Assim ele ainda recupera
+    // rápido, só que em 2-3 levas em vez de uma explosão.
     const deficit = cap - this.enemySpawner.getAliveCount();
-    const amount = Math.max(this._currentBatchSize(), deficit);
+    const batchSize = this._currentBatchSize();
+    const amount = Math.max(batchSize, Math.min(deficit, batchSize * 2));
     // a fase atual (pesos por tipo, ver _currentWeights) é escolhida uma
     // vez por leva e vale pra todos os inimigos dela — evita recalcular a
     // mesma interpolação `amount` vezes seguidas
