@@ -75,6 +75,19 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // chase() abaixo).
     this.explodeState = 'chasing';
     this.explodePrepUntil = 0;
+
+    // Sealer (def.sealer = true, ver data/enemies.js): não persegue, fica
+    // parado e imóvel (senão outros inimigos colidindo com ele o empurram
+    // pra longe do centro da arena que ele mesmo está formando — ver
+    // _updateArena abaixo). arenaGraphics/arenaBirthMs só existem pra este
+    // tipo, criados sob demanda na primeira vez que _updateArena roda.
+    if (def.sealer) {
+      this.body.setImmovable(true);
+      this.arenaCenter = null;
+      this.arenaBirthMs = null;
+      this.arenaGraphics = null;
+      this.arenaNextCrushTickAt = 0;
+    }
   }
 
   /**
@@ -129,6 +142,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Exploder: enquanto preparando/explodindo, a máquina de estados
     // própria assume o movimento (fica parado) e chase() normal não roda.
     if (this.def.explodes && this._updateExplosive(target, nowMs)) return;
+
+    // Sealer: nunca persegue (fica parado no lugar onde nasceu, imóvel —
+    // ver constructor). Só cuida de desenhar/fechar a arena a cada frame.
+    if (this.def.sealer) { this._updateArena(target, nowMs); return; }
 
     const isParalyzed = nowMs < this.paralyzedUntil;
     this._refreshStatusTint(nowMs);
@@ -211,8 +228,86 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Reação visual padrão a QUALQUER dano recebido — chamada centralizada
-   * por DamageSystem.applyWeaponHit/applyContactDamage sempre que o alvo é
+   * Sealer (def.sealer = true): forma uma arena circular fixa no mundo,
+   * centrada onde o jogador estava no instante em que o Sealer nasceu, que
+   * vai encolhendo de def.arenaStartRadius até def.arenaMinRadius ao longo
+   * de def.arenaShrinkDurationMs. Todo frame, empurra jogador e QUALQUER
+   * inimigo (menos ele mesmo) que esteja fora do raio atual de volta pra
+   * dentro — é isso que "prende" quem estiver por perto quando ela nasce
+   * (e também quem entrar depois, vindo de fora) sem precisar guardar uma
+   * lista fixa de "quem foi pego". Regra pedida: "MATA ESSA DESGRAÇA ANTES
+   * QUE FECHE" — ao chegar no raio mínimo, passa a causar
+   * def.arenaCrushDamagePerSecond no jogador (a horda, já toda empurrada
+   * pra cima dele pelo próprio fechamento, faz o resto via dano de
+   * contato normal). Some junto com o Sealer ao morrer (ver die()).
+   */
+  _updateArena(target, nowMs) {
+    if (!this.arenaCenter) {
+      // nasce agora: centro fixo = onde o jogador estava neste instante
+      // (não o próprio Sealer, que pode ter spawnado fora da tela) —
+      // "envolvendo o jogador e todos os inimigos próximos" (pedido).
+      this.arenaCenter = { x: target.x, y: target.y };
+      this.arenaBirthMs = nowMs;
+      this.arenaGraphics = this.scene.add.graphics().setDepth(4);
+    }
+
+    const t = Phaser.Math.Clamp(
+      (nowMs - this.arenaBirthMs) / this.def.arenaShrinkDurationMs, 0, 1
+    );
+    const radius = Phaser.Math.Linear(this.def.arenaStartRadius, this.def.arenaMinRadius, t);
+    this._drawArena(radius, t);
+
+    this._containWithinArena(target, radius);
+    // o próprio Sealer também é contido — sem isto, se ele nascer perto da
+    // borda do raio inicial, o fechamento progressivo o deixaria PRA FORA
+    // da própria arena depois de alguns segundos (regra: nunca pode ficar
+    // fora da área que ele mesmo criou).
+    this._containWithinArena(this, radius);
+    this.scene.enemySpawner?.group.getChildren().forEach((enemy) => {
+      if (enemy !== this && enemy.active) this._containWithinArena(enemy, radius);
+    });
+
+    if (t >= 1) {
+      if (nowMs >= this.arenaNextCrushTickAt) {
+        this.arenaNextCrushTickAt = nowMs + 500;
+        if (target.active && !target.healthSystem?.isDead()) {
+          DamageSystem.applyWeaponHit(target, this.def.arenaCrushDamagePerSecond * 0.5, this, nowMs);
+        }
+      }
+    }
+  }
+
+  /** Empurra `body` (jogador ou outro inimigo) de volta pra dentro do
+   * raio atual da arena, se estiver fora — clamp simples na borda do
+   * círculo, sem se importar com paredes do mapa (a arena é pensada pra
+   * abrir em área aberta). */
+  _containWithinArena(body, radius) {
+    const dx = body.x - this.arenaCenter.x;
+    const dy = body.y - this.arenaCenter.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= radius || dist === 0) return;
+    const scale = radius / dist;
+    body.setPosition(this.arenaCenter.x + dx * scale, this.arenaCenter.y + dy * scale);
+  }
+
+  /** Desenha o anel da arena — vai de um roxo frio (recém-aberta) pra um
+   * vermelho de alerta conforme `t` (progresso do fechamento) avança, pra
+   * ficar óbvio o quão perto do esmagamento total a horda está. */
+  _drawArena(radius, t) {
+    const g = this.arenaGraphics;
+    g.clear();
+    const color = Phaser.Display.Color.Interpolate.ColorWithColor(
+      new Phaser.Display.Color(0x9b, 0x30, 0xff),
+      new Phaser.Display.Color(0xff, 0x1a, 0x1a),
+      100, Math.floor(t * 100)
+    );
+    const stroke = Phaser.Display.Color.GetColor(color.r, color.g, color.b);
+    g.lineStyle(6, stroke, 0.85);
+    g.strokeCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
+  }
+
+
+   /* por DamageSystem.applyWeaponHit/applyContactDamage sempre que o alvo é
    * um Enemy (ver lá), então soco, katana, pistola, drone, pancada sísmica,
    * contra-ataque de espinhos e cachorro aliado têm todos o MESMO feedback,
    * sem cada arma/habilidade reimplementar a própria versão.
@@ -377,6 +472,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   die() {
     if (!this.active) return;
     this.scene.tweens.killTweensOf(this);
+    // Sealer: o anel da arena não é filho do sprite (é um Graphics à
+    // parte, ver _updateArena), então precisa ser destruído na mão, senão
+    // fica na tela pra sempre depois do Sealer morrer.
+    this.arenaGraphics?.destroy();
     // `color` vai junto só pra quem quiser desenhar algo na cor do
     // inimigo (ver GameScene._spawnDeathFx) — o Enemy já não existe mais
     // no momento em que quem escuta o evento for usar isso.

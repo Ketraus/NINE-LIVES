@@ -147,7 +147,8 @@ export default class EnemySpawner {
 
     const def = weights ? this._pickWeighted(weights) : this._pickUniform(nowMs);
     if (!def) return null;
-    return this._createAt(def, this._findSpawnPosition(baseAngle));
+    const pos = def.sealer ? this._findSealerSpawnPosition(def) : this._findSpawnPosition(baseAngle);
+    return this._createAt(def, pos);
   }
 
   /** Tamanho de grupo sorteado a partir de GROUP_SIZE_WEIGHTS (roleta ponderada). */
@@ -221,7 +222,11 @@ export default class EnemySpawner {
   _pickWeighted(weights) {
     const entries = this.enemyDefs
       .map((def) => ({ def, weight: weights[def.id] ?? 0 }))
-      .filter((e) => e.weight > 0);
+      .filter((e) => e.weight > 0)
+      // Sealer é único: se já existe um vivo, ele nem entra no sorteio
+      // desta leva (ver _hasActiveSealer) — regra pedida: nunca mais de
+      // 1 ao mesmo tempo.
+      .filter((e) => !e.def.sealer || !this._hasActiveSealer());
     if (entries.length === 0) return null;
 
     const total = entries.reduce((sum, e) => sum + e.weight, 0);
@@ -235,8 +240,18 @@ export default class EnemySpawner {
 
   /** Sorteio antigo (uniforme, filtrado por minSpawnTimeMs) — só usado quando não há spawnPhases. */
   _pickUniform(nowMs) {
-    const availableDefs = this.enemyDefs.filter((def) => !def.minSpawnTimeMs || nowMs >= def.minSpawnTimeMs);
+    const availableDefs = this.enemyDefs.filter((def) =>
+      (!def.minSpawnTimeMs || nowMs >= def.minSpawnTimeMs) &&
+      (!def.sealer || !this._hasActiveSealer())
+    );
     return Phaser.Utils.Array.GetRandom(availableDefs.length > 0 ? availableDefs : this.enemyDefs);
+  }
+
+  /** true se já existe um Sealer vivo agora — usado por _pickWeighted/
+   * _pickUniform/spawnByDefId pra nunca deixar existir mais de 1 ao
+   * mesmo tempo (regra pedida). */
+  _hasActiveSealer() {
+    return this.group.getChildren().some((e) => e.active && e.def.sealer);
   }
 
   /**
@@ -265,11 +280,35 @@ export default class EnemySpawner {
   spawnByDefId(defId, count = 1) {
     const def = this.enemyDefs.find((d) => d.id === defId);
     if (!def) return 0;
+    if (def.sealer && this._hasActiveSealer()) return 0; // já tem um vivo — cheat também respeita a regra
     const n = Math.max(1, Math.floor(count));
     for (let i = 0; i < n; i++) {
-      this._createAt(def, this._findSpawnPosition());
+      this._createAt(def, def.sealer ? this._findSealerSpawnPosition(def) : this._findSpawnPosition());
     }
     return n;
+  }
+
+  /**
+   * Posição de spawn exclusiva do Sealer: diferente de todo mundo (que
+   * nasce fora da câmera, ver _findSpawnPosition), ele PRECISA nascer
+   * dentro do raio que a própria arena vai ter (def.arenaStartRadius,
+   * centrada no jogador — ver Enemy._updateArena) — nunca fora dela, por
+   * mais que o mapa permita. Sorteia um ponto a uma distância segura do
+   * jogador (não colado, mas bem dentro do raio) e, se o mapa/paredes não
+   * permitirem esse ponto exato, tenta de novo; no pior caso cai bem perto
+   * do jogador (ainda garantidamente dentro do raio).
+   */
+  _findSealerSpawnPosition(def) {
+    const bounds = this.mapManager.getWorldBounds();
+    const margin = 64;
+    // entre 55% e 85% do raio inicial — visível, mas nunca na borda exata
+    // nem em cima do jogador
+    const safeDist = def.arenaStartRadius * Phaser.Math.FloatBetween(0.55, 0.85);
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    return {
+      x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * safeDist, margin, bounds.width - margin),
+      y: Phaser.Math.Clamp(this.player.y + Math.sin(angle) * safeDist, margin, bounds.height - margin)
+    };
   }
 
   /**
