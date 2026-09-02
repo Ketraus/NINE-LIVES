@@ -143,9 +143,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // própria assume o movimento (fica parado) e chase() normal não roda.
     if (this.def.explodes && this._updateExplosive(target, nowMs)) return;
 
-    // Sealer: nunca persegue (fica parado no lugar onde nasceu, imóvel —
-    // ver constructor). Só cuida de desenhar/fechar a arena a cada frame.
-    if (this.def.sealer) { this._updateArena(target, nowMs); return; }
+    // Sealer: nunca persegue o jogador (fica de olho é na horda — foge
+    // dela, ver _updateArena). Só cuida de fugir + desenhar/fechar a arena.
+    if (this.def.sealer) { this._updateArena(target, nowMs, speedMultiplier); return; }
 
     const isParalyzed = nowMs < this.paralyzedUntil;
     this._refreshStatusTint(nowMs);
@@ -241,7 +241,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * pra cima dele pelo próprio fechamento, faz o resto via dano de
    * contato normal). Some junto com o Sealer ao morrer (ver die()).
    */
-  _updateArena(target, nowMs) {
+  _updateArena(target, nowMs, speedMultiplier = 1) {
     if (!this.arenaCenter) {
       // nasce agora: centro fixo = onde o jogador estava neste instante
       // (não o próprio Sealer, que pode ter spawnado fora da tela) —
@@ -256,6 +256,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     );
     const radius = Phaser.Math.Linear(this.def.arenaStartRadius, this.def.arenaMinRadius, t);
     this._drawArena(radius, t);
+
+    // Foge da horda (nunca do jogador — é assim que ele fica mais fácil
+    // de encurralar): se ainda estiver "voando" de um knockback recente
+    // (ver applyKnockback), não sobrescreve a velocity este frame, igual
+    // ao resto dos inimigos.
+    if (nowMs >= this.knockbackUntil) {
+      const flee = this._computeFleeFromHorde(this.def.speed * speedMultiplier);
+      this.setVelocity(flee.x, flee.y);
+    }
 
     this._containWithinArena(target, radius);
     // o próprio Sealer também é contido — sem isto, se ele nascer perto da
@@ -275,6 +284,30 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
         }
       }
     }
+  }
+
+  /** Direção de fuga do Sealer: média das direções "pra longe" de cada
+   * outro inimigo próximo (só quem está dentro de FLEE_RANGE — não foge
+   * da horda inteira do mapa, só de quem está perto o bastante pra
+   * "incomodar"). Sem ninguém perto, fica parado (velocity zero) — aí é
+   * só o jogador se aproximar pra acertar o golpe. */
+  _computeFleeFromHorde(speed) {
+    const FLEE_RANGE = 260;
+    const others = this.scene.enemySpawner?.group.getChildren().filter((e) => e !== this && e.active) || [];
+    let sx = 0, sy = 0, count = 0;
+    others.forEach((enemy) => {
+      const dx = this.x - enemy.x;
+      const dy = this.y - enemy.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0 && dist < FLEE_RANGE) {
+        sx += dx / dist;
+        sy += dy / dist;
+        count++;
+      }
+    });
+    if (count === 0) return { x: 0, y: 0 };
+    const len = Math.sqrt(sx * sx + sy * sy) || 1;
+    return { x: (sx / len) * speed, y: (sy / len) * speed };
   }
 
   /** Empurra `body` (jogador ou outro inimigo) de volta pra dentro do

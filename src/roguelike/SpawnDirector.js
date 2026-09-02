@@ -50,7 +50,7 @@ export default class SpawnDirector {
    *   edita teto de vivos, frequência de leva e tamanho de leva — não
    *   direto nesta classe.
    */
-  constructor(scene, enemySpawner, spawnPhases = [], spawnCurves = DEFAULT_SPAWN_CURVES) {
+  constructor(scene, enemySpawner, spawnPhases = [], spawnCurves = DEFAULT_SPAWN_CURVES, sealerSchedule = []) {
     this.scene = scene;
     this.enemySpawner = enemySpawner;
     this.spawnPhases = spawnPhases;
@@ -59,6 +59,16 @@ export default class SpawnDirector {
     this.timerEvent = null;
     this.pausedMs = 0; // soma de todo tempo já pausado (tela de cartas), descontado do relógio da run
     this.pauseStartedAt = null; // timestamp de quando a pausa atual começou, ou null se não está pausado
+
+    // Horário manual (data/sealerSchedule.js) de quando o Sealer nasce —
+    // ver _checkSealerSchedule. Não usa spawnPhases/sorteio nenhum de
+    // propósito (pedido: "não pode dar spawn como os outros... eu tenho
+    // que colocar a mão o tempo que ele aparece"). sealerTriggered guarda
+    // os ÍNDICES de sealerSchedule já disparados, pra cada horário só
+    // tentar nascer uma vez (mesmo que a run passe por ele em vários
+    // frames/levas seguidas).
+    this.sealerSchedule = sealerSchedule;
+    this.sealerTriggered = new Set();
 
     // Cheat (DevConsole "autospawn"): true = levas automáticas continuam
     // sendo agendadas normalmente (_scheduleNextBatch/timerEvent), mas
@@ -159,7 +169,19 @@ export default class SpawnDirector {
     const cap = this._currentMaxAlive();
     this.enemySpawner.setMaxAlive(cap);
 
+    // Sealer nasce SEMPRE por horário manual, nunca pelo sorteio normal
+    // abaixo (ver data/sealerSchedule.js) — checado mesmo com autospawn
+    // desligado, é um script à parte.
+    this._checkSealerSchedule();
+
     if (!this.autoSpawnEnabled) return; // cheat "autospawn" desligado: só spawn manual (ver toggleAutoSpawn)
+
+    // Arena do Sealer ativa: NINGUÉM mais nasce até ele morrer (ou a
+    // horda squeeze fica impossível de sobreviver, pedido: "chato, mas
+    // não quebrado"). Só pausa a criação — quem já estava vivo antes
+    // continua normal, sendo empurrado/contido pela arena igual a todo
+    // mundo (ver Enemy._updateArena).
+    if (this.enemySpawner.hasActiveSealer()) return;
 
     // Quando o teto sobe bastante entre uma leva e outra, o lote normal
     // (pequeno, pra não sufocar) demoraria muitos ciclos pra alcançar o
@@ -188,6 +210,25 @@ export default class SpawnDirector {
   toggleAutoSpawn() {
     this.autoSpawnEnabled = !this.autoSpawnEnabled;
     return this.autoSpawnEnabled;
+  }
+
+  /**
+   * Dispara o spawn do Sealer nos horários fixos de data/sealerSchedule.js
+   * (não é sorteio — é script). Cada índice da lista só é tentado uma vez
+   * (sealerTriggered); spawnByDefId já recusa sozinho se algum Sealer
+   * ainda estiver vivo (ver EnemySpawner.hasActiveSealer), então mesmo que
+   * dois horários caiam perto um do outro, nunca nasce um segundo em cima
+   * do primeiro.
+   */
+  _checkSealerSchedule() {
+    if (!this.sealerSchedule || this.sealerSchedule.length === 0) return;
+    const elapsedMs = this.getElapsedMs();
+    this.sealerSchedule.forEach((timeMs, index) => {
+      if (elapsedMs >= timeMs && !this.sealerTriggered.has(index)) {
+        this.sealerTriggered.add(index);
+        this.enemySpawner.spawnByDefId('sealer', 1);
+      }
+    });
   }
 
   _currentIntervalMs() {

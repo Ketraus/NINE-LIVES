@@ -224,9 +224,9 @@ export default class EnemySpawner {
       .map((def) => ({ def, weight: weights[def.id] ?? 0 }))
       .filter((e) => e.weight > 0)
       // Sealer é único: se já existe um vivo, ele nem entra no sorteio
-      // desta leva (ver _hasActiveSealer) — regra pedida: nunca mais de
+      // desta leva (ver hasActiveSealer) — regra pedida: nunca mais de
       // 1 ao mesmo tempo.
-      .filter((e) => !e.def.sealer || !this._hasActiveSealer());
+      .filter((e) => !e.def.sealer || !this.hasActiveSealer());
     if (entries.length === 0) return null;
 
     const total = entries.reduce((sum, e) => sum + e.weight, 0);
@@ -242,15 +242,16 @@ export default class EnemySpawner {
   _pickUniform(nowMs) {
     const availableDefs = this.enemyDefs.filter((def) =>
       (!def.minSpawnTimeMs || nowMs >= def.minSpawnTimeMs) &&
-      (!def.sealer || !this._hasActiveSealer())
+      (!def.sealer || !this.hasActiveSealer())
     );
     return Phaser.Utils.Array.GetRandom(availableDefs.length > 0 ? availableDefs : this.enemyDefs);
   }
 
-  /** true se já existe um Sealer vivo agora — usado por _pickWeighted/
-   * _pickUniform/spawnByDefId pra nunca deixar existir mais de 1 ao
-   * mesmo tempo (regra pedida). */
-  _hasActiveSealer() {
+  /** true se já existe um Sealer vivo agora. Usado por _pickWeighted/
+   * _pickUniform/spawnByDefId pra nunca deixar existir mais de 1 ao mesmo
+   * tempo, e pelo SpawnDirector pra pausar TODO spawn normal enquanto a
+   * arena estiver ativa (regra pedida: "fica impossível" senão). */
+  hasActiveSealer() {
     return this.group.getChildren().some((e) => e.active && e.def.sealer);
   }
 
@@ -280,7 +281,7 @@ export default class EnemySpawner {
   spawnByDefId(defId, count = 1) {
     const def = this.enemyDefs.find((d) => d.id === defId);
     if (!def) return 0;
-    if (def.sealer && this._hasActiveSealer()) return 0; // já tem um vivo — cheat também respeita a regra
+    if (def.sealer && this.hasActiveSealer()) return 0; // já tem um vivo — cheat também respeita a regra
     const n = Math.max(1, Math.floor(count));
     for (let i = 0; i < n; i++) {
       this._createAt(def, def.sealer ? this._findSealerSpawnPosition(def) : this._findSpawnPosition());

@@ -14,5 +14,5 @@ export default [
   { t: 60000, weights: { grunt: 70, cyber_hound: 30 } }, // 1:00 — runner entra
   { t: 180000, weights: { grunt: 50, cyber_hound: 35, cyber_brute: 15 } }, // 3:00 — tank entra
   { t: 300000, weights: { grunt: 40, cyber_hound: 35, cyber_brute: 15, exploder: 10 } }, // 5:00 — exploder entra
-  { t: 360000, weights: { grunt: 18, cyber_hound: 33, cyber_brute: 28, exploder: 14, sealer: 1 } } // 6:00 — sealer entra (raro)
+  { t: 360000, weights: { grunt: 20, cyber_hound: 35, cyber_brute: 30, exploder: 15 } } // 6:00
 ];
