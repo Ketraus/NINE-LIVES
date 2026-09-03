@@ -220,9 +220,13 @@ export default class LevelUpUI {
 
     bg.on('pointerover', () => {
       bg.setStrokeStyle(2, 0xffffff);
+      group.setScale(1.05); // mesmo efeito de "expandir" que a seleção de arma já tinha (WeaponSelectScene)
       this.scene.sound.play('sfx_hover', { volume: 0.5 });
     });
-    bg.on('pointerout', () => bg.setStrokeStyle(2, accentColor));
+    bg.on('pointerout', () => {
+      bg.setStrokeStyle(2, accentColor);
+      group.setScale(1);
+    });
     bg.on('pointerdown', () => this._choose(upgrade));
 
     group.add(children);
@@ -278,9 +282,13 @@ export default class LevelUpUI {
 
     bg.on('pointerover', () => {
       bg.setStrokeStyle(3, 0xffffff);
+      group.setScale(1.04); // carta já nasce maior que as normais, expande um pouco menos
       this.scene.sound.play('sfx_hover', { volume: 0.5 });
     });
-    bg.on('pointerout', () => bg.setStrokeStyle(3, 0xffd166));
+    bg.on('pointerout', () => {
+      bg.setStrokeStyle(3, 0xffd166);
+      group.setScale(1);
+    });
     bg.on('pointerdown', () => this._chooseEvolution(evolution));
 
     group.add(children);
