@@ -75,6 +75,31 @@ export default [
     "arenaMinRadius": 110,
     "arenaShrinkDurationMs": 60000,
     "arenaCrushDamagePerSecond": 10
+  },
+  {
+    "id": "elite",
+    "name": "Elite",
+    "sprite": "enemy",
+    "hp": 90,
+    "speed": 40,
+    "contactDamage": 8,
+    "contactCooldownMs": 900,
+    "xpReward": 45,
+    "color": 11141375,
+    "minSpawnTimeMs": 200000,
+    "flocking": { "seek": 0.9, "cohesion": 0.4, "separation": 0.5, "density": 0.2 },
+    "elite": true,
+    "eliteAttackIntervalMs": 3600,
+    "eliteMeleeRange": 100,
+    "eliteMeleeCooldownMs": 5200,
+    "eliteMeleeTelegraphMs": 450,
+    "eliteMeleeDamage": 24,
+    "eliteMissileCount": 3,
+    "eliteMissileStepGapMs": 260,
+    "eliteMissileWarnAfterMs": 550,
+    "eliteMissileSpreadRadius": 130,
+    "eliteMissileRadius": 85,
+    "eliteMissileDamage": 22
   }
 ]
 ;

@@ -104,6 +104,28 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.sealerMoveDir = { x: 0, y: 0 };
       this.sealerNextDecisionAt = 0;
     }
+
+    // Elite (def.elite = true, ver data/enemies.js): no "estado normal"
+    // não tem nada de especial — anda na horda normal via flocking, igual
+    // a qualquer outro inimigo (ver chase() abaixo, o guard só assume o
+    // movimento durante o telegraph/ataque). eliteState controla a
+    // máquina de estados própria: 'chasing' -> 'missile_telegraph' (3
+    // áreas vermelhas aparecendo em sequência, ver _startEliteMissiles) ou
+    // 'melee_telegraph' (golpe corpo a corpo se o jogador estiver perto
+    // demais quando a janela de ataque abrir, ver _startEliteMelee) ->
+    // volta pra 'chasing' com um cooldown até o próximo ataque.
+    // eliteNextAttackAt começa com um atraso curto e aleatório pra vários
+    // Elites na mesma run não atacarem todos sincronizados.
+    if (def.elite) {
+      this.eliteState = 'chasing';
+      this.eliteNextAttackAt = scene.time.now + Phaser.Math.Between(800, 1800);
+      this.eliteTelegraphGraphics = null;
+      this.eliteMissilePoints = [];
+      this.eliteMissileRevealed = 0;
+      this.eliteMissileNextStepAt = 0;
+      this.eliteMissileDetonateAt = null;
+      this.eliteMeleeTelegraphUntil = 0;
+    }
   }
 
   /**
@@ -163,6 +185,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // meio da arena, ver _computeSealerMovement). Só cuida disso +
     // desenhar/fechar a arena.
     if (this.def.sealer) { this._updateArena(target, nowMs, speedMultiplier); return; }
+
+    // Elite: só assume o movimento (parado) durante o telegraph/ataque
+    // (missile_telegraph ou melee_telegraph); em 'chasing' e fora da
+    // janela de ataque, retorna false e cai no flocking normal abaixo —
+    // é assim que ele "não precisa ser um evento que interrompe o jogo",
+    // continuando na horda normalmente entre um ataque e outro.
+    if (this.def.elite && this._updateElite(target, nowMs)) return;
 
     const isParalyzed = nowMs < this.paralyzedUntil;
     this._refreshStatusTint(nowMs);
@@ -573,6 +602,136 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.die();
   }
 
+  /**
+   * Estado do Elite (só roda quando def.elite = true). Retorna true quando
+   * assumiu o movimento deste frame (telegraph/ataque em andamento),
+   * indicando pra chase() não rodar o flocking normal por cima; false
+   * quando ainda está em 'chasing' fora da janela de ataque (flocking
+   * normal cuida do movimento, fora daqui).
+   */
+  _updateElite(target, nowMs) {
+    if (this.eliteState === 'missile_telegraph') { this._updateMissileTelegraph(target, nowMs); return true; }
+    if (this.eliteState === 'melee_telegraph') { this._updateMeleeTelegraph(target, nowMs); return true; }
+
+    if (nowMs < this.eliteNextAttackAt) return false; // ainda na horda, flocking normal
+
+    // Janela de ataque aberta: se o jogador estiver muito perto, golpe
+    // corpo a corpo (evita o absurdo de disparar mísseis colado nele);
+    // senão, ataque de mísseis à distância.
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist <= this.def.eliteMeleeRange) this._startEliteMelee(target, nowMs);
+    else this._startEliteMissiles(target, nowMs);
+    return true;
+  }
+
+  /** Início do ataque de mísseis: escolhe a posição do jogador AGORA (não
+   * fica reajustando durante o telegraph) e sorteia mais def.eliteMissileCount-1
+   * pontos espalhados ao redor dela — 3 áreas no total, obrigando o
+   * jogador a se reposicionar em vez de só sair andando de um ponto fixo. */
+  _startEliteMissiles(target, nowMs) {
+    this.eliteState = 'missile_telegraph';
+    this.setVelocity(0, 0);
+    if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+
+    const count = this.def.eliteMissileCount;
+    this.eliteMissilePoints = [{ x: target.x, y: target.y }];
+    for (let i = 1; i < count; i++) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const dist = Phaser.Math.FloatBetween(this.def.eliteMissileSpreadRadius * 0.5, this.def.eliteMissileSpreadRadius);
+      this.eliteMissilePoints.push({ x: target.x + Math.cos(angle) * dist, y: target.y + Math.sin(angle) * dist });
+    }
+    this.eliteMissileRevealed = 0;
+    this.eliteMissileNextStepAt = nowMs; // revela a 1ª área já neste frame
+    this.eliteMissileDetonateAt = null; // só definido depois que a última área aparecer
+  }
+
+  /** Revela uma área vermelha por vez (a cada eliteMissileStepGapMs) —
+   * "3 áreas aparecendo em sequência", dando tempo do jogador perceber
+   * cada uma. Depois que a última aparece, espera eliteMissileWarnAfterMs
+   * (passo 4: "espera um curto tempo") e então detona todas juntas. */
+  _updateMissileTelegraph(target, nowMs) {
+    this.setVelocity(0, 0);
+    if (this.eliteMissileRevealed < this.eliteMissilePoints.length && nowMs >= this.eliteMissileNextStepAt) {
+      this.eliteMissileRevealed += 1;
+      this.eliteMissileNextStepAt = nowMs + this.def.eliteMissileStepGapMs;
+      if (this.eliteMissileRevealed === this.eliteMissilePoints.length) {
+        this.eliteMissileDetonateAt = nowMs + this.def.eliteMissileWarnAfterMs;
+      }
+    }
+    this._drawMissileTelegraph();
+    if (this.eliteMissileDetonateAt != null && nowMs >= this.eliteMissileDetonateAt) {
+      this._detonateMissiles(target, nowMs);
+    }
+  }
+
+  _drawMissileTelegraph() {
+    const g = this.eliteTelegraphGraphics;
+    g.clear();
+    for (let i = 0; i < this.eliteMissileRevealed; i++) {
+      const p = this.eliteMissilePoints[i];
+      g.fillStyle(0xff2222, 0.32);
+      g.fillCircle(p.x, p.y, this.def.eliteMissileRadius);
+      g.lineStyle(3, 0xff4444, 0.9);
+      g.strokeCircle(p.x, p.y, this.def.eliteMissileRadius);
+    }
+  }
+
+  /** Passos 5-6: dano alto em área em cada um dos 3 pontos, só se o
+   * jogador ainda estiver dentro do raio de impacto quando a bomba cai
+   * (dá pra escapar dos 3 se reposicionar durante o telegraph). Volta
+   * pra 'chasing' com o cooldown do ataque de mísseis. */
+  _detonateMissiles(target, nowMs) {
+    this.eliteMissilePoints.forEach((p) => {
+      if (target.active && !target.healthSystem?.isDead()) {
+        const dist = Phaser.Math.Distance.Between(p.x, p.y, target.x, target.y);
+        if (dist <= this.def.eliteMissileRadius) {
+          DamageSystem.applyWeaponHit(target, this.def.eliteMissileDamage, this, nowMs);
+        }
+      }
+    });
+    this.eliteTelegraphGraphics.clear();
+    this.eliteState = 'chasing';
+    this.eliteNextAttackAt = nowMs + this.def.eliteAttackIntervalMs;
+  }
+
+  /** Início do golpe corpo a corpo: aviso em vermelho ao redor do próprio
+   * Elite (sem sistema complexo de hitbox — é o mesmo raio usado pra
+   * decidir se ataca corpo a corpo em vez de míssil). */
+  _startEliteMelee(target, nowMs) {
+    this.eliteState = 'melee_telegraph';
+    this.setVelocity(0, 0);
+    if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    this.eliteMeleeTelegraphUntil = nowMs + this.def.eliteMeleeTelegraphMs;
+  }
+
+  _updateMeleeTelegraph(target, nowMs) {
+    this.setVelocity(0, 0);
+    this._drawMeleeTelegraph();
+    if (nowMs >= this.eliteMeleeTelegraphUntil) this._resolveMelee(target, nowMs);
+  }
+
+  _drawMeleeTelegraph() {
+    const g = this.eliteTelegraphGraphics;
+    g.clear();
+    g.fillStyle(0xff2222, 0.28);
+    g.fillCircle(this.x, this.y, this.def.eliteMeleeRange);
+    g.lineStyle(3, 0xff4444, 0.9);
+    g.strokeCircle(this.x, this.y, this.def.eliteMeleeRange);
+  }
+
+  /** Dano alto corpo a corpo (só se o jogador ainda estiver no alcance —
+   * pode ter saído durante o aviso) + cooldown maior que o de mísseis
+   * antes do próximo ataque, conforme pedido. */
+  _resolveMelee(target, nowMs) {
+    this.eliteTelegraphGraphics.clear();
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist <= this.def.eliteMeleeRange && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this.def.eliteMeleeDamage, this, nowMs);
+    }
+    this.eliteState = 'chasing';
+    this.eliteNextAttackAt = nowMs + this.def.eliteMeleeCooldownMs;
+  }
+
   die() {
     if (!this.active) return;
     this.scene.tweens.killTweensOf(this);
@@ -580,6 +739,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // parte, ver _updateArena), então precisa ser destruído na mão, senão
     // fica na tela pra sempre depois do Sealer morrer.
     this.arenaGraphics?.destroy();
+    // Elite: mesma lógica — o Graphics do telegraph (mísseis/melee) não é
+    // filho do sprite, precisa morrer junto na mão.
+    this.eliteTelegraphGraphics?.destroy();
     // `color` vai junto só pra quem quiser desenhar algo na cor do
     // inimigo (ver GameScene._spawnDeathFx) — o Enemy já não existe mais
     // no momento em que quem escuta o evento for usar isso.
