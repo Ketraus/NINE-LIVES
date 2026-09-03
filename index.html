@@ -12,6 +12,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
   <title>Nine Lives</title>
+  <!-- fonte pixelada do menu (ver MainMenuScene) — BootScene espera ela
+       carregar antes de seguir, pra não trocar de fonte de repente na
+       frente do jogador -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
   <style>
     html, body { margin: 0; padding: 0; background: #111; overflow: hidden; touch-action: none; }
     #game-container { display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; touch-action: none; }

@@ -59,26 +59,11 @@ export default class WeaponSelectScene extends Phaser.Scene {
       .setDisplaySize(CARD_DISPLAY_W, CARD_DISPLAY_H)
       .setInteractive({ useHandCursor: true });
 
-    // stats numéricos não cabem na arte (ela é só nome+ícone+flavor) —
-    // ficam numa legenda abaixo da carta em vez de em cima da imagem
-    const stats = this.add
-      .text(
-        0,
-        CARD_DISPLAY_H / 2 + 18,
-        [
-          `Dano: ${weapon.damage}`,
-          `Alcance: ${weapon.range}`,
-          `Recarga: ${weapon.cooldownMs}ms`
-        ].join('   '),
-        { fontSize: '13px', color: '#9fc8ff', align: 'center' }
-      )
-      .setOrigin(0.5, 0);
-
     art.on('pointerover', () => art.setScale(art.scaleX * 1.04, art.scaleY * 1.04));
     art.on('pointerout', () => art.setDisplaySize(CARD_DISPLAY_W, CARD_DISPLAY_H));
     art.on('pointerdown', () => this._choose(weapon));
 
-    group.add([art, stats]);
+    group.add([art]);
     return group;
   }
 

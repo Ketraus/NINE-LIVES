@@ -27,10 +27,17 @@ export default class PreloadScene extends Phaser.Scene {
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
     // this.load.audio('music_game', 'assets/music/game_theme.mp3');
 
+    // som de clique da UI (botões do menu etc.)
+    this.load.audio('sfx_ui_click', 'assets/sfx/ui_click.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');
     this.load.image('card_pistol', 'assets/ui/card_pistol.png');
+
+    // fundo do menu principal (ver MainMenuScene) — foto 1024x1024,
+    // escalada em cover-fit pra preencher o canvas todo sem distorcer
+    this.load.image('menu_bg', 'assets/ui/menu_bg.jpg');
 
     // mapa feito no Tiled (tileset embutido no JSON)
     this.load.image('tileset', 'assets/maps/tileset.png');
