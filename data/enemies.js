@@ -58,6 +58,31 @@ export default [
     "explodeDamage": 20
   },
   {
+    "id": "elite",
+    "name": "Elite",
+    "sprite": "enemy",
+    "hp": 220,
+    "speed": 58,
+    "contactDamage": 22,
+    "contactCooldownMs": 900,
+    "xpReward": 80,
+    "color": 16711884,
+    "scale": 2.0,
+    "flocking": { "seek": 1.0, "cohesion": 0.4, "separation": 0.5, "density": 0.2 },
+    "elite": true,
+    "eliteAttackIntervalMs": 4500,
+    "eliteMeleeRange": 90,
+    "eliteMeleeTelegraphMs": 500,
+    "eliteMeleeDamage": 35,
+    "eliteMeleeCooldownMs": 6000,
+    "eliteMissileCount": 3,
+    "eliteMissileSpreadRadius": 140,
+    "eliteMissileRadius": 70,
+    "eliteMissileStepGapMs": 350,
+    "eliteMissileWarnAfterMs": 550,
+    "eliteMissileDamage": 30
+  },
+  {
     "id": "sealer",
     "name": "Fechador de Arena (Sealer)",
     "sprite": "enemy",
@@ -75,31 +100,6 @@ export default [
     "arenaMinRadius": 110,
     "arenaShrinkDurationMs": 60000,
     "arenaCrushDamagePerSecond": 10
-  },
-  {
-    "id": "elite",
-    "name": "Elite",
-    "sprite": "enemy",
-    "hp": 90,
-    "speed": 40,
-    "contactDamage": 8,
-    "contactCooldownMs": 900,
-    "xpReward": 45,
-    "color": 11141375,
-    "minSpawnTimeMs": 200000,
-    "flocking": { "seek": 0.9, "cohesion": 0.4, "separation": 0.5, "density": 0.2 },
-    "elite": true,
-    "eliteAttackIntervalMs": 3600,
-    "eliteMeleeRange": 100,
-    "eliteMeleeCooldownMs": 5200,
-    "eliteMeleeTelegraphMs": 450,
-    "eliteMeleeDamage": 24,
-    "eliteMissileCount": 3,
-    "eliteMissileStepGapMs": 260,
-    "eliteMissileWarnAfterMs": 550,
-    "eliteMissileSpreadRadius": 130,
-    "eliteMissileRadius": 85,
-    "eliteMissileDamage": 22
   }
 ]
 ;

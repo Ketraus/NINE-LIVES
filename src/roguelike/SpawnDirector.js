@@ -50,7 +50,7 @@ export default class SpawnDirector {
    *   edita teto de vivos, frequência de leva e tamanho de leva — não
    *   direto nesta classe.
    */
-  constructor(scene, enemySpawner, spawnPhases = [], spawnCurves = DEFAULT_SPAWN_CURVES, sealerSchedule = []) {
+  constructor(scene, enemySpawner, spawnPhases = [], spawnCurves = DEFAULT_SPAWN_CURVES, sealerSchedule = [], eliteSchedule = []) {
     this.scene = scene;
     this.enemySpawner = enemySpawner;
     this.spawnPhases = spawnPhases;
@@ -69,6 +69,15 @@ export default class SpawnDirector {
     // frames/levas seguidas).
     this.sealerSchedule = sealerSchedule;
     this.sealerTriggered = new Set();
+
+    // Horário manual (data/eliteSchedule.js) de quando o(s) Elite(s)
+    // nascem — mesmo espírito do Sealer acima, mas cada entrada é
+    // {t, count} (quantidade própria por aparição) e sem restrição de "só
+    // 1 vivo por vez" (ver _checkEliteSchedule). Nunca entra no sorteio
+    // automático de spawnPhases porque simplesmente não tem peso definido
+    // em nenhuma fase — só nasce por aqui.
+    this.eliteSchedule = eliteSchedule;
+    this.eliteTriggered = new Set();
 
     // Cheat (DevConsole "autospawn"): true = levas automáticas continuam
     // sendo agendadas normalmente (_scheduleNextBatch/timerEvent), mas
@@ -174,6 +183,11 @@ export default class SpawnDirector {
     // desligado, é um script à parte.
     this._checkSealerSchedule();
 
+    // Elite também é checado sempre, mesmo com autospawn desligado —
+    // igual ao Sealer, é um script manual à parte do sorteio automático,
+    // não algo que o cheat "autospawn" deveria conseguir travar.
+    this._checkEliteSchedule();
+
     if (!this.autoSpawnEnabled) return; // cheat "autospawn" desligado: só spawn manual (ver toggleAutoSpawn)
 
     // Arena do Sealer ativa: NINGUÉM mais nasce até ele morrer (ou a
@@ -232,6 +246,25 @@ export default class SpawnDirector {
       if (elapsedMs >= timeMs && !this.sealerTriggered.has(index)) {
         this.sealerTriggered.add(index);
         this.enemySpawner.spawnByDefId('sealer', 1);
+      }
+    });
+  }
+
+  /**
+   * Dispara o spawn do Elite nos horários fixos de data/eliteSchedule.js
+   * (script, não sorteio). Cada entrada só é tentada uma vez
+   * (eliteTriggered guarda os ÍNDICES já disparados), e cada uma spawna
+   * exatamente `count` Elites de uma vez via
+   * EnemySpawner.spawnByDefId('elite', count) — sem checar se já existe
+   * Elite vivo (diferente do Sealer): podem coexistir vários.
+   */
+  _checkEliteSchedule() {
+    if (!this.eliteSchedule || this.eliteSchedule.length === 0) return;
+    const elapsedMs = this.getElapsedMs();
+    this.eliteSchedule.forEach((entry, index) => {
+      if (elapsedMs >= entry.t && !this.eliteTriggered.has(index)) {
+        this.eliteTriggered.add(index);
+        this.enemySpawner.spawnByDefId('elite', entry.count ?? 1);
       }
     });
   }
