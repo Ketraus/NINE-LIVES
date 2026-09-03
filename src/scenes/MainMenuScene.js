@@ -99,7 +99,10 @@ export default class MainMenuScene extends Phaser.Scene {
       }
     };
 
-    hitArea.on('pointerover', () => setHover(true));
+    hitArea.on('pointerover', () => {
+      setHover(true);
+      this.sound.play('sfx_hover', { volume: 0.5 });
+    });
     hitArea.on('pointerout', () => setHover(false));
     hitArea.on('pointerdown', () => {
       this.sound.play('sfx_ui_click', { volume: 0.6 });

@@ -34,6 +34,9 @@ export default class PreloadScene extends Phaser.Scene {
     // menu principal, esse já usa sfx_ui_click)
     this.load.audio('sfx_card_select', 'assets/sfx/card_select.mp3');
 
+    // som de hover — menu e cartas (arma, upgrade, evolução)
+    this.load.audio('sfx_hover', 'assets/sfx/hover.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');

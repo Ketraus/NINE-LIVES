@@ -59,7 +59,10 @@ export default class WeaponSelectScene extends Phaser.Scene {
       .setDisplaySize(CARD_DISPLAY_W, CARD_DISPLAY_H)
       .setInteractive({ useHandCursor: true });
 
-    art.on('pointerover', () => art.setScale(art.scaleX * 1.04, art.scaleY * 1.04));
+    art.on('pointerover', () => {
+      art.setScale(art.scaleX * 1.04, art.scaleY * 1.04);
+      this.sound.play('sfx_hover', { volume: 0.5 });
+    });
     art.on('pointerout', () => art.setDisplaySize(CARD_DISPLAY_W, CARD_DISPLAY_H));
     art.on('pointerdown', () => this._choose(weapon));
 

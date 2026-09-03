@@ -218,7 +218,10 @@ export default class LevelUpUI {
       children.push(art);
     }
 
-    bg.on('pointerover', () => bg.setStrokeStyle(2, 0xffffff));
+    bg.on('pointerover', () => {
+      bg.setStrokeStyle(2, 0xffffff);
+      this.scene.sound.play('sfx_hover', { volume: 0.5 });
+    });
     bg.on('pointerout', () => bg.setStrokeStyle(2, accentColor));
     bg.on('pointerdown', () => this._choose(upgrade));
 
@@ -273,7 +276,10 @@ export default class LevelUpUI {
       children.push(art);
     }
 
-    bg.on('pointerover', () => bg.setStrokeStyle(3, 0xffffff));
+    bg.on('pointerover', () => {
+      bg.setStrokeStyle(3, 0xffffff);
+      this.scene.sound.play('sfx_hover', { volume: 0.5 });
+    });
     bg.on('pointerout', () => bg.setStrokeStyle(3, 0xffd166));
     bg.on('pointerdown', () => this._chooseEvolution(evolution));
 
@@ -330,7 +336,10 @@ export default class LevelUpUI {
 
     if (!used) {
       bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerover', () => bg.setStrokeStyle(2, 0xffffff));
+      bg.on('pointerover', () => {
+        bg.setStrokeStyle(2, 0xffffff);
+        this.scene.sound.play('sfx_hover', { volume: 0.5 });
+      });
       bg.on('pointerout', () => bg.setStrokeStyle(2, 0x4fd1ff));
       bg.on('pointerdown', () => this._restock());
     }
