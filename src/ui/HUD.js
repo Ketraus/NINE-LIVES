@@ -3,6 +3,33 @@ import EventBus from '../systems/EventBus.js';
 const BAR_W = 200;
 const SHIELD_BAR_COLOR = 0x3aa8ff; // mesmo azul do círculo de escudo em Player.js
 
+// barra de vida "terminal": painel de cantos cortados (mesmo estilo do
+// botão do menu principal, ver MainMenuScene._drawPanel) com uma seta
+// dentro em vez de um retângulo cheio — corpo grosso = vida atual,
+// afinando numa ponta, com uma linha fina de trilho até a borda direita
+// do painel (o "alcance total"). Cor vai de ciano (saudável) a vermelho
+// (crítico) conforme a vida cai.
+const HP_PANEL_W = 220;
+const HP_PANEL_H = 40;
+const HP_CHAMFER = 6;
+const HP_BORDER_COLOR = 0x4fd1ff;
+const HP_PANEL_FILL = 0x081217;
+const HP_PANEL_FILL_ALPHA = 0.55;
+const HP_PAD_X = 10;
+const HP_TRACK_Y = 30; // distância do topo do painel até a linha da seta
+const HP_TRACK_HEIGHT = 3;
+const HP_TRACK_COLOR = 0x2a3a40; // trilho fixo, discreto
+const HP_FILL_HEIGHT = 9;
+const HP_ARROW_HEAD_LEN = 10;
+const HP_COLOR_HEALTHY = 0x4fd1ff;
+const HP_COLOR_DANGER = 0xe33e3e;
+
+// layout vertical do resto da HUD, empurrado pra baixo pra caber o painel
+// de vida maior (antes tinha 16px de altura, agora tem HP_PANEL_H)
+const SHIELD_Y = 16 + HP_PANEL_H + 6;
+const XP_Y = SHIELD_Y + 10 + 6;
+const LEVEL_TEXT_Y = XP_Y + 12;
+
 /**
  * UI puramente reativa: só escuta EventBus e desenha. Não tem
  * nenhuma referência a Player/Enemy/RunState diretamente.
@@ -57,21 +84,65 @@ export default class HUD {
   }
 
   _buildHealthBar() {
-    this.hpBg = this.scene.add
-      .rectangle(16, 16, BAR_W, 16, 0x000000, 0.5)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(100);
-    this.hpFill = this.scene.add
-      .rectangle(18, 18, BAR_W - 4, 12, 0xe33e3e)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(101);
+    const x = 16;
+    const y = 16;
+
+    // painel (borda + fundo), desenhado uma vez só
+    this.hpPanel = this.scene.add.graphics().setScrollFactor(0).setDepth(100);
+    HUD._drawChamferedRect(
+      this.hpPanel,
+      x,
+      y,
+      HP_PANEL_W,
+      HP_PANEL_H,
+      HP_CHAMFER,
+      HP_PANEL_FILL,
+      HP_PANEL_FILL_ALPHA,
+      HP_BORDER_COLOR
+    );
+
+    // trilho fixo (linha fina até a borda direita, com seta na ponta) —
+    // também estático, fica no mesmo Graphics do painel
+    const trackMaxW = HP_PANEL_W - HP_PAD_X * 2;
+    HUD._drawArrowShape(
+      this.hpPanel,
+      x + HP_PAD_X,
+      y + HP_TRACK_Y,
+      trackMaxW,
+      HP_TRACK_HEIGHT,
+      HP_ARROW_HEAD_LEN,
+      HP_TRACK_COLOR
+    );
+
+    // seta grossa: vida atual, redesenhada a cada 'player-health-changed'
+    // (ver _drawHpFill/_bindEvents)
+    this.hpFill = this.scene.add.graphics().setScrollFactor(0).setDepth(101);
+    this._hpOrigin = { x: x + HP_PAD_X, y: y + HP_TRACK_Y };
+    this._hpMaxW = trackMaxW;
+
     this.hpText = this.scene.add
-      .text(16, 34, '', { fontSize: '12px', color: '#ffffff' })
+      .text(x + HP_PANEL_W - 10, y + 6, '', { fontSize: '12px', color: '#cfeaff' })
+      .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(101);
-    this.uiContainer.add([this.hpBg, this.hpFill, this.hpText]);
+
+    this.uiContainer.add([this.hpPanel, this.hpFill, this.hpText]);
+  }
+
+  /** Redesenha só a seta de vida atual (o painel e o trilho são estáticos). */
+  _drawHpFill(ratio) {
+    this.hpFill.clear();
+    const fillW = this._hpMaxW * ratio;
+    const color = HUD._hpColor(ratio);
+    HUD._drawArrowShape(
+      this.hpFill,
+      this._hpOrigin.x,
+      this._hpOrigin.y,
+      fillW,
+      HP_FILL_HEIGHT,
+      HP_ARROW_HEAD_LEN,
+      color
+    );
   }
 
   /**
@@ -81,13 +152,13 @@ export default class HUD {
    */
   _buildShieldBar() {
     this.shieldBg = this.scene.add
-      .rectangle(16, 52, BAR_W, 10, 0x000000, 0.5)
+      .rectangle(16, SHIELD_Y, BAR_W, 10, 0x000000, 0.5)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(100)
       .setVisible(false);
     this.shieldFill = this.scene.add
-      .rectangle(18, 53.5, BAR_W - 4, 7, SHIELD_BAR_COLOR)
+      .rectangle(18, SHIELD_Y + 1.5, BAR_W - 4, 7, SHIELD_BAR_COLOR)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(101)
@@ -97,17 +168,17 @@ export default class HUD {
 
   _buildXpBar() {
     this.xpBg = this.scene.add
-      .rectangle(16, 68, BAR_W, 8, 0x000000, 0.5)
+      .rectangle(16, XP_Y, BAR_W, 8, 0x000000, 0.5)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(100);
     this.xpFill = this.scene.add
-      .rectangle(18, 70, 0, 4, 0x4fd1ff)
+      .rectangle(18, XP_Y + 2, 0, 4, 0x4fd1ff)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(101);
     this.levelText = this.scene.add
-      .text(16, 80, 'Nível 1', { fontSize: '12px', color: '#cfeaff' })
+      .text(16, LEVEL_TEXT_Y, 'Nível 1', { fontSize: '12px', color: '#cfeaff' })
       .setScrollFactor(0)
       .setDepth(101);
     this.uiContainer.add([this.xpBg, this.xpFill, this.levelText]);
@@ -180,7 +251,7 @@ export default class HUD {
   _bindEvents() {
     EventBus.on('player-health-changed', ({ current, max }) => {
       const ratio = Phaser.Math.Clamp(current / max, 0, 1);
-      this.hpFill.width = (BAR_W - 4) * ratio;
+      this._drawHpFill(ratio);
       this.hpText.setText(`${Math.ceil(current)} / ${max}`);
     });
 
@@ -236,6 +307,69 @@ export default class HUD {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  /** Painel de cantos cortados (mesmo visual das placas do menu principal),
+   * (x, y) é o canto superior esquerdo — diferente de MainMenuScene._drawPanel,
+   * que centraliza em (0,0), porque aqui é mais simples posicionar direto na
+   * tela sem container extra. */
+  static _drawChamferedRect(g, x, y, w, h, chamfer, fillColor, fillAlpha, borderColor) {
+    const c = chamfer;
+    const points = [
+      { x: x + c, y },
+      { x: x + w - c, y },
+      { x: x + w, y: y + c },
+      { x: x + w, y: y + h - c },
+      { x: x + w - c, y: y + h },
+      { x: x + c, y: y + h },
+      { x, y: y + h - c },
+      { x, y: y + c }
+    ];
+    g.fillStyle(fillColor, fillAlpha);
+    g.fillPoints(points, true);
+    g.lineStyle(1, borderColor, 1);
+    g.strokePoints(points, true);
+  }
+
+  /** Seta: corpo retangular que termina numa ponta triangular em (x + width).
+   * Se width for menor que a cabeça da seta, desenha só um triângulo
+   * encolhido (senão a seta "nasceria" maior que a barra com pouca vida). */
+  static _drawArrowShape(g, x, y, width, height, headLen, color, alpha = 1) {
+    if (width <= 0) return;
+    g.fillStyle(color, alpha);
+
+    if (width <= headLen) {
+      g.fillPoints(
+        [
+          { x, y: y - height / 2 },
+          { x: x + width, y },
+          { x, y: y + height / 2 }
+        ],
+        true
+      );
+      return;
+    }
+
+    const bodyW = width - headLen;
+    g.fillPoints(
+      [
+        { x, y: y - height / 2 },
+        { x: x + bodyW, y: y - height / 2 },
+        { x: x + width, y },
+        { x: x + bodyW, y: y + height / 2 },
+        { x, y: y + height / 2 }
+      ],
+      true
+    );
+  }
+
+  /** Ciano (saudável) -> vermelho (crítico), interpolado pela vida restante. */
+  static _hpColor(ratio) {
+    const danger = Phaser.Display.Color.ValueToColor(HP_COLOR_DANGER);
+    const healthy = Phaser.Display.Color.ValueToColor(HP_COLOR_HEALTHY);
+    const t = Phaser.Math.Clamp(ratio, 0, 1) * 100;
+    const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(danger, healthy, 100, t);
+    return Phaser.Display.Color.GetColor(mixed.r, mixed.g, mixed.b);
   }
 
   // Sem destroy() aqui de propósito: nada chamava esse método (ele nunca
