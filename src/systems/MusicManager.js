@@ -32,6 +32,16 @@ class MusicManager {
     if (this.currentKey === key) return; // já é a faixa tocando, não reinicia
     if (!scene.cache.audio.exists(key)) return; // arquivo ainda não carregado — no-op
 
+    if (scene.sound.locked) {
+      // navegador bloqueia autoplay de áudio até o primeiro clique/toque
+      // em QUALQUER lugar da página — sem isso, a música tenta tocar aqui,
+      // fica muda, e só "começa" de verdade na cena onde o clique
+      // acontece (ex.: o próprio botão de Jogar). Agenda pra tocar assim
+      // que destravar, em vez de simplesmente desistir.
+      scene.sound.once(Phaser.Sound.Events.UNLOCKED, () => this.play(scene, key));
+      return;
+    }
+
     if (this.currentSound) {
       const old = this.currentSound;
       scene.tweens.add({
