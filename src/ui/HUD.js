@@ -1,6 +1,6 @@
 import EventBus from '../systems/EventBus.js';
 
-const SHIELD_BAR_COLOR = 0x3aa8ff; // mesmo azul do círculo de escudo em Player.js
+const SHIELD_BAR_COLOR = 0xffd166; // dourado — precisa contrastar com o gradiente ciano->vermelho da vida, um azul parecido com o "saudável" ficava invisível por cima
 const SHIELD_FILL_ALPHA = 0.95; // escudo cobre a barra de vida por cima, então precisa ser bem mais opaco que ela
 const HP_BREAK_FLASH_COLOR = 0xffffff;
 const HP_BREAK_FLASH_MS = 220; // pisca branco rápido quando o escudo estoura, some sozinho
@@ -62,7 +62,6 @@ const SHARP_TIP_FLAT = 2;
 // virou overlay dentro do painel de vida — e o xp agora é um painel bem
 // mais baixo que antes, então a coluna toda ocupa bem menos altura.
 const XP_Y = 16 + HP_PANEL_H + 6;
-const LEVEL_TEXT_Y = XP_Y + 1; // ao lado do painel de xp, não embaixo — economiza altura
 
 /**
  * UI puramente reativa: só escuta EventBus e desenha. Não tem
@@ -185,8 +184,8 @@ export default class HUD {
     );
 
     this.hpText = this.scene.add
-      .text(x + HP_PANEL_W - 10, y + 6, '', { fontSize: '12px', color: '#cfeaff' })
-      .setOrigin(1, 0)
+      .text(x + HP_PANEL_W + 8, y + HP_TRACK_Y - 6, '', { fontSize: '11px', color: '#cfeaff' })
+      .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(101);
 
@@ -275,9 +274,12 @@ export default class HUD {
     this._xpOrigin = { x: x + XP_PAD_X, y: y + XP_TRACK_Y };
     this._xpMaxW = trackMaxW;
 
-    // nível ao lado do painel (não embaixo) pra não empilhar mais altura
+    // nível ao lado do painel (não embaixo, pra não empilhar altura),
+    // centralizado com a altura do painel — antes tava desalinhado, meio
+    // "boiando" acima dele
     this.levelText = this.scene.add
-      .text(x + XP_PANEL_W + 8, LEVEL_TEXT_Y, 'Nível 1', { fontSize: '11px', color: '#cfeaff' })
+      .text(x + XP_PANEL_W + 8, y + XP_PANEL_H / 2, 'Nível 1', { fontSize: '11px', color: '#cfeaff' })
+      .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setDepth(101);
     this.uiContainer.add([this.xpPanel, this.xpFill, this.levelText]);
