@@ -15,6 +15,17 @@ const CARD_DISPLAY_H = 260;
 const CARD_DISPLAY_W = Math.round((331 / 459) * CARD_DISPLAY_H);
 const GAP = 32;
 
+// transição de entrada na run ("sistema carregando... PÁ, no jogo"), mesma
+// linguagem da saída do menu (MainMenuScene._playExitTransition) só que
+// mais forte, porque aqui o jogo de fato começa: CLACK (sfx_card_select) +
+// vibração (shake de câmera + haptic real em touch) tocam JUNTOS -> tela
+// vai a preto -> ~100ms de silêncio puro -> só então troca de cena (o
+// resto — mapa clareando + HUD entrando — acontece em GameScene.create()).
+const VIBRATION_MS = 90;
+const VIBRATION_INTENSITY = 0.008;
+const FADE_TO_BLACK_MS = 220;
+const SILENCE_MS = 100;
+
 /**
  * Tela entre o menu e a run: mostra as armas de data/weapons.js como
  * cartas clicáveis e manda pra GameScene já com a escolha
@@ -68,14 +79,33 @@ export default class WeaponSelectScene extends Phaser.Scene {
       this.sound.play('sfx_hover', { volume: 0.5 });
     });
     art.on('pointerout', () => art.setDisplaySize(CARD_DISPLAY_W, CARD_DISPLAY_H));
-    art.on('pointerdown', () => this._choose(weapon));
+    art.on('pointerdown', () => {
+      if (this._transitioning) return; // trava clique duplo/em outra carta durante a saída
+      this._choose(weapon);
+    });
 
     group.add([art]);
     return group;
   }
 
   _choose(weapon) {
+    this._transitioning = true;
+
+    // CLACK + vibração, ao mesmo tempo (senão o shake roda com a tela já
+    // apagando e ninguém sente)
     this.sound.play('sfx_card_select', { volume: 0.6 });
-    this.scene.start('GameScene', { weaponId: weapon.id });
+    this.cameras.main.shake(VIBRATION_MS, VIBRATION_INTENSITY);
+    if (navigator.vibrate) navigator.vibrate(30); // haptic real em celular
+
+    this.time.delayedCall(VIBRATION_MS, () => {
+      const cam = this.cameras.main;
+      cam.fadeOut(FADE_TO_BLACK_MS, 0, 0, 0);
+      cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        // silêncio puro antes de carregar — o "sistema processando"
+        this.time.delayedCall(SILENCE_MS, () => {
+          this.scene.start('GameScene', { weaponId: weapon.id });
+        });
+      });
+    });
   }
 }

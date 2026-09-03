@@ -29,6 +29,13 @@ const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa 
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 
+// resto da transição de entrada (ver WeaponSelectScene._choose pro início:
+// CLACK -> vibração -> preto -> silêncio): tela chega preta, mapa clareia,
+// e só depois o HUD entra por cima — em camadas, não tudo de uma vez.
+const MAP_FADE_IN_MS = 220;
+const HUD_FADE_IN_DELAY_MS = 80;
+const HUD_FADE_IN_MS = 180;
+
 export default class GameScene extends Phaser.Scene {
   constructor() {
     super('GameScene');
@@ -44,6 +51,10 @@ export default class GameScene extends Phaser.Scene {
     // carregado, ver MusicManager); scene.restart() (morte + R) cai aqui
     // de novo, mas MusicManager.play já ignora se for a mesma faixa
     MusicManager.play(this, 'music_game');
+
+    // nasce preta (chegando do silêncio da WeaponSelectScene) e clareia —
+    // "mapa começa a aparecer" (ver constantes acima)
+    this.cameras.main.fadeIn(MAP_FADE_IN_MS, 0, 0, 0);
 
     // guarda pra poder repassar no restart (tecla R) sem perder a arma escolhida
     this.weaponId = data?.weaponId || this.weaponId || null;
@@ -227,6 +238,17 @@ export default class GameScene extends Phaser.Scene {
 
   _buildUI() {
     this.hud = new HUD(this);
+
+    // HUD nasce invisível e só entra depois que o mapa terminar de
+    // clarear (+ um respiro de HUD_FADE_IN_DELAY_MS) — a sensação é de
+    // "mundo primeiro, interface depois", não tudo pipocando junto.
+    this.hud.uiContainer.setAlpha(0);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE, () => {
+      this.time.delayedCall(HUD_FADE_IN_DELAY_MS, () => {
+        this.tweens.add({ targets: this.hud.uiContainer, alpha: 1, duration: HUD_FADE_IN_MS });
+      });
+    });
+
     // Player já emitiu 'player-health-changed' no próprio construtor
     // (_buildPlayer, antes do HUD existir), então o HUD perdia esse
     // primeiro evento e só mostrava o número de vida depois do primeiro
