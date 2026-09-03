@@ -24,7 +24,7 @@ export default class PreloadScene extends Phaser.Scene {
     // mais no código precisa mudar (MusicManager já está pronto pra usar
     // estas chaves em MainMenuScene e GameScene).
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
-    // this.load.audio('music_game', 'assets/music/game_theme.mp3');
+     this.load.audio('music_game', 'assets/music/game_theme.mp3');
 
     // som de clique da UI (botões do menu etc.)
     this.load.audio('sfx_ui_click', 'assets/sfx/ui_click.mp3');
