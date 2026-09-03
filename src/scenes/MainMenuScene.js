@@ -13,6 +13,13 @@ const TEXT_HOVER = '#e8f6ff';
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const CHAMFER = 8; // corte dos cantos, em px — visual de placa tecnológica
 
+// transição de saída (JOGAR -> WeaponSelectScene), "troca de sistema":
+// menu some enquanto glitcha (os dois JUNTOS, não um depois do outro —
+// senão o glitch roda com a tela já apagada e ninguém vê nada) -> tudo
+// preto -> cena nova entra. Soma ~500ms, de propósito nada grande.
+const EXIT_GLITCH_MS = 160; // duração do desaparecer + glitch juntos
+const EXIT_BLACK_MS = 180;
+
 export default class MainMenuScene extends Phaser.Scene {
   constructor() {
     super('MainMenuScene');
@@ -21,11 +28,18 @@ export default class MainMenuScene extends Phaser.Scene {
   create() {
     const { width, height } = this.scale;
 
+    this._transitioning = false; // trava clique duplo durante a saída
+
     MusicManager.play(this, 'music_menu');
 
-    this._buildBackground(width, height);
+    // tudo que precisa sumir junto na transição (ver _playExitTransition)
+    // fica numa camada só, assim o fade é um único tween em vez de um por
+    // elemento.
+    this.menuLayer = this.add.container(0, 0);
 
-    this.add
+    const bg = this._buildBackground(width, height);
+
+    const title = this.add
       .text(width / 2, height * 0.28, 'NINE LIVES', {
         fontFamily: PIXEL_FONT,
         fontSize: '26px',
@@ -34,9 +48,14 @@ export default class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setShadow(2, 2, '#000000', 2, false, true);
 
-    this._buildTerminalButton(width / 2, height * 0.6, 220, 40, 'JOGAR', () => this._start());
+    const button = this._buildTerminalButton(width / 2, height * 0.6, 220, 40, 'JOGAR', () =>
+      this._start()
+    );
+
+    this.menuLayer.add([bg, title, button]);
 
     this.input.keyboard.once('keydown-SPACE', () => {
+      if (this._transitioning) return;
       this.sound.play('sfx_ui_click', { volume: 0.6 });
       this._start();
     });
@@ -49,6 +68,7 @@ export default class MainMenuScene extends Phaser.Scene {
     // pra fixar uma escala — recalcula toda vez que a cena abre.
     const scale = Math.max(width / bg.width, height / bg.height);
     bg.setScale(scale);
+    return bg;
   }
 
   /**
@@ -133,6 +153,9 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   _start() {
+    if (this._transitioning) return;
+    this._transitioning = true;
+
     // celular: aproveita esse mesmo toque (gesto do usuário, exigido pela
     // API de Fullscreen) pra sumir com a barra do navegador. Sem suporte
     // (ex: iOS Safari não tem essa API pra página comum), só ignora e
@@ -148,6 +171,48 @@ export default class MainMenuScene extends Phaser.Scene {
     // esconde o botão HTML de tela cheia (#fullscreen-btn) — só existe no
     // menu; na run quem controla é o menu pausa (PauseUI.js)
     window.dispatchEvent(new Event('nine-lives:fullscreen-started'));
-    this.scene.start('WeaponSelectScene');
+
+    this._playExitTransition();
+  }
+
+  /**
+   * "Troca de sistema": menu some ENQUANTO glitcha (em paralelo — o
+   * glitch precisa da tela ainda visível pra ser sentido) -> tela preta
+   * -> só então troca de cena (WeaponSelectScene entra com fade-in
+   * próprio, ver seu create()).
+   */
+  _playExitTransition() {
+    this.tweens.add({
+      targets: this.menuLayer,
+      alpha: 0,
+      duration: EXIT_GLITCH_MS
+    });
+
+    this._playGlitch(EXIT_GLITCH_MS, () => {
+      const cam = this.cameras.main;
+      cam.fadeOut(EXIT_BLACK_MS, 0, 0, 0);
+      cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        this.scene.start('WeaponSelectScene');
+      });
+    });
+  }
+
+  /** Jitter horizontal rápido (passos discretos, não tween suave — o "digital" do glitch é justamente não ser liso). */
+  _playGlitch(durationMs, onDone) {
+    const cam = this.cameras.main;
+    const steps = 8;
+    let i = 0;
+    this.time.addEvent({
+      delay: durationMs / steps,
+      repeat: steps - 1,
+      callback: () => {
+        i++;
+        cam.scrollX = Phaser.Math.Between(-14, 14);
+        if (i >= steps) {
+          cam.scrollX = 0;
+          onDone();
+        }
+      }
+    });
   }
 }

@@ -36,6 +36,10 @@ export default class WeaponSelectScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const cx = width / 2;
 
+    // chega em preto (ver MainMenuScene._playExitTransition) e clareia —
+    // metade final da transição de saída do menu
+    this.cameras.main.fadeIn(140, 0, 0, 0);
+
     this.add
       .text(cx, 70, 'ESCOLHA SUA ARMA', { fontSize: '24px', color: '#ffffff' })
       .setOrigin(0.5);
