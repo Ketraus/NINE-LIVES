@@ -1,6 +1,10 @@
 // Volume da música de fundo (0 a 1) e duração do fade ao trocar de faixa.
 const MUSIC_VOLUME = 0.4;
 const FADE_MS = 600;
+// fade ao PARAR de vez (ex.: menu -> início da run, sem música de
+// gameplay pronta ainda) — mais lento que a troca entre faixas, pedido
+// explicitamente em 3s pra não cortar seco.
+const STOP_FADE_MS = 3000;
 
 /**
  * Toca a música de fundo do jogo (menu e run) com fade entre as trocas de
@@ -30,7 +34,15 @@ class MusicManager {
    */
   play(scene, key) {
     if (this.currentKey === key) return; // já é a faixa tocando, não reinicia
-    if (!scene.cache.audio.exists(key)) return; // arquivo ainda não carregado — no-op
+
+    if (!scene.cache.audio.exists(key)) {
+      // faixa ainda não adicionada (ver PreloadScene) — não fica tocando
+      // a anterior pra sempre, desliga ela com fade de 3s. Assim que o
+      // arquivo chegar e for carregado, isto passa a trocar de faixa
+      // normalmente sozinho, sem precisar mexer aqui de novo.
+      this.stop(scene, STOP_FADE_MS);
+      return;
+    }
 
     if (scene.sound.locked) {
       // navegador bloqueia autoplay de áudio até o primeiro clique/toque
@@ -60,9 +72,23 @@ class MusicManager {
     this.currentSound = sound;
   }
 
-  /** Para a música atual sem tocar outra (ex.: tela de vitória, se quiser silêncio). */
-  stop() {
-    if (this.currentSound) this.currentSound.stop();
+  /**
+   * Some com a música atual (fade) sem tocar outra no lugar. Usada
+   * automaticamente por play() quando a faixa pedida ainda não existe,
+   * mas também dá pra chamar direto (ex.: tela de vitória, se quiser
+   * silêncio total).
+   * @param {Phaser.Scene} scene
+   * @param {number} [fadeMs] - duração do fade; padrão 3s
+   */
+  stop(scene, fadeMs = STOP_FADE_MS) {
+    if (!this.currentSound) return;
+    const old = this.currentSound;
+    scene.tweens.add({
+      targets: old,
+      volume: 0,
+      duration: fadeMs,
+      onComplete: () => old.stop()
+    });
     this.currentKey = null;
     this.currentSound = null;
   }
