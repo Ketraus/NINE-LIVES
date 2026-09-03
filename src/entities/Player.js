@@ -107,6 +107,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       onChange: (current, max) => EventBus.emit('player-shield-changed', { current, max }),
       onHit: () => this._flashShieldHit()
     });
+    // sem isto o HUD só fica sabendo que existe escudo no primeiro onChange
+    // (ou seja, no primeiro hit/recarga) — nasce cheio mas "invisível" até lá
+    EventBus.emit('player-shield-changed', {
+      current: this.shieldSystem.current,
+      max: this.shieldSystem.maxShield
+    });
 
     const radius = this._baseRadius + SHIELD_RADIUS_PADDING;
     this.shieldFx = this.scene.add

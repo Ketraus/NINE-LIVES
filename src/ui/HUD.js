@@ -1,7 +1,9 @@
 import EventBus from '../systems/EventBus.js';
 
-const BAR_W = 200;
 const SHIELD_BAR_COLOR = 0x3aa8ff; // mesmo azul do círculo de escudo em Player.js
+const SHIELD_FILL_ALPHA = 0.95; // escudo cobre a barra de vida por cima, então precisa ser bem mais opaco que ela
+const HP_BREAK_FLASH_COLOR = 0xffffff;
+const HP_BREAK_FLASH_MS = 220; // pisca branco rápido quando o escudo estoura, some sozinho
 
 // barra de vida "terminal": painel de cantos cortados (mesmo estilo do
 // botão do menu principal, ver MainMenuScene._drawPanel) com uma seta
@@ -9,54 +11,58 @@ const SHIELD_BAR_COLOR = 0x3aa8ff; // mesmo azul do círculo de escudo em Player
 // afinando numa ponta, com uma linha fina de trilho até a borda direita
 // do painel (o "alcance total"). Cor vai de ciano (saudável) a vermelho
 // (crítico) conforme a vida cai. Alphas baixos de propósito — chamava
-// atenção demais na tela cheia de ação.
-const HP_PANEL_W = 220;
-const HP_PANEL_H = 40;
-const HP_CHAMFER = 6;
+// atenção demais na tela cheia de ação. Painel menor que a versão
+// original (pedido: HUD tava ocupando espaço/poluindo demais).
+const HP_PANEL_W = 150;
+const HP_PANEL_H = 26;
+const HP_CHAMFER = 5;
 const HP_BORDER_COLOR = 0x4fd1ff;
 const HP_BORDER_ALPHA = 0.7;
 const HP_PANEL_FILL = 0x081217;
 const HP_PANEL_FILL_ALPHA = 0.35;
-const HP_PAD_X = 10;
-const HP_TRACK_Y = 30; // distância do topo do painel até a linha da seta
-const HP_TRACK_HEIGHT = 3;
+const HP_PAD_X = 8;
+const HP_TRACK_Y = 18; // distância do topo do painel até a linha da seta
+const HP_TRACK_HEIGHT = 2;
 const HP_TRACK_COLOR = 0x2a3a40; // trilho fixo, discreto
 const HP_TRACK_ALPHA = 0.7;
-const HP_FILL_HEIGHT = 9;
+const HP_FILL_HEIGHT = 7;
 const HP_FILL_ALPHA = 0.85;
-const HP_ARROW_HEAD_LEN = 10;
+const HP_ARROW_HEAD_LEN = 8;
 const HP_COLOR_HEALTHY = 0x4fd1ff;
 const HP_COLOR_DANGER = 0xe33e3e;
 
-// barra de xp "cápsula": moldura hexagonal (pontas nos dois lados) com uma
-// barrinha reta por dentro pro progresso — cinza-azulado preenchido, escuro
-// vazio, ver rascunho do usuário. Mais discreta que a de vida (contorno
-// único em vez de duplo, tudo bem transparente) — não é uma informação tão
-// urgente quanto vida, não precisa competir com o resto da tela.
-const XP_H = 20;
-const XP_CAP = 12; // comprimento da ponta lateral da cápsula
-const XP_BORDER_COLOR = 0x14222c; // contorno
-const XP_BORDER_ALPHA = 0.55;
-const XP_CASING_COLOR = 0x6b7f8c; // corpo cinza-azulado da moldura
-const XP_CASING_ALPHA = 0.25;
-const XP_TRACK_COLOR = 0x101a22; // fundo da barra interna (vazio)
-const XP_TRACK_ALPHA = 0.4;
-const XP_FILL_COLOR = 0x8fa3af; // preenchido (xp atual)
-const XP_FILL_ALPHA = 0.7;
-const XP_INNER_INSET = 4; // respiro entre a moldura e a barra reta interna
+// barra de xp: mesmo desenho da barra de vida (painel de cantos cortados +
+// seta), só que ainda menor e sem texto de número dentro — o usuário não
+// curtiu o estilo de cápsula hexagonal anterior e pediu pra reaproveitar o
+// visual da vida pro xp também.
+const XP_PANEL_W = HP_PANEL_W;
+const XP_PANEL_H = 16;
+const XP_CHAMFER = 4;
+const XP_PAD_X = 6;
+const XP_TRACK_Y = 11;
+const XP_TRACK_HEIGHT = 2;
+const XP_FILL_HEIGHT = 5;
+const XP_ARROW_HEAD_LEN = 6;
+const XP_BORDER_COLOR = 0x6b7f8c;
+const XP_BORDER_ALPHA = 0.5;
+const XP_PANEL_FILL = 0x0c1216;
+const XP_PANEL_FILL_ALPHA = 0.3;
+const XP_TRACK_COLOR = 0x2a323a;
+const XP_TRACK_ALPHA = 0.6;
+const XP_FILL_COLOR = 0x8fa3af;
+const XP_FILL_ALPHA = 0.85;
 
-// tamanho da "achatada" nas pontas dos dois desenhos acima (seta da vida e
-// cápsula do xp): sem isso a ponta é um vértice único (triângulo de área
-// zero), que o WebGL antialiasing pisca a cada frame nas bordas — era o
-// bug de "piscadas nas extremidades". Um flat de poucos px é imperceptível
-// no desenho mas resolve o flicker.
+// tamanho da "achatada" na ponta das setas (vida e xp): sem isso a ponta é
+// um vértice único (triângulo de área zero), que o WebGL antialiasing
+// pisca a cada frame nas bordas — era o bug de "piscadas nas extremidades".
+// Um flat de poucos px é imperceptível no desenho mas resolve o flicker.
 const SHARP_TIP_FLAT = 2;
 
-// layout vertical do resto da HUD, empurrado pra baixo pra caber o painel
-// de vida maior (antes tinha 16px de altura, agora tem HP_PANEL_H)
-const SHIELD_Y = 16 + HP_PANEL_H + 6;
-const XP_Y = SHIELD_Y + 10 + 6;
-const LEVEL_TEXT_Y = XP_Y + XP_H + 4;
+// layout vertical do resto da HUD. Escudo não tem mais linha própria —
+// virou overlay dentro do painel de vida — e o xp agora é um painel bem
+// mais baixo que antes, então a coluna toda ocupa bem menos altura.
+const XP_Y = 16 + HP_PANEL_H + 6;
+const LEVEL_TEXT_Y = XP_Y + 1; // ao lado do painel de xp, não embaixo — economiza altura
 
 /**
  * UI puramente reativa: só escuta EventBus e desenha. Não tem
@@ -72,7 +78,6 @@ export default class HUD {
     this.uiContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(0);
 
     this._buildHealthBar();
-    this._buildShieldBar();
     this._buildXpBar();
     this._buildKillCounter();
     this._buildRunTimer();
@@ -150,13 +155,42 @@ export default class HUD {
     this._hpOrigin = { x: x + HP_PAD_X, y: y + HP_TRACK_Y };
     this._hpMaxW = trackMaxW;
 
+    // overlay do escudo (carta "Escudo Energético"): mesma seta, por cima da
+    // de vida, numa cor diferente — enquanto há escudo ele cobre a vida por
+    // baixo (é o que absorve dano primeiro, ver ShieldSystem.absorb), then
+    // some sozinho quando não há mais a habilidade/escudo. Fica escondido
+    // (width 0) até o primeiro 'player-shield-changed' chegar.
+    this.shieldFill = this.scene.add.graphics().setScrollFactor(0).setDepth(102);
+    this._hadShield = false; // pra detectar a transição "tinha escudo -> estourou" e disparar o flash
+
+    // flash branco rápido sobre o painel inteiro, usado só no momento em
+    // que o escudo estoura (ver _flashShieldBreak) — invisível o resto do
+    // tempo (alpha 0)
+    this.hpBreakFlash = this.scene.add
+      .graphics()
+      .setScrollFactor(0)
+      .setDepth(103)
+      .setAlpha(0);
+    HUD._drawChamferedRect(
+      this.hpBreakFlash,
+      x,
+      y,
+      HP_PANEL_W,
+      HP_PANEL_H,
+      HP_CHAMFER,
+      HP_BREAK_FLASH_COLOR,
+      1,
+      HP_BREAK_FLASH_COLOR,
+      0
+    );
+
     this.hpText = this.scene.add
       .text(x + HP_PANEL_W - 10, y + 6, '', { fontSize: '12px', color: '#cfeaff' })
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(101);
 
-    this.uiContainer.add([this.hpPanel, this.hpFill, this.hpText]);
+    this.uiContainer.add([this.hpPanel, this.hpFill, this.shieldFill, this.hpBreakFlash, this.hpText]);
   }
 
   /** Redesenha só a seta de vida atual (o painel e o trilho são estáticos). */
@@ -176,74 +210,92 @@ export default class HUD {
     );
   }
 
-  /**
-   * Barra de escudo (carta "Escudo Energético", evolução de Blindagem) —
-   * criada já no HUD, mas invisível até o primeiro 'player-shield-changed'
-   * chegar (ver _bindEvents), já que nem toda run tem a habilidade.
-   */
-  _buildShieldBar() {
-    this.shieldBg = this.scene.add
-      .rectangle(16, SHIELD_Y, BAR_W, 10, 0x000000, 0.5)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(100)
-      .setVisible(false);
-    this.shieldFill = this.scene.add
-      .rectangle(18, SHIELD_Y + 1.5, BAR_W - 4, 7, SHIELD_BAR_COLOR)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(101)
-      .setVisible(false);
-    this.uiContainer.add([this.shieldBg, this.shieldFill]);
+  /** Redesenha o overlay de escudo por cima da barra de vida. */
+  _drawShieldFill(ratio) {
+    this.shieldFill.clear();
+    if (ratio <= 0) return;
+    HUD._drawArrowShape(
+      this.shieldFill,
+      this._hpOrigin.x,
+      this._hpOrigin.y,
+      this._hpMaxW * ratio,
+      HP_FILL_HEIGHT,
+      HP_ARROW_HEAD_LEN,
+      SHIELD_BAR_COLOR,
+      SHIELD_FILL_ALPHA
+    );
+  }
+
+  /** Feedback rápido de "escudo quebrou": pisca branco e some, a barra volta
+   * a mostrar só a cor normal da vida por baixo. */
+  _flashShieldBreak() {
+    this.hpBreakFlash.setAlpha(0.6);
+    this.scene.tweens.add({
+      targets: this.hpBreakFlash,
+      alpha: 0,
+      duration: HP_BREAK_FLASH_MS,
+      ease: 'Cubic.easeOut'
+    });
   }
 
   _buildXpBar() {
     const x = 16;
     const y = XP_Y;
 
-    // moldura hexagonal (pontas nos dois lados), desenhada uma vez só —
-    // ver _drawHexShape. Contorno único (não duplo como antes): a segunda
-    // linha por dentro ficava sobrepondo geometria bem em cima das pontas,
-    // que é exatamente onde a tela estava piscando.
-    this.xpCasing = this.scene.add.graphics().setScrollFactor(0).setDepth(100);
-    HUD._drawHexShape(
-      this.xpCasing,
+    // mesmo desenho da barra de vida (painel de cantos cortados + seta,
+    // ver _buildHealthBar/_drawArrowShape), só que menor — reaproveita os
+    // dois helpers estáticos em vez de ter um estilo próprio.
+    this.xpPanel = this.scene.add.graphics().setScrollFactor(0).setDepth(100);
+    HUD._drawChamferedRect(
+      this.xpPanel,
       x,
       y,
-      BAR_W,
-      XP_H,
-      XP_CAP,
-      XP_CASING_COLOR,
-      XP_CASING_ALPHA,
+      XP_PANEL_W,
+      XP_PANEL_H,
+      XP_CHAMFER,
+      XP_PANEL_FILL,
+      XP_PANEL_FILL_ALPHA,
       XP_BORDER_COLOR,
-      2,
       XP_BORDER_ALPHA
     );
 
-    // barra reta por dentro da moldura (a moldura só afina nas pontas, a
-    // barra em si fica sempre reta, ver rascunho do usuário)
-    this._xpBar = {
-      x: x + XP_CAP,
-      y: y + XP_INNER_INSET,
-      w: BAR_W - XP_CAP * 2,
-      h: XP_H - XP_INNER_INSET * 2
-    };
-    this.xpTrack = this.scene.add
-      .rectangle(this._xpBar.x, this._xpBar.y, this._xpBar.w, this._xpBar.h, XP_TRACK_COLOR, XP_TRACK_ALPHA)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(101);
-    this.xpFill = this.scene.add
-      .rectangle(this._xpBar.x, this._xpBar.y, 0, this._xpBar.h, XP_FILL_COLOR, XP_FILL_ALPHA)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(102);
+    const trackMaxW = XP_PANEL_W - XP_PAD_X * 2;
+    HUD._drawArrowShape(
+      this.xpPanel,
+      x + XP_PAD_X,
+      y + XP_TRACK_Y,
+      trackMaxW,
+      XP_TRACK_HEIGHT,
+      XP_ARROW_HEAD_LEN,
+      XP_TRACK_COLOR,
+      XP_TRACK_ALPHA
+    );
 
+    this.xpFill = this.scene.add.graphics().setScrollFactor(0).setDepth(101);
+    this._xpOrigin = { x: x + XP_PAD_X, y: y + XP_TRACK_Y };
+    this._xpMaxW = trackMaxW;
+
+    // nível ao lado do painel (não embaixo) pra não empilhar mais altura
     this.levelText = this.scene.add
-      .text(16, LEVEL_TEXT_Y, 'Nível 1', { fontSize: '12px', color: '#cfeaff' })
+      .text(x + XP_PANEL_W + 8, LEVEL_TEXT_Y, 'Nível 1', { fontSize: '11px', color: '#cfeaff' })
       .setScrollFactor(0)
       .setDepth(101);
-    this.uiContainer.add([this.xpCasing, this.xpTrack, this.xpFill, this.levelText]);
+    this.uiContainer.add([this.xpPanel, this.xpFill, this.levelText]);
+  }
+
+  /** Redesenha só a seta de xp atual (o painel e o trilho são estáticos). */
+  _drawXpFill(ratio) {
+    this.xpFill.clear();
+    HUD._drawArrowShape(
+      this.xpFill,
+      this._xpOrigin.x,
+      this._xpOrigin.y,
+      this._xpMaxW * ratio,
+      XP_FILL_HEIGHT,
+      XP_ARROW_HEAD_LEN,
+      XP_FILL_COLOR,
+      XP_FILL_ALPHA
+    );
   }
 
   _buildKillCounter() {
@@ -317,20 +369,19 @@ export default class HUD {
       this.hpText.setText(`${Math.ceil(current)} / ${max}`);
     });
 
-    // só existe pra quem pegou "Escudo Energético" — a barra fica invisível
-    // (ver _buildShieldBar) até o primeiro evento chegar
+    // só existe pra quem pegou "Escudo Energético" — o overlay fica com
+    // width 0 (ver _buildHealthBar) até o primeiro evento chegar
     EventBus.on('player-shield-changed', ({ current, max }) => {
-      if (!this.shieldBg.visible) {
-        this.shieldBg.setVisible(true);
-        this.shieldFill.setVisible(true);
-      }
-      const ratio = Phaser.Math.Clamp(current / max, 0, 1);
-      this.shieldFill.width = (BAR_W - 4) * ratio;
+      const ratio = max > 0 ? Phaser.Math.Clamp(current / max, 0, 1) : 0;
+      this._drawShieldFill(ratio);
+      // "tinha escudo e zerou" -> flash; recarregar do zero não conta
+      if (this._hadShield && ratio <= 0) this._flashShieldBreak();
+      this._hadShield = ratio > 0;
     });
 
     EventBus.on('xp-changed', ({ xp, xpToNext, level }) => {
       const ratio = Phaser.Math.Clamp(xp / xpToNext, 0, 1);
-      this.xpFill.width = this._xpBar.w * ratio;
+      this._drawXpFill(ratio);
       this.levelText.setText(`Nível ${level}`);
     });
 
@@ -358,9 +409,9 @@ export default class HUD {
       this.killText.setText('Abates: 0');
       this.timeText.setText('00:00');
       // a nova run pode não ter (ou ainda não ter pego) o Escudo Energético
-      // de novo — some com a barra até o próximo 'player-shield-changed'
-      this.shieldBg.setVisible(false);
-      this.shieldFill.setVisible(false).width = BAR_W - 4;
+      // de novo — some com o overlay até o próximo 'player-shield-changed'
+      this._drawShieldFill(0);
+      this._hadShield = false;
     });
   }
 
@@ -431,34 +482,6 @@ export default class HUD {
       ],
       true
     );
-  }
-
-  /** Hexágono alongado (moldura de "cápsula" com pontas nos dois lados, ver
-   * barra de xp). As pontas são achatadas por SHARP_TIP_FLAT em vez de um
-   * vértice único — mesma correção de antialiasing da seta de vida acima. */
-  static _drawHexShape(g, x, y, w, h, cap, fillColor, fillAlpha, borderColor, borderWidth, borderAlpha = 1) {
-    const yMid = y + h / 2;
-    const tip = Math.min(SHARP_TIP_FLAT, cap, h / 2);
-    const points = [
-      { x: x + cap, y },
-      { x: x + w - cap, y },
-      { x: x + w - tip, y: yMid - tip },
-      { x: x + w, y: yMid },
-      { x: x + w - tip, y: yMid + tip },
-      { x: x + w - cap, y: y + h },
-      { x: x + cap, y: y + h },
-      { x: x + tip, y: yMid + tip },
-      { x, y: yMid },
-      { x: x + tip, y: yMid - tip }
-    ];
-    if (fillColor !== null) {
-      g.fillStyle(fillColor, fillAlpha);
-      g.fillPoints(points, true);
-    }
-    if (borderWidth > 0) {
-      g.lineStyle(borderWidth, borderColor, borderAlpha);
-      g.strokePoints(points, true);
-    }
   }
 
   /** Ciano (saudável) -> vermelho (crítico), interpolado pela vida restante. */
