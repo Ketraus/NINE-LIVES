@@ -19,8 +19,7 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
-    // música de fundo (ver src/systems/MusicManager.js) — a Ketlin ainda
-    // vai mandar os arquivos. Quando chegarem, salvar em assets/music/
+    // salvar em assets/music/
     // com esses nomes exatos e descomentar as duas linhas abaixo; nada
     // mais no código precisa mudar (MusicManager já está pronto pra usar
     // estas chaves em MainMenuScene e GameScene).
