@@ -352,6 +352,7 @@ export default class LevelUpUI {
   }
 
   _choose(upgrade) {
+    this.scene.sound.play('sfx_card_select', { volume: 0.6 });
     // chooseUpgrade() pode, de forma síncrona, emitir 'evolution-ready' e
     // portanto chamar showEvolution() (que já reabre o overlay com a carta
     // de evolução). Esse era o bug: fechar aqui incondicionalmente destruía
@@ -366,6 +367,7 @@ export default class LevelUpUI {
   }
 
   _chooseEvolution(evolution) {
+    this.scene.sound.play('sfx_card_select', { volume: 0.6 });
     this.runManager.confirmEvolution(evolution);
     this._close();
   }

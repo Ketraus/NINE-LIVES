@@ -68,6 +68,7 @@ export default class WeaponSelectScene extends Phaser.Scene {
   }
 
   _choose(weapon) {
+    this.sound.play('sfx_card_select', { volume: 0.6 });
     this.scene.start('GameScene', { weaponId: weapon.id });
   }
 }
