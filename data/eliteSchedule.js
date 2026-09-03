@@ -16,7 +16,6 @@
 // seguidos. Pra adicionar mais aparições (ex.: 5 elites de uma vez porque
 // o Arquiteto perdeu a sanidade), só acrescentar mais entradas na lista.
 export default [
-  { t: 90000, count: 1 }, // 1:30 — primeiro Elite, sozinho
-  { t: 210000, count: 2 }, // 3:30 — dois de uma vez
-  { t: 420000, count: 3 } // 7:00 — três de uma vez
+  { t: 210000, count: 1 }, // 3:30 — dois de uma vez
+  { t: 480000, count: 2 } // 8:00 — três de uma vez
 ];
