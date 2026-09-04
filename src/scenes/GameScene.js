@@ -332,10 +332,12 @@ export default class GameScene extends Phaser.Scene {
     EventBus.on('levelup-opened', () => {
       this.isPaused = true;
       this.spawnDirector.pause();
+      MusicManager.duckForCards(this);
     });
     EventBus.on('levelup-closed', () => {
       this.isPaused = false;
       this.spawnDirector.resume();
+      MusicManager.restoreFromCards(this);
     });
 
     // menu de pausa (ver src/ui/PauseUI.js) — mesmo tratamento do level-up

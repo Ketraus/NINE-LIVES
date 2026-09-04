@@ -26,6 +26,10 @@ export default class PreloadScene extends Phaser.Scene {
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
      this.load.audio('music_game', 'assets/music/game_theme.mp3');
 
+    // trilha da tela de cartas (level-up/evolução) — mais baixa e suave,
+    // ver MusicManager.duckForCards/restoreFromCards
+    this.load.audio('music_card_select', 'assets/music/card_select_theme.mp3');
+
     // som de clique da UI (botões do menu etc.)
     this.load.audio('sfx_ui_click', 'assets/sfx/ui_click.mp3');
 
