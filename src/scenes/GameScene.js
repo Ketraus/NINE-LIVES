@@ -30,6 +30,17 @@ const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa 
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 
+// som ambiente assustador, sorteado, raro — nada de específico o dispara
+// (não é ligado a inimigo/carta nenhum), só reagendado com um intervalo
+// aleatório dentro desta faixa (ver _scheduleAmbientSfx). Numa run de 10
+// min (RUN_WIN_SECONDS acima) uma média de ~3min entre toques garante
+// pelo menos umas 2 aparições, sem virar algo previsível/frequente.
+// this.time.addEvent já respeita sozinho o timeScale=0 da tela de cartas
+// (mesmo mecanismo que pausa as levas de spawn — ver SpawnDirector),
+// então não precisa de pause()/resume() manual como o relógio da run.
+const AMBIENT_SFX_MIN_DELAY_MS = 120000; // 2min
+const AMBIENT_SFX_MAX_DELAY_MS = 240000; // 4min
+
 // resto da transição de entrada (ver WeaponSelectScene._choose pro início:
 // CLACK -> vibração -> preto -> silêncio): tela chega preta, mapa clareia,
 // e só depois o HUD entra por cima — em camadas, não tudo de uma vez.
@@ -70,6 +81,7 @@ export default class GameScene extends Phaser.Scene {
     this._buildUI();
     this._buildCollisions();
     this._buildInput();
+    this._scheduleAmbientSfx();
 
     // EventBus é global e sobrevive ao scene.restart() (morte + R/toque) —
     // sem isto, cada restart empilha mais um jogo de listeners (LevelUpUI,
@@ -81,6 +93,7 @@ export default class GameScene extends Phaser.Scene {
     // Limpa tudo aqui pra cada create() começar com listeners zerados.
     this.events.once('shutdown', () => {
       this.spawnDirector?.stop();
+      this._ambientSfxEvent?.remove();
       EventBus.removeAllListeners();
     });
 
@@ -195,6 +208,20 @@ export default class GameScene extends Phaser.Scene {
     // já nascer centralizado no jogador, de forma síncrona.
     this.cameras.main.centerOn(spawn.x, spawn.y);
     this.mapManager.addCollider(this.player);
+  }
+
+  /** Reagenda a cada disparo (delay sorteado de novo toda vez), mesmo
+   *  espírito do SpawnDirector._scheduleNextBatch — só que sem nenhuma
+   *  lógica de dificuldade, é só o som ambiente tocando de vez em quando. */
+  _scheduleAmbientSfx() {
+    const delay = Phaser.Math.Between(AMBIENT_SFX_MIN_DELAY_MS, AMBIENT_SFX_MAX_DELAY_MS);
+    this._ambientSfxEvent = this.time.addEvent({
+      delay,
+      callback: () => {
+        this.sound.play('sfx_leviathan_bg', { volume: 0.5 });
+        this._scheduleAmbientSfx();
+      }
+    });
   }
 
   _buildEnemies() {

@@ -52,9 +52,26 @@ export default class PreloadScene extends Phaser.Scene {
     // som ao coletar um orb de xp (ver GameScene, overlap player x xpOrbGroup)
     this.load.audio('sfx_xp_collect', 'assets/sfx/xp_collect.mp3');
 
+    // som genérico de evolução — toca em QUALQUER carta de evolução
+    // escolhida (category: "evolution" em data/upgrades.js), além do
+    // clique normal de carta (ver LevelUpUI._chooseEvolution)
+    this.load.audio('sfx_evolution_effect', 'assets/sfx/evolution_effect.mp3');
+
     // som ao escolher a evolução Cyberus (fusão dos 3 cachorros) — toca
     // junto do clique normal de carta, só nesta evolução (ver LevelUpUI._chooseEvolution)
     this.load.audio('sfx_cyberus_wakeup', 'assets/sfx/cyberus_wakeup.mp3');
+
+    // som ao escolher a evolução Tornado (speed_up_evo_tornado) — mesmo
+    // padrão do Cyberus acima, específico desta evolução
+    this.load.audio('sfx_tornado', 'assets/sfx/tornado.mp3');
+
+    // som ambiente assustador que toca raramente durante a run (a cada
+    // poucos minutos, sorteado — ver GameScene._scheduleAmbientSfx),
+    // não ligado a nenhum inimigo/carta específica
+    this.load.audio('sfx_leviathan_bg', 'assets/sfx/leviathan_bg.mp3');
+
+    // corte de espada da 2ª cabeça do Cyberus (ver AllyDogAbility._updateSword)
+    this.load.audio('sfx_cyberus_slash', 'assets/sfx/cyberus_slash.mp3');
 
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');

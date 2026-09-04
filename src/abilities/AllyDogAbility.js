@@ -252,6 +252,7 @@ export default class AllyDogAbility {
     this.lastSwordMs = time;
     this._markAttacked(target, time);
     this.dog.playAttackPulse();
+    scene.sound.play('sfx_cyberus_slash', { volume: 0.6 });
     this._swingSword(scene, target, enemyGroup);
   }
 
