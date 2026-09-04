@@ -65,6 +65,16 @@ export default class PreloadScene extends Phaser.Scene {
     // padrão do Cyberus acima, específico desta evolução
     this.load.audio('sfx_tornado', 'assets/sfx/tornado.mp3');
 
+    // demais sons específicos por evolução (ver EVOLUTION_SFX em
+    // LevelUpUI.js) — cada um toca só quando aquela carta é escolhida,
+    // por cima do sfx_evolution_effect genérico
+    this.load.audio('sfx_colosso', 'assets/sfx/colosso.mp3');
+    this.load.audio('sfx_sobrecarga', 'assets/sfx/sobrecarga.mp3');
+    this.load.audio('sfx_terremoto', 'assets/sfx/terremoto.mp3');
+    this.load.audio('sfx_blastwave', 'assets/sfx/blastwave.mp3');
+    this.load.audio('sfx_danca_cortes', 'assets/sfx/danca_cortes.mp3');
+    this.load.audio('sfx_smartshot', 'assets/sfx/smartshot.mp3');
+
     // som ambiente assustador que toca raramente durante a run (a cada
     // poucos minutos, sorteado — ver GameScene._scheduleAmbientSfx),
     // não ligado a nenhum inimigo/carta específica

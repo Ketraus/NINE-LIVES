@@ -24,6 +24,20 @@ const RARITY_COLORS = { common: 0xe6e6e6, rare: 0x4fd1ff, epic: 0xb26bff };
 const RARITY_ICONS = { common: '⚪', rare: '🔵', epic: '🟣' };
 const RARITY_LABELS = { common: 'COMUM', rare: 'RARA', epic: 'ÉPICA' };
 
+// Som extra por evolução (id de data/upgrades.js -> chave carregada em
+// PreloadScene.js), tocado por cima do sfx_evolution_effect genérico em
+// _chooseEvolution — cada evolução nova só precisa de uma linha aqui.
+const EVOLUTION_SFX = {
+  dog_purify_evo_cyberus: 'sfx_cyberus_wakeup',
+  speed_up_evo_tornado: 'sfx_tornado',
+  hp_up_evo_colosso: 'sfx_colosso',
+  thorns_up_evo_sobrecarga: 'sfx_sobrecarga',
+  fists_slam_evo_terremoto: 'sfx_terremoto',
+  fists_shockwave_evo_blastix: 'sfx_blastwave',
+  katana_double_evo_danca_cortes: 'sfx_danca_cortes',
+  pistol_fragmentation_evo_smartshot: 'sfx_smartshot'
+};
+
 // tamanho do quadrado de arte dentro da carta normal/evolução (ver
 // data/cardArt.js) — só desenhado se a textura 'card_<id>' foi carregada;
 // carta sem arte ainda fica exatamente como hoje, sem espaço reservado.
@@ -385,15 +399,13 @@ export default class LevelUpUI {
 
   _chooseEvolution(evolution) {
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
-    // toca em QUALQUER evolução (dog_purify_evo_cyberus, speed_up_evo_tornado
-    // e as futuras), além do clique normal de carta acima
+    // toca em QUALQUER evolução (todas as entradas de EVOLUTION_SFX e as
+    // futuras que ainda não tiverem som próprio), além do clique normal
+    // de carta acima
     this.scene.sound.play('sfx_evolution_effect', { volume: 0.6 });
-    // sons extras específicos de cada evolução, por cima dos dois acima
-    if (evolution.id === 'dog_purify_evo_cyberus') {
-      this.scene.sound.play('sfx_cyberus_wakeup', { volume: 0.7 });
-    } else if (evolution.id === 'speed_up_evo_tornado') {
-      this.scene.sound.play('sfx_tornado', { volume: 0.7 });
-    }
+    // som extra específico desta evolução, por cima dos dois acima
+    const extraSfx = EVOLUTION_SFX[evolution.id];
+    if (extraSfx) this.scene.sound.play(extraSfx, { volume: 0.7 });
     this.runManager.confirmEvolution(evolution);
     this._close();
   }
