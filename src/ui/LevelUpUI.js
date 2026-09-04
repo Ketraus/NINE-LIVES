@@ -144,6 +144,11 @@ export default class LevelUpUI {
   showEvolution(evolution) {
     this._openOverlay();
 
+    // toca assim que a carta evoluída APARECE na tela (o jogador acabou de
+    // receber a evolução), não quando ele clica pra confirmar — antes o som
+    // estava em _chooseEvolution() e disparava no clique, não no recebimento
+    this.scene.sound.play('sfx_evolution_effect', { volume: 0.6 });
+
     const cx = this.scene.scale.width / 2;
     const cy = this.scene.scale.height / 2;
 
@@ -399,11 +404,9 @@ export default class LevelUpUI {
 
   _chooseEvolution(evolution) {
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
-    // toca em QUALQUER evolução (todas as entradas de EVOLUTION_SFX e as
-    // futuras que ainda não tiverem som próprio), além do clique normal
-    // de carta acima
-    this.scene.sound.play('sfx_evolution_effect', { volume: 0.6 });
-    // som extra específico desta evolução, por cima dos dois acima
+    // sfx_evolution_effect agora toca em showEvolution() (quando a carta
+    // aparece), não mais aqui no clique de confirmação
+    // som extra específico desta evolução, por cima do clique normal
     const extraSfx = EVOLUTION_SFX[evolution.id];
     if (extraSfx) this.scene.sound.play(extraSfx, { volume: 0.7 });
     this.runManager.confirmEvolution(evolution);
