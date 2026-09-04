@@ -49,6 +49,13 @@ export default class PreloadScene extends Phaser.Scene {
     // enquanto a carta estiver ativa, ver RangedWeapon.fire()
     this.load.audio('sfx_shotgun', 'assets/sfx/shotgun.mp3');
 
+    // som ao coletar um orb de xp (ver GameScene, overlap player x xpOrbGroup)
+    this.load.audio('sfx_xp_collect', 'assets/sfx/xp_collect.mp3');
+
+    // som ao escolher a evolução Cyberus (fusão dos 3 cachorros) — toca
+    // junto do clique normal de carta, só nesta evolução (ver LevelUpUI._chooseEvolution)
+    this.load.audio('sfx_cyberus_wakeup', 'assets/sfx/cyberus_wakeup.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');

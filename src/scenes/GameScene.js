@@ -286,6 +286,7 @@ export default class GameScene extends Phaser.Scene {
     // jogador encosta em orb de xp -> coleta
     this.physics.add.overlap(this.player, this.xpOrbGroup, (player, orb) => {
       this.runManager.collectXp(orb.getData('xpReward'));
+      this.sound.play('sfx_xp_collect', { volume: 0.4 });
       orb.destroy();
     });
 

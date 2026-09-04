@@ -385,6 +385,11 @@ export default class LevelUpUI {
 
   _chooseEvolution(evolution) {
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
+    // fusão dos 3 cachorros em Cyberus — som extra só nesta evolução,
+    // além do clique normal de carta que toca pra qualquer uma
+    if (evolution.id === 'dog_purify_evo_cyberus') {
+      this.scene.sound.play('sfx_cyberus_wakeup', { volume: 0.7 });
+    }
     this.runManager.confirmEvolution(evolution);
     this._close();
   }
