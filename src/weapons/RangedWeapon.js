@@ -68,8 +68,10 @@ export default class RangedWeapon {
 
     this._ensureBulletGroup(scene, player, enemyGroup);
     // toca uma vez por disparo, mesmo na Fragmentação (leque de várias
-    // balas saindo do mesmo tiro) — não uma vez por bala
-    scene.sound.play('sfx_pistol', { volume: 0.6 });
+    // balas saindo do mesmo tiro) — não uma vez por bala. Depois da carta
+    // rara "Split Bullet" (pistol_fragmentation), a pistola vira escopeta
+    // e troca pro som de shotgun.
+    scene.sound.play(statMods.fragmentation ? 'sfx_shotgun' : 'sfx_pistol', { volume: 0.6 });
 
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();

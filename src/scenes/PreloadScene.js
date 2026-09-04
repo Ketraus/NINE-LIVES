@@ -44,6 +44,11 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_pistol', 'assets/sfx/pistol.mp3');
     this.load.audio('sfx_hit', 'assets/sfx/hit.mp3');
 
+    // som de disparo da pistola depois da carta rara "Split Bullet"
+    // (pistol_fragmentation, vira escopeta) — troca o sfx_pistol normal
+    // enquanto a carta estiver ativa, ver RangedWeapon.fire()
+    this.load.audio('sfx_shotgun', 'assets/sfx/shotgun.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');
