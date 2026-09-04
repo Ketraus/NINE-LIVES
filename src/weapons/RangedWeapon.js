@@ -67,6 +67,9 @@ export default class RangedWeapon {
     if (!target) return false; // sem alvo à vista: não atira, não gasta cooldown
 
     this._ensureBulletGroup(scene, player, enemyGroup);
+    // toca uma vez por disparo, mesmo na Fragmentação (leque de várias
+    // balas saindo do mesmo tiro) — não uma vez por bala
+    scene.sound.play('sfx_pistol', { volume: 0.6 });
 
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();

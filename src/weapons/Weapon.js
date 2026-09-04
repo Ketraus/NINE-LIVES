@@ -40,8 +40,10 @@ export default class Weapon {
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
 
     if (this.def.shape === 'sword') {
+      scene.sound.play('sfx_katana', { volume: 0.6 });
       this._fireSword(scene, player, enemyGroup, range, damage, statMods);
     } else {
+      scene.sound.play('sfx_punch', { volume: 0.6 });
       const aim = player.getAimDirection();
       const landedHit = this._fireArc(scene, player, enemyGroup, aim, range, damage);
 

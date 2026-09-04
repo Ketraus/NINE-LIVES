@@ -36,6 +36,14 @@ export default class PreloadScene extends Phaser.Scene {
     // som de hover — menu e cartas (arma, upgrade, evolução)
     this.load.audio('sfx_hover', 'assets/sfx/hover.mp3');
 
+    // sons de combate: golpe de cada arma (soco, katana, pistola) + som
+    // de impacto genérico quando o dano realmente conecta no alvo (ver
+    // Weapon.js, RangedWeapon.js e DamageSystem.applyWeaponHit)
+    this.load.audio('sfx_punch', 'assets/sfx/punch.mp3');
+    this.load.audio('sfx_katana', 'assets/sfx/katana.mp3');
+    this.load.audio('sfx_pistol', 'assets/sfx/pistol.mp3');
+    this.load.audio('sfx_hit', 'assets/sfx/hit.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');

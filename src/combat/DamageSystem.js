@@ -59,8 +59,19 @@ export default class DamageSystem {
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (this._rollDodge(target)) return false;
+    // guardado ANTES de takeDamage: se este golpe matar o alvo, o
+    // onDeath() do HealthSystem chama target.destroy() na hora (dentro do
+    // próprio takeDamage), e um sprite destruído perde target.scene (fica
+    // null) — sem isto, o som de hit simplesmente não tocaria em nenhum
+    // golpe que mata (é exatamente o caso comum da katana, que costuma
+    // matar vários inimigos fracos de uma vez no mesmo corte)
+    const targetScene = target.scene;
     target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0));
     target.playHitReaction?.();
+    // som de impacto genérico — toca sempre que um golpe de arma/ataque
+    // realmente conecta (soco, katana, pistola e as habilidades que usam
+    // este mesmo método)
+    targetScene?.sound?.play('sfx_hit', { volume: 0.5 });
     this._applyLifesteal(source, damage);
     this._applyParalyze(target, source, nowMs);
     this._applyBleed(target, source, damage, nowMs);
