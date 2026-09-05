@@ -8,5 +8,7 @@
 // hp_up_evo_colosso.png) e incluir o id na lista abaixo. Não precisa
 // mexer em mais nada.
 export default [
-  // ex.: 'dmg_up', 'hp_up', 'hp_up_evo_colosso'
+  'dmg_up', 'speed_up', 'hp_up', 'cooldown_down', 'range_up', 'thorns_up', 'armor_up',
+  'arsenal_expandido', 'lifesteal_up', 'dog_purify',
+  'fists_slam', 'fists_shockwave', 'katana_double', 'pistol_drone', 'pistol_fragmentation'
 ];

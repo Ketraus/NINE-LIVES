@@ -197,6 +197,30 @@ export default class LevelUpUI {
 
   _buildCard(x, y, upgrade) {
     const group = this.scene.add.container(x, y);
+
+    // com arte própria (ver data/cardArt.js), a imagem VIRA a carta inteira
+    // (igual à seleção de arma em WeaponSelectScene) — nada de painel de
+    // texto por baixo, já que a arte já traz nome/descrição/raridade
+    // desenhados nela. Sem arte, cai no layout antigo (texto + moldura).
+    const artKey = `card_${upgrade.id}`;
+    if (this.scene.textures.exists(artKey)) {
+      const art = this.scene.add
+        .image(0, 0, artKey)
+        .setDisplaySize(CARD_W, CARD_H)
+        .setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+
+      art.on('pointerover', () => {
+        art.setDisplaySize(CARD_W * 1.05, CARD_H * 1.05);
+        this.scene.sound.play('sfx_hover', { volume: 0.5 });
+      });
+      art.on('pointerout', () => art.setDisplaySize(CARD_W, CARD_H));
+      art.on('pointerdown', () => this._choose(upgrade));
+
+      group.add(art);
+      return group;
+    }
+
     const isExclusive = upgrade.category === 'exclusive';
     const rarity = upgrade.rarity || 'common';
     const accentColor = RARITY_COLORS[rarity] ?? RARITY_COLORS.common;
@@ -240,17 +264,6 @@ export default class LevelUpUI {
 
     const children = [bg, name, desc, tag];
 
-    // arte da carta (ver data/cardArt.js) — só entra se já foi carregada;
-    // fica entre o nome e a descrição, no mesmo espaço que hoje fica vazio
-    const artKey = `card_${upgrade.id}`;
-    if (this.scene.textures.exists(artKey)) {
-      const art = this.scene.add
-        .image(0, -CARD_H / 2 + 64, artKey)
-        .setDisplaySize(CARD_ART_SIZE, CARD_ART_SIZE)
-        .setScrollFactor(0);
-      children.push(art);
-    }
-
     bg.on('pointerover', () => {
       bg.setStrokeStyle(2, 0xffffff);
       group.setScale(1.05); // mesmo efeito de "expandir" que a seleção de arma já tinha (WeaponSelectScene)
@@ -271,6 +284,30 @@ export default class LevelUpUI {
     const w = CARD_W * 1.3;
     const h = CARD_H * 1.15;
     const group = this.scene.add.container(x, y);
+
+    // mesma arte da carta base (ver data/cardArt.js) — a evolução usa o
+    // id dela mesma (ex.: 'hp_up_evo_colosso'), não o id da carta base.
+    // Com arte própria, ela vira a carta inteira (mesmo esquema de
+    // _buildCard) em vez de um ícone pequeno sobre o painel de texto.
+    const artKey = `card_${evolution.id}`;
+    if (this.scene.textures.exists(artKey)) {
+      const glow = this.scene.add.rectangle(0, 0, w + 18, h + 18, 0xffd166, 0.22).setScrollFactor(0);
+      const art = this.scene.add
+        .image(0, 0, artKey)
+        .setDisplaySize(w, h)
+        .setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+
+      art.on('pointerover', () => {
+        art.setDisplaySize(w * 1.04, h * 1.04);
+        this.scene.sound.play('sfx_hover', { volume: 0.5 });
+      });
+      art.on('pointerout', () => art.setDisplaySize(w, h));
+      art.on('pointerdown', () => this._chooseEvolution(evolution));
+
+      group.add([glow, art]);
+      return group;
+    }
 
     const glow = this.scene.add.rectangle(0, 0, w + 18, h + 18, 0xffd166, 0.22).setScrollFactor(0);
 
@@ -301,17 +338,6 @@ export default class LevelUpUI {
       .setScrollFactor(0);
 
     const children = [glow, bg, name, desc, hint];
-
-    // mesma arte da carta base (ver data/cardArt.js) — a evolução usa o
-    // id dela mesma (ex.: 'hp_up_evo_colosso'), não o id da carta base
-    const artKey = `card_${evolution.id}`;
-    if (this.scene.textures.exists(artKey)) {
-      const art = this.scene.add
-        .image(0, -h / 2 + 82, artKey)
-        .setDisplaySize(EVOLUTION_ART_SIZE, EVOLUTION_ART_SIZE)
-        .setScrollFactor(0);
-      children.push(art);
-    }
 
     bg.on('pointerover', () => {
       bg.setStrokeStyle(3, 0xffffff);
