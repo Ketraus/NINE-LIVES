@@ -75,7 +75,7 @@ export default [
     "eliteMeleeTelegraphMs": 500,
     "eliteMeleeDamage": 35,
     "eliteMeleeCooldownMs": 6000,
-    "eliteMissileCount": 3,
+    "eliteMissileCount": 5,
     "eliteMissileSpreadRadius": 140,
     "eliteMissileRadius": 70,
     "eliteMissileStepGapMs": 350,

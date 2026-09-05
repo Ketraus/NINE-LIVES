@@ -13,6 +13,15 @@ const PARALYZE_TINT = 0x1a1a66;
 // da paralisia e do flash branco de dano.
 const BLEED_TINT = 0x8a0000;
 
+// Visual do míssil de verdade do Elite (ver _launchMissiles/
+// _updateMissileLaunch) — uma bola avermelhada que sobe num arco e desce
+// em cada área marcada, mesma técnica da granada do Cyberus (ver
+// AllyDogAbility._launchGrenade/_advanceGrenadesInFlight), só que aqui
+// saem MÚLTIPLAS de uma vez (uma por área) do topo do próprio Elite.
+const MISSILE_COLOR = 0xff6633;
+const MISSILE_RADIUS = 7;
+const MISSILE_ARC_HEIGHT = 60;
+
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
    * @param {Phaser.Scene} scene
@@ -128,6 +137,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMissileNextStepAt = 0;
       this.eliteMissileDetonateAt = null;
       this.eliteLaunchDetonateAt = null;
+      this.eliteLaunchStartMs = null;
+      this.eliteMissileProjectiles = []; // bolas visuais em voo, ver _launchMissiles
       this.eliteMeleeTelegraphUntil = 0;
     }
   }
@@ -691,14 +702,27 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   /** Fim do aviso: o míssil sai de verdade. Toca o som de lançamento e usa
    * a DURAÇÃO REAL dele (já decodificado no preload, ver PreloadScene) pra
-   * cronometrar a detonação — ou seja, o impacto acontece exatamente
-   * quando o som de lançamento termina, em vez de um tempo fixo digitado
-   * à mão. As áreas continuam visíveis (ver _updateMissileLaunch) durante
-   * esse voo. */
+   * cronometrar tanto o voo visual quanto a detonação — ou seja, a bola
+   * sobe do Elite e desce bem em cima de cada área exatamente quando o som
+   * de lançamento termina, em vez de um tempo fixo digitado à mão. Sai uma
+   * bola por área (ver eliteMissilePoints), todas do mesmo ponto (o
+   * próprio Elite) e ao mesmo tempo. */
   _launchMissiles(nowMs) {
     this.eliteState = 'missile_launch';
     const travelMs = this._playTimedSfx('sfx_elite_launch', 0.6);
+    this.eliteLaunchStartMs = nowMs;
     this.eliteLaunchDetonateAt = nowMs + travelMs;
+
+    this.eliteMissileProjectiles = this.eliteMissilePoints.map((p) => ({
+      fx: this.scene.add
+        .circle(this.x, this.y, MISSILE_RADIUS, MISSILE_COLOR, 0.95)
+        .setStrokeStyle(2, 0xffffff, 0.8)
+        .setDepth(15), // acima do chão/telegraph (4), abaixo de UI
+      startX: this.x,
+      startY: this.y,
+      targetX: p.x,
+      targetY: p.y
+    }));
   }
 
   /** Toca um sfx e devolve a duração dele em ms (a instância é descartada
@@ -710,12 +734,28 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     return sfx.duration * 1000;
   }
 
-  /** Míssil "voando": áreas continuam marcadas no chão até o tempo do som
-   * de lançamento acabar (ver _launchMissiles) — só então detona. */
+  /** Mísseis voando de verdade: interpola cada bola do Elite até a área
+   * correspondente (com um arco pra "ler" como lançamento, mesma técnica
+   * da granada do Cyberus) enquanto o som de lançamento toca — as áreas
+   * no chão continuam marcadas o tempo todo, ver _drawMissileTelegraph.
+   * Quando o tempo do som (eliteLaunchDetonateAt) acaba, destrói as bolas
+   * e detona. */
   _updateMissileLaunch(target, nowMs) {
     this.setVelocity(0, 0);
     this._drawMissileTelegraph();
+
+    const progress = Math.min(
+      (nowMs - this.eliteLaunchStartMs) / (this.eliteLaunchDetonateAt - this.eliteLaunchStartMs),
+      1
+    );
+    this.eliteMissileProjectiles.forEach((m) => {
+      m.fx.x = Phaser.Math.Linear(m.startX, m.targetX, progress);
+      m.fx.y = Phaser.Math.Linear(m.startY, m.targetY, progress) - Math.sin(progress * Math.PI) * MISSILE_ARC_HEIGHT;
+    });
+
     if (nowMs >= this.eliteLaunchDetonateAt) {
+      this.eliteMissileProjectiles.forEach((m) => m.fx.destroy());
+      this.eliteMissileProjectiles = [];
       this._detonateMissiles(target, nowMs);
     }
   }
@@ -788,6 +828,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Elite: mesma lógica — o Graphics do telegraph (mísseis/melee) não é
     // filho do sprite, precisa morrer junto na mão.
     this.eliteTelegraphGraphics?.destroy();
+    // Elite: bolas de míssil em voo também não são filhas do sprite —
+    // sem isto, ficariam "congeladas" no ar pra sempre se o Elite morrer
+    // no meio do lançamento (ver _launchMissiles).
+    this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
     // `color` vai junto só pra quem quiser desenhar algo na cor do
     // inimigo (ver GameScene._spawnDeathFx) — o Enemy já não existe mais
     // no momento em que quem escuta o evento for usar isso.
