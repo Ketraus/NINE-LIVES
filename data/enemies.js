@@ -78,7 +78,7 @@ export default [
     "eliteMeleeRange": 90,
     "eliteMeleeTelegraphMs": 500,
     "eliteMeleeDamage": 35,
-    "eliteMeleeCooldownMs": 6000,
+    "eliteMeleeCooldownMs": 3500,
     // instante (ms) dentro de elitepunchsound.mp3 em que o soco realmente
     // "conecta" (pico de amplitude do áudio, analisado à parte) — é o que
     // cronometra o dano do corpo a corpo, não a duração total do arquivo

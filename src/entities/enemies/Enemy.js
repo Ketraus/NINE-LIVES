@@ -909,8 +909,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** Dano alto corpo a corpo (só se o jogador ainda estiver no alcance —
-   * pode ter saído durante o aviso) + cooldown maior que o de mísseis
-   * antes do próximo ataque, conforme pedido. */
+   * pode ter saído durante o aviso) + cooldown próprio antes do próximo
+   * ataque (def.eliteMeleeCooldownMs, independente do de mísseis). */
   _resolveMelee(target, nowMs) {
     this.eliteTelegraphGraphics.clear();
     this.scene.cameras.main.shake(MELEE_SHAKE_MS, MELEE_SHAKE_INTENSITY);
