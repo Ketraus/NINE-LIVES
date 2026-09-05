@@ -7,6 +7,13 @@ const DEFAULT_MAX_ALIVE = 14; // trava inicial da quantidade simultânea, até o
 // ver ele aparecer do nada). Ver _findSpawnPosition().
 const SPAWN_MARGIN_BEYOND_VIEW = 80;
 
+// "Vibrada" na tela quando o Elite nasce — feedback bem besta de propósito
+// (pedido), mas ajuda a chamar atenção pro momento. Mais forte que o
+// shake do soco corpo a corpo dele (ver Enemy.js MELEE_SHAKE_*), porque é
+// só um instante único de entrada, não algo repetido o combate inteiro.
+const ELITE_SPAWN_SHAKE_MS = 300;
+const ELITE_SPAWN_SHAKE_INTENSITY = 0.015;
+
 // Fatias de 360° ao redor do jogador usadas pra decidir "de que lado" cada
 // grupo de spawn nasce (ver _pickSector/_sectorOccupancy) — granularidade
 // dos "setores", não um raio fixo.
@@ -275,10 +282,14 @@ export default class EnemySpawner {
     const enemy = new Enemy(this.scene, pos.x, pos.y, def);
     this.group.add(enemy);
     this.mapManager.addCollider(enemy);
-    // Elite: som de entrada próprio, toca no instante em que ele nasce de
-    // verdade — cobre os 3 caminhos que passam por aqui (spawn automático
-    // ponderado, eliteSchedule.js e o cheat "spawn" do DevConsole)
-    if (def.elite) this.scene.sound.play('sfx_elite_spawn', { volume: 0.6 });
+    // Elite: som + vibrada de entrada, tocam no instante em que ele nasce
+    // de verdade — cobre os 3 caminhos que passam por aqui (spawn
+    // automático ponderado, eliteSchedule.js e o cheat "spawn" do
+    // DevConsole)
+    if (def.elite) {
+      this.scene.sound.play('sfx_elite_spawn', { volume: 0.6 });
+      this.scene.cameras.main.shake(ELITE_SPAWN_SHAKE_MS, ELITE_SPAWN_SHAKE_INTENSITY);
+    }
     return enemy;
   }
 
