@@ -112,6 +112,10 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_elite_hit', 'assets/sfx/elitehitsound.mp3');
     this.load.audio('sfx_elite_death', 'assets/sfx/elitedeathsound.mp3');
     this.load.audio('sfx_elite_punch', 'assets/sfx/elitepunchsound.mp3');
+    // toca no instante em que o Elite nasce de verdade (ver
+    // EnemySpawner._createAt) — spawn automático, schedule ou cheat
+    // "spawn", os três passam por ali
+    this.load.audio('sfx_elite_spawn', 'assets/sfx/elitespawnsong.mp3');
 
     // sons de habilidade (não são de evolução, ver LevelUpUI/EVOLUTION_SFX
     // acima): tiro do GatoDrone (DroneAbility._fire), arremesso de shuriken

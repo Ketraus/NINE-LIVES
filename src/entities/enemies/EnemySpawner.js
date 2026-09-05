@@ -275,6 +275,10 @@ export default class EnemySpawner {
     const enemy = new Enemy(this.scene, pos.x, pos.y, def);
     this.group.add(enemy);
     this.mapManager.addCollider(enemy);
+    // Elite: som de entrada próprio, toca no instante em que ele nasce de
+    // verdade — cobre os 3 caminhos que passam por aqui (spawn automático
+    // ponderado, eliteSchedule.js e o cheat "spawn" do DevConsole)
+    if (def.elite) this.scene.sound.play('sfx_elite_spawn', { volume: 0.6 });
     return enemy;
   }
 
