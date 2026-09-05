@@ -35,7 +35,12 @@ const EVOLUTION_SFX = {
   fists_slam_evo_terremoto: 'sfx_terremoto',
   fists_shockwave_evo_blastix: 'sfx_blastwave',
   katana_double_evo_danca_cortes: 'sfx_danca_cortes',
-  pistol_fragmentation_evo_smartshot: 'sfx_smartshot'
+  pistol_fragmentation_evo_smartshot: 'sfx_smartshot',
+  lifesteal_up_evo_hemorrhage: 'sfx_hemorragia',
+  arsenal_expandido_evo_override: 'sfx_restock',
+  cooldown_down_evo_sixth_sense: 'sfx_sexto_sentido',
+  range_up_evo_hunter_instinct: 'sfx_instinto_cacador',
+  armor_up_evo_shield: 'sfx_barreira'
 };
 
 // tamanho do quadrado de arte dentro da carta normal/evolução (ver
