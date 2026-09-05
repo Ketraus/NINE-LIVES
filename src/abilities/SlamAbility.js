@@ -73,6 +73,8 @@ export default class SlamAbility {
   }
 
   _slam(player, enemyGroup, scene) {
+    scene.sound.play('sfx_slam_impact', { volume: 0.5 });
+
     const radius = this.def.radius * this.radiusMultiplier;
 
     // snapshot: se applyWeaponHit matar e remover o inimigo do grupo, iterar

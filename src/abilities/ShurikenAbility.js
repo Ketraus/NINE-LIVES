@@ -180,6 +180,8 @@ export default class ShurikenAbility {
   }
 
   _throw(scene, player, target) {
+    scene.sound.play('sfx_shuriken_throw', { volume: 0.5 });
+
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
 

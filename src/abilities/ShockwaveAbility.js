@@ -164,6 +164,8 @@ export default class ShockwaveAbility {
    * ao esgotar def.distance (calculado a partir de def.speed) ou ao
    * esbarrar numa parede do mapa (ver _createGroup). */
   _spawnWave(scene, x, y, dir) {
+    scene.sound.play('sfx_shockwave', { volume: 0.5 });
+
     const wave = this.group.create(x, y, 'hit_fx');
     wave.setDepth(16);
     wave.body.setAllowGravity(false);

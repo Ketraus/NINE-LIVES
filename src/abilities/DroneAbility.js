@@ -163,6 +163,8 @@ export default class DroneAbility {
   }
 
   _fire(scene, target) {
+    scene.sound.play('sfx_drone_shot', { volume: 0.5 });
+
     const dir = new Phaser.Math.Vector2(target.x - this.sprite.x, target.y - this.sprite.y).normalize();
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
     const color = this.laser ? this.laserColor : BASE_BULLET_COLOR; // era 0x7af0ff (bolinha azul antiga)

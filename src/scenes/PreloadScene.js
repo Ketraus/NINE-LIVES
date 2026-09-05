@@ -79,6 +79,15 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_danca_cortes', 'assets/sfx/danca_cortes.mp3');
     this.load.audio('sfx_smartshot', 'assets/sfx/smartshot.mp3');
 
+    // sons de habilidade (não são de evolução, ver LevelUpUI/EVOLUTION_SFX
+    // acima): tiro do GatoDrone (DroneAbility._fire), arremesso de shuriken
+    // (ShurikenAbility._throw), onda de choque dos punhos (ShockwaveAbility
+    // ._spawnWave) e impacto da Pancada Sísmica (SlamAbility._slam)
+    this.load.audio('sfx_drone_shot', 'assets/sfx/drone_shot.mp3');
+    this.load.audio('sfx_shuriken_throw', 'assets/sfx/shuriken_throw.mp3');
+    this.load.audio('sfx_shockwave', 'assets/sfx/shockwave.mp3');
+    this.load.audio('sfx_slam_impact', 'assets/sfx/slam_impact.mp3');
+
     // som ambiente assustador que toca raramente durante a run (a cada
     // poucos minutos, sorteado — ver GameScene._scheduleAmbientSfx),
     // não ligado a nenhum inimigo/carta específica
