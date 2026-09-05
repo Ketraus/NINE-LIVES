@@ -14,6 +14,15 @@ const SPAWN_MARGIN_BEYOND_VIEW = 80;
 const ELITE_SPAWN_SHAKE_MS = 300;
 const ELITE_SPAWN_SHAKE_INTENSITY = 0.015;
 
+// Entrada do Boss (ver _playBossEntranceFx): nasce pequeno e "estoura" pro
+// tamanho final em vez de já aparecer no tamanho cheio, mais uma onda de
+// choque (anel) se expandindo a partir dele — só efeito visual, sem
+// hitbox nem dano, puramente pra dar peso à entrada.
+const BOSS_ENTRANCE_SCALE_START_FACTOR = 0.25; // fração do tamanho final em que ele nasce
+const BOSS_ENTRANCE_SCALE_DURATION_MS = 420;
+const BOSS_ENTRANCE_RING_MAX_RADIUS = 260;
+const BOSS_ENTRANCE_RING_DURATION_MS = 500;
+
 // Fatias de 360° ao redor do jogador usadas pra decidir "de que lado" cada
 // grupo de spawn nasce (ver _pickSector/_sectorOccupancy) — granularidade
 // dos "setores", não um raio fixo.
@@ -271,6 +280,15 @@ export default class EnemySpawner {
     return this.group.getChildren().some((e) => e.active && e.def.boss);
   }
 
+  /** true se existe QUALQUER inimigo vivo agora (de qualquer tipo) — usado
+   * só pelo SpawnDirector pra saber quando a tela realmente esvaziou
+   * depois da fuga em massa do evento do Boss (ver
+   * SpawnDirector._waitForEmptyScreenThenBuildup), já que fugir não é
+   * instantâneo (ver Enemy._updateFlee). */
+  hasAnyAlive() {
+    return this.group.getChildren().some((e) => e.active);
+  }
+
   /**
    * Cria de fato um Enemy num ponto e registra ele no grupo/colisor —
    * extraído de spawnOne pra ser reaproveitado por spawnByDefId (cheat
@@ -290,7 +308,49 @@ export default class EnemySpawner {
       this.scene.sound.play('sfx_elite_spawn', { volume: 0.6 });
       this.scene.cameras.main.shake(ELITE_SPAWN_SHAKE_MS, ELITE_SPAWN_SHAKE_INTENSITY);
     }
+    // Boss: pop de escala + onda de choque (ver _playBossEntranceFx) — o
+    // flash/vibração/hitstop de tela já rolaram antes dele nascer (ver
+    // SpawnDirector._triggerBossEntrance), isto aqui é só o "acabamento"
+    // visual bem em cima do próprio Minotauro.
+    if (def.boss) this._playBossEntranceFx(enemy);
     return enemy;
+  }
+
+  /** Pop de escala (nasce pequeno, estoura pro tamanho final) + anel de
+   * onda de choque se expandindo e sumindo a partir da posição de
+   * nascimento — puramente visual, sem hitbox/dano próprio (o dano de
+   * chegada, se um dia tiver, é coisa separada). Ease SEM overshoot
+   * (Cubic, não Back) de propósito: com a vibração forte da tela ligada
+   * ao mesmo tempo (ver SpawnDirector._triggerBossEntrance), um "estica e
+   * volta" ficava parecendo bug em vez de impacto. Graphics descartado
+   * sozinho ao fim do tween, não acumula entre boss futuros. */
+  _playBossEntranceFx(enemy) {
+    const targetScale = enemy.baseScale;
+    enemy.setScale(targetScale * BOSS_ENTRANCE_SCALE_START_FACTOR);
+    this.scene.tweens.add({
+      targets: enemy,
+      scaleX: targetScale,
+      scaleY: targetScale,
+      duration: BOSS_ENTRANCE_SCALE_DURATION_MS,
+      ease: 'Cubic.easeOut'
+    });
+
+    const ring = this.scene.add.graphics().setDepth(20);
+    const ringState = { radius: 10, alpha: 1 };
+    this.scene.tweens.add({
+      targets: ringState,
+      radius: BOSS_ENTRANCE_RING_MAX_RADIUS,
+      alpha: 0,
+      duration: BOSS_ENTRANCE_RING_DURATION_MS,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        if (!enemy.active) return;
+        ring.clear();
+        ring.lineStyle(6, 0xffffff, ringState.alpha);
+        ring.strokeCircle(enemy.x, enemy.y, ringState.radius);
+      },
+      onComplete: () => ring.destroy()
+    });
   }
 
   /**

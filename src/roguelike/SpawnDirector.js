@@ -37,6 +37,43 @@ const DEFAULT_SPAWN_CURVES = {
   batchCurve: [{ t: 0, v: 2 }, { t: 600000, v: 8 }]
 };
 
+// Entrada do Boss (evento único, ver _checkBossSchedule): depois de todo
+// mundo fugir, espera a tela ficar REALMENTE vazia (ver
+// _waitForEmptyScreenThenBuildup — fugir ainda leva um tempinho até sair
+// de vista, não é instantâneo) e só ENTÃO conta BOSS_SILENCE_MS de
+// silêncio antes do flash + vibração + o Minotauro nascer de verdade.
+const BOSS_SILENCE_MS = 3000;
+// Intervalo de checagem "a tela já esvaziou?" depois da fuga — polling
+// próprio, rápido, em vez de amarrado ao intervalo de leva normal
+// (spawnCurves.intervalCurve, que varia e pode passar de 1s de folga).
+const BOSS_EMPTY_SCREEN_POLL_MS = 200;
+// Escurecimento gradual da tela pro PRETO (pedido — era vermelho antes)
+// durante o silêncio (ver _startBossTensionBuildup) — sobe até este alpha
+// ao longo de todo BOSS_SILENCE_MS, e é cortado na hora quando o flash
+// estoura.
+const BOSS_OVERLAY_COLOR = 0x000000;
+const BOSS_OVERLAY_MAX_ALPHA = 0.55;
+// Tremores CRESCENTES tipo batimento cardíaco perto do fim do silêncio
+// (índice a índice com BOSS_HEARTBEAT_INTENSITIES) — tempos em ms a
+// partir do INÍCIO do silêncio (que só começa a contar com a tela já
+// vazia, ver acima), não do fim.
+const BOSS_HEARTBEAT_TIMES_MS = [1500, 2100, 2550, 2850];
+const BOSS_HEARTBEAT_INTENSITIES = [0.003, 0.005, 0.008, 0.012];
+const BOSS_HEARTBEAT_SHAKE_MS = 130;
+// Flash branco na tela inteira (Phaser Camera FX nativo) — dura pouco de
+// propósito, é só o "clarão" do instante, não um fade longo.
+const BOSS_FLASH_MS = 350;
+// Vibração da entrada — reduzida de 0.02 pra 0.016 (era forte demais em
+// cima do pop de escala do Minotauro entrando, ficava "tremido"/bugado
+// em vez de impactante; ver também a curva sem overshoot em
+// EnemySpawner._playBossEntranceFx).
+const BOSS_FLASH_SHAKE_MS = 400;
+const BOSS_FLASH_SHAKE_INTENSITY = 0.016;
+// Hitstop: física do jogo congela por este tanto de tempo bem no auge do
+// flash, antes do Minotauro nascer — dá peso ao momento (padrão comum em
+// jogo de ação). Curto de propósito: sente-se o "soco", não trava o jogo.
+const BOSS_HITSTOP_MS = 130;
+
 export default class SpawnDirector {
   /**
    * @param {Phaser.Scene} scene
@@ -87,9 +124,16 @@ export default class SpawnDirector {
     // Evento único do Boss (data/bossSchedule.js, {t}) — "primeiro e
     // único" (pedido), por isso é só um horário, não uma lista como
     // sealer/elite acima. bossTriggered garante que só dispara uma vez
-    // mesmo passando por vários frames depois do horário.
+    // mesmo passando por vários frames depois do horário. bossHasSpawned
+    // vira true quando o Minotauro nasce de verdade (ver
+    // _triggerBossEntrance) — junto com bossTriggered, é o que
+    // _isBossEncounterActive() usa pra saber se ainda está "no meio do
+    // evento" (esperando a tela esvaziar, no silêncio, ou o boss vivo) ou
+    // se já era (nasceu e morreu) — spawn automático só volta no último
+    // caso.
     this.bossSchedule = bossSchedule;
     this.bossTriggered = false;
+    this.bossHasSpawned = false;
 
     // Cheat (DevConsole "autospawn"): true = levas automáticas continuam
     // sendo agendadas normalmente (_scheduleNextBatch/timerEvent), mas
@@ -213,12 +257,14 @@ export default class SpawnDirector {
     // mundo (ver Enemy._updateArena).
     if (this.enemySpawner.hasActiveSealer()) return;
 
-    // Boss (Minotauro) vivo: arena do boss, ninguém mais nasce sozinho
-    // até ele morrer (pedido: "só ele na arena, a não ser se eu der
-    // spawn") — spawn manual (cheat "spawn" do DevConsole) continua
-    // funcionando, pois chama enemySpawner.spawnByDefId direto, sem
-    // passar por _spawnBatch/este guard.
-    if (this.enemySpawner.hasActiveBoss()) return;
+    // Boss (Minotauro): trava TODO spawn automático desde o instante do
+    // gatilho (esperando a tela esvaziar, durante o silêncio, e enquanto
+    // ele estiver vivo) até ele nascer E morrer — ver
+    // _isBossEncounterActive(). Spawn manual (cheat "spawn" do
+    // DevConsole) continua funcionando, pois chama
+    // enemySpawner.spawnByDefId direto, sem passar por _spawnBatch/este
+    // guard.
+    if (this._isBossEncounterActive()) return;
 
     // Quando o teto sobe bastante entre uma leva e outra, o lote normal
     // (pequeno, pra não sufocar) demoraria muitos ciclos pra alcançar o
@@ -295,19 +341,102 @@ export default class SpawnDirector {
   /**
    * Dispara o evento do Boss no horário fixo de data/bossSchedule.js
    * (script, não sorteio) — uma vez só (bossTriggered), sem lista de
-   * índices como sealer/elite porque só existe um evento. Quando o tempo
-   * bate: manda todo mundo que estiver vivo agora fugir da tela
-   * (EnemySpawner.fleeAll) e, na sequência, nasce o Minotauro
-   * (spawnByDefId('minotaur', 1)) — bem simples de propósito por agora,
-   * sem pausar o spawn normal nem nada além disso.
+   * índices como sealer/elite porque só existe um evento. Sequência:
+   * todo mundo foge JÁ -> espera a tela ficar REALMENTE vazia (fugir
+   * ainda leva um tempinho, ver _waitForEmptyScreenThenBuildup) ->
+   * BOSS_SILENCE_MS de tela preta escurecendo aos poucos, com tremores
+   * crescentes tipo batimento cardíaco perto do fim (ver
+   * _startBossTensionBuildup) -> flash + vibração + hitstop (jogo
+   * congela um instante, ver _triggerBossEntrance) -> só ENTÃO o
+   * Minotauro nasce, com entrada em pop de escala + onda de choque (ver
+   * EnemySpawner._playBossEntranceFx).
    */
   _checkBossSchedule() {
     if (!this.bossSchedule || this.bossTriggered) return;
     if (this.getElapsedMs() >= this.bossSchedule.t) {
       this.bossTriggered = true;
       this.enemySpawner.fleeAll();
-      this.enemySpawner.spawnByDefId('minotaur', 1);
+      this._waitForEmptyScreenThenBuildup();
     }
+  }
+
+  /** true desde o instante do gatilho do Boss até ele nascer E morrer —
+   * cobre a espera da tela esvaziar, o silêncio E ele vivo, tudo como um
+   * período só em que o spawn automático (_spawnBatch) fica travado.
+   * Volta a false só depois que ele já nasceu (bossHasSpawned) e não está
+   * mais vivo (ou seja, morreu) — spawn automático normal retoma aí. */
+  _isBossEncounterActive() {
+    if (!this.bossTriggered) return false;
+    if (this.enemySpawner.hasActiveBoss()) {
+      this.bossHasSpawned = true;
+      return true;
+    }
+    return !this.bossHasSpawned;
+  }
+
+  /** Depois de mandar todo mundo fugir (Enemy.flee não é instantâneo, ver
+   * FLEE_* em Enemy.js), fica de olho num polling próprio e rápido
+   * (BOSS_EMPTY_SCREEN_POLL_MS, não amarrado ao intervalo de leva normal,
+   * que varia e pode passar de 1s) até a tela ficar de fato sem nenhum
+   * inimigo — só ENTÃO começa a contar o silêncio (pedido: escurecer só
+   * quando ficar vazio, não no instante do gatilho). */
+  _waitForEmptyScreenThenBuildup() {
+    const poll = this.scene.time.addEvent({
+      delay: BOSS_EMPTY_SCREEN_POLL_MS,
+      loop: true,
+      callback: () => {
+        if (this.enemySpawner.hasAnyAlive()) return;
+        poll.remove();
+        this._startBossTensionBuildup();
+        this.scene.time.delayedCall(BOSS_SILENCE_MS, () => this._triggerBossEntrance());
+      }
+    });
+  }
+
+  /** Começo do silêncio de verdade (tela já vazia): escurece a tela
+   * inteira pro PRETO aos poucos (retângulo fixo na câmera, bem maior que
+   * a view pra nunca deixar borda sobrando mesmo com zoom) e agenda
+   * tremores CRESCENTES perto do fim do silêncio (BOSS_HEARTBEAT_TIMES_MS/
+   * INTENSITIES, emparelhados por índice) — a ideia é a tensão ir subindo
+   * até estourar no flash. */
+  _startBossTensionBuildup() {
+    const cam = this.scene.cameras.main;
+    this.bossOverlay = this.scene.add
+      .rectangle(cam.width / 2, cam.height / 2, cam.width * 3, cam.height * 3, BOSS_OVERLAY_COLOR, 0)
+      .setScrollFactor(0)
+      .setDepth(1000);
+    this.scene.tweens.add({
+      targets: this.bossOverlay,
+      fillAlpha: BOSS_OVERLAY_MAX_ALPHA,
+      duration: BOSS_SILENCE_MS,
+      ease: 'Sine.easeIn'
+    });
+
+    BOSS_HEARTBEAT_TIMES_MS.forEach((t, i) => {
+      this.scene.time.delayedCall(t, () => {
+        this.scene.cameras.main.shake(BOSS_HEARTBEAT_SHAKE_MS, BOSS_HEARTBEAT_INTENSITIES[i]);
+      });
+    });
+  }
+
+  /** Fim do silêncio: corta o escurecimento na hora (contraste forte com
+   * o flash branco que vem em seguida), flash + vibração e um HITSTOP
+   * curto (física do jogo congela por BOSS_HITSTOP_MS — padrão comum em
+   * jogo de ação pra dar peso a um golpe/entrada) antes do Minotauro
+   * nascer de verdade. Nunca nasce antes do flash (pedido). */
+  _triggerBossEntrance() {
+    this.bossOverlay?.destroy();
+    this.bossOverlay = null;
+
+    const cam = this.scene.cameras.main;
+    cam.flash(BOSS_FLASH_MS, 255, 255, 255);
+    cam.shake(BOSS_FLASH_SHAKE_MS, BOSS_FLASH_SHAKE_INTENSITY);
+
+    this.scene.physics.world.pause();
+    this.scene.time.delayedCall(BOSS_HITSTOP_MS, () => {
+      this.scene.physics.world.resume();
+      this.enemySpawner.spawnByDefId('minotaur', 1);
+    });
   }
 
   _currentIntervalMs() {
