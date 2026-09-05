@@ -50,6 +50,15 @@ const MISSILE_EXPLOSION_SHAKE_INTENSITY = 0.012;
 const MELEE_SHAKE_MS = 220;
 const MELEE_SHAKE_INTENSITY = 0.012;
 
+// Fuga em massa (evento do Boss/Minotauro, ver SpawnDirector.
+// _checkBossSchedule/EnemySpawner.fleeAll): todo inimigo vivo na tela sai
+// correndo pra longe do jogador por um tempo curto e depois some sozinho
+// (sem emitir 'enemy-died' — ele não morreu, só foi embora, ver
+// Enemy._leave). Mais rápido que o normal (multiplicador) pra ficar
+// visualmente claro que é uma fuga em pânico, não o passeio de sempre.
+const FLEE_SPEED_MULTIPLIER = 1.8;
+const FLEE_DURATION_MS = 3000;
+
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
    * @param {Phaser.Scene} scene
@@ -94,6 +103,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // "Overcharge" — evolução do Overclock, ver DamageSystem._applyParalyze)
     // e chase() não o move. 0 = nunca paralisado.
     this.paralyzedUntil = 0;
+
+    // Fuga em massa (evento do Boss, ver flee()/FLEE_* acima): true a
+    // partir do momento em que este inimigo recebe flee() — chase() passa
+    // a só correr pra longe (ver _updateFlee), ignorando qualquer outro
+    // estado (elite/sealer/explode).
+    this.fleeing = false;
+    this.fleeUntil = 0;
+    this.fleeDirX = 0;
+    this.fleeDirY = 0;
 
     // sangramento (carta "Hemorragia" — evolução da Sanguessuga, ver
     // DamageSystem._applyBleed / applyBleed abaixo). Até bleedUntil o
@@ -219,6 +237,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    */
   chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {
     if (!this.active || this.healthSystem.isDead()) return;
+
+    // Fuga em massa (evento do Boss/Minotauro): assume o movimento por
+    // cima de qualquer outro estado (elite/sealer/explode já foram
+    // resetados em flee() abaixo) até FLEE_DURATION_MS acabar, quando o
+    // inimigo simplesmente some (ver _updateFlee/_leave).
+    if (this.fleeing) { this._updateFlee(nowMs); return; }
 
     // Exploder: enquanto preparando/explodindo, a máquina de estados
     // própria assume o movimento (fica parado) e chase() normal não roda.
@@ -892,6 +916,60 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
     this.eliteState = 'chasing';
     this.eliteNextAttackAt = nowMs + this.def.eliteMeleeCooldownMs;
+  }
+
+  /** Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.
+   * _checkBossSchedule/EnemySpawner.fleeAll): cancela qualquer estado
+   * especial em andamento (elite parado telegrafando, sealer imóvel) pra
+   * ele realmente conseguir correr, e sorteia a direção pra longe do
+   * jogador. Chamado uma vez por inimigo; depois disso é chase() (via
+   * this.fleeing) quem cuida do resto a cada frame.
+   * @param {Phaser.GameObjects.GameObject} target - o jogador, só pra
+   *   calcular de que lado fugir (sentido oposto a ele)
+   */
+  flee(target) {
+    if (!this.active || this.fleeing) return;
+    this.fleeing = true;
+    this.fleeUntil = this.scene.time.now + FLEE_DURATION_MS;
+
+    // Sealer é imóvel de propósito (ver constructor) — sem isto ele
+    // ficaria travado no lugar mesmo com fleeing=true.
+    this.body.setImmovable(false);
+
+    // Elite no meio de um ataque: cancela o telegraph/míssil em voo e
+    // limpa o aviso visual, senão ficaria "congelado" atacando o ar pra
+    // sempre em vez de fugir.
+    if (this.eliteState && this.eliteState !== 'chasing') {
+      this.eliteTelegraphGraphics?.clear();
+      this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
+      this.eliteMissileProjectiles = [];
+      this.eliteState = 'chasing';
+    }
+
+    const angle = Phaser.Math.Angle.Between(target.x, target.y, this.x, this.y);
+    this.fleeDirX = Math.cos(angle);
+    this.fleeDirY = Math.sin(angle);
+  }
+
+  /** Corre reto na direção sorteada em flee(), mais rápido que o normal
+   * (FLEE_SPEED_MULTIPLIER), até FLEE_DURATION_MS acabar — aí some (ver
+   * _leave), sem virar cadáver/XP/kill, ele só foi embora. */
+  _updateFlee(nowMs) {
+    const speed = this.def.speed * FLEE_SPEED_MULTIPLIER;
+    this.setVelocity(this.fleeDirX * speed, this.fleeDirY * speed);
+    if (nowMs >= this.fleeUntil) this._leave();
+  }
+
+  /** Fim da fuga: mesma limpeza de extras visuais do die() (ver ali),
+   * mas SEM emitir 'enemy-died' — não conta kill, não dropa XP, não toca
+   * som/FX de morte. Ele só saiu de cena. */
+  _leave() {
+    if (!this.active) return;
+    this.scene.tweens.killTweensOf(this);
+    this.arenaGraphics?.destroy();
+    this.eliteTelegraphGraphics?.destroy();
+    this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
+    this.destroy();
   }
 
   die() {

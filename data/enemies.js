@@ -109,6 +109,23 @@ export default [
     "arenaMinRadius": 110,
     "arenaShrinkDurationMs": 60000,
     "arenaCrushDamagePerSecond": 10
+  },
+  {
+    "id": "minotaur",
+    "name": "Minotauro",
+    "sprite": "enemy",
+    "hp": 3000,
+    "speed": 65,
+    "contactDamage": 40,
+    "contactCooldownMs": 800,
+    "xpReward": 500,
+    "color": 9127187,
+    "scale": 3.2,
+    "flocking": { "seek": 1.0, "cohesion": 0, "separation": 0.3, "density": 0 },
+    "boss": true,
+    // Boss é bem mais pesado que o Elite (knockbackResistance 0.15) —
+    // quase não sente empurrão nenhum.
+    "knockbackResistance": 0.05
   }
 ]
 ;

@@ -49,8 +49,13 @@ export default class SpawnDirector {
    *   (absoluteMaxAlive/capCurve/intervalCurve/batchCurve). É AQUI que se
    *   edita teto de vivos, frequência de leva e tamanho de leva — não
    *   direto nesta classe.
+   * @param {Array} [sealerSchedule] - conteúdo de data/sealerSchedule.js
+   * @param {Array} [eliteSchedule] - conteúdo de data/eliteSchedule.js
+   * @param {Object|null} [bossSchedule] - conteúdo de data/bossSchedule.js
+   *   ({t}); evento único do Boss (ver _checkBossSchedule) — null desliga
+   *   o boss por completo (compat/teste), sem afetar mais nada
    */
-  constructor(scene, enemySpawner, spawnPhases = [], spawnCurves = DEFAULT_SPAWN_CURVES, sealerSchedule = [], eliteSchedule = []) {
+  constructor(scene, enemySpawner, spawnPhases = [], spawnCurves = DEFAULT_SPAWN_CURVES, sealerSchedule = [], eliteSchedule = [], bossSchedule = null) {
     this.scene = scene;
     this.enemySpawner = enemySpawner;
     this.spawnPhases = spawnPhases;
@@ -78,6 +83,13 @@ export default class SpawnDirector {
     // em nenhuma fase — só nasce por aqui.
     this.eliteSchedule = eliteSchedule;
     this.eliteTriggered = new Set();
+
+    // Evento único do Boss (data/bossSchedule.js, {t}) — "primeiro e
+    // único" (pedido), por isso é só um horário, não uma lista como
+    // sealer/elite acima. bossTriggered garante que só dispara uma vez
+    // mesmo passando por vários frames depois do horário.
+    this.bossSchedule = bossSchedule;
+    this.bossTriggered = false;
 
     // Cheat (DevConsole "autospawn"): true = levas automáticas continuam
     // sendo agendadas normalmente (_scheduleNextBatch/timerEvent), mas
@@ -188,6 +200,10 @@ export default class SpawnDirector {
     // não algo que o cheat "autospawn" deveria conseguir travar.
     this._checkEliteSchedule();
 
+    // Boss também é checado sempre, mesmo com autospawn desligado — evento
+    // único, à parte de tudo o mais (ver _checkBossSchedule).
+    this._checkBossSchedule();
+
     if (!this.autoSpawnEnabled) return; // cheat "autospawn" desligado: só spawn manual (ver toggleAutoSpawn)
 
     // Arena do Sealer ativa: NINGUÉM mais nasce até ele morrer (ou a
@@ -267,6 +283,24 @@ export default class SpawnDirector {
         this.enemySpawner.spawnByDefId('elite', entry.count ?? 1);
       }
     });
+  }
+
+  /**
+   * Dispara o evento do Boss no horário fixo de data/bossSchedule.js
+   * (script, não sorteio) — uma vez só (bossTriggered), sem lista de
+   * índices como sealer/elite porque só existe um evento. Quando o tempo
+   * bate: manda todo mundo que estiver vivo agora fugir da tela
+   * (EnemySpawner.fleeAll) e, na sequência, nasce o Minotauro
+   * (spawnByDefId('minotaur', 1)) — bem simples de propósito por agora,
+   * sem pausar o spawn normal nem nada além disso.
+   */
+  _checkBossSchedule() {
+    if (!this.bossSchedule || this.bossTriggered) return;
+    if (this.getElapsedMs() >= this.bossSchedule.t) {
+      this.bossTriggered = true;
+      this.enemySpawner.fleeAll();
+      this.enemySpawner.spawnByDefId('minotaur', 1);
+    }
   }
 
   _currentIntervalMs() {

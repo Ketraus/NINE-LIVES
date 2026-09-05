@@ -313,6 +313,20 @@ export default class EnemySpawner {
   }
 
   /**
+   * Evento do Boss (ver SpawnDirector._checkBossSchedule): manda todo
+   * inimigo vivo AGORA fugir (Enemy.flee) — usado só uma vez, quando o
+   * Minotauro nasce, não faz parte do sorteio/leva normal. Copia a lista
+   * antes de iterar pelo mesmo motivo do killAll (die()/_leave() removem
+   * do grupo durante a iteração).
+   * @returns {number} quantos inimigos foram mandados fugir
+   */
+  fleeAll() {
+    const alive = this.group.getChildren().filter((e) => e.active);
+    alive.forEach((enemy) => enemy.flee(this.player));
+    return alive.length;
+  }
+
+  /**
    * Cheat (DevConsole "killall"): mata todos os inimigos vivos AGORA,
    * chamando o mesmo Enemy.die() do fluxo normal — dá XP e conta kill
    * normalmente, só acontece tudo de uma vez. Copia a lista antes de
