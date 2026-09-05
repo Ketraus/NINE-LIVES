@@ -92,6 +92,17 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_cyberus_click', 'assets/sfx/cyberus_click.mp3');
     this.load.audio('sfx_cyberus_explosion', 'assets/sfx/cyberus_explosion.mp3');
 
+    // sequência de ataque de mísseis do Elite (ver Enemy.js
+    // _startEliteMissiles -> _updateMissileTelegraph -> _launchMissiles ->
+    // _detonateMissiles): lock ao travar mira, warning ao revelar a
+    // última área, launch ao disparar de verdade (a duração REAL deste
+    // som é o que cronometra o voo até a explosão, ver
+    // Enemy._playTimedSfx) e explosion no impacto
+    this.load.audio('sfx_elite_lock', 'assets/sfx/elite_lock.mp3');
+    this.load.audio('sfx_elite_warning', 'assets/sfx/elite_warning.mp3');
+    this.load.audio('sfx_elite_launch', 'assets/sfx/elite_launch.mp3');
+    this.load.audio('sfx_elite_explosion', 'assets/sfx/elite_explosion.mp3');
+
     // sons de habilidade (não são de evolução, ver LevelUpUI/EVOLUTION_SFX
     // acima): tiro do GatoDrone (DroneAbility._fire), arremesso de shuriken
     // (ShurikenAbility._throw), onda de choque dos punhos (ShockwaveAbility

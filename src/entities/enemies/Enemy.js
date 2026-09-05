@@ -110,7 +110,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // a qualquer outro inimigo (ver chase() abaixo, o guard só assume o
     // movimento durante o telegraph/ataque). eliteState controla a
     // máquina de estados própria: 'chasing' -> 'missile_telegraph' (3
-    // áreas vermelhas aparecendo em sequência, ver _startEliteMissiles) ou
+    // áreas vermelhas aparecendo em sequência + aviso, ver
+    // _startEliteMissiles/_updateMissileTelegraph) -> 'missile_launch'
+    // (mísseis lançados de verdade, viajando pelo tempo do próprio som de
+    // lançamento, ver _launchMissiles/_updateMissileLaunch) -> detona -> ou
     // 'melee_telegraph' (golpe corpo a corpo se o jogador estiver perto
     // demais quando a janela de ataque abrir, ver _startEliteMelee) ->
     // volta pra 'chasing' com um cooldown até o próximo ataque.
@@ -124,6 +127,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMissileRevealed = 0;
       this.eliteMissileNextStepAt = 0;
       this.eliteMissileDetonateAt = null;
+      this.eliteLaunchDetonateAt = null;
       this.eliteMeleeTelegraphUntil = 0;
     }
   }
@@ -611,6 +615,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    */
   _updateElite(target, nowMs) {
     if (this.eliteState === 'missile_telegraph') { this._updateMissileTelegraph(target, nowMs); return true; }
+    if (this.eliteState === 'missile_launch') { this._updateMissileLaunch(target, nowMs); return true; }
     if (this.eliteState === 'melee_telegraph') { this._updateMeleeTelegraph(target, nowMs); return true; }
 
     if (nowMs < this.eliteNextAttackAt) return false; // ainda na horda, flocking normal
@@ -633,6 +638,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setVelocity(0, 0);
     if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
 
+    // Lock: o Elite "trava a mira" no jogador — toca assim que o
+    // telegraph começa, antes de qualquer área vermelha aparecer
+    this.scene.sound.play('sfx_elite_lock', { volume: 0.6 });
+
     const count = this.def.eliteMissileCount;
     this.eliteMissilePoints = [{ x: target.x, y: target.y }];
     for (let i = 1; i < count; i++) {
@@ -647,8 +656,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   /** Revela uma área vermelha por vez (a cada eliteMissileStepGapMs) —
    * "3 áreas aparecendo em sequência", dando tempo do jogador perceber
-   * cada uma. Depois que a última aparece, espera eliteMissileWarnAfterMs
-   * (passo 4: "espera um curto tempo") e então detona todas juntas. */
+   * cada uma. Depois que a última aparece, toca o aviso (Warning) e espera
+   * eliteMissileWarnAfterMs antes de passar pro lançamento de verdade
+   * (ver _launchMissiles). */
   _updateMissileTelegraph(target, nowMs) {
     this.setVelocity(0, 0);
     if (this.eliteMissileRevealed < this.eliteMissilePoints.length && nowMs >= this.eliteMissileNextStepAt) {
@@ -656,11 +666,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMissileNextStepAt = nowMs + this.def.eliteMissileStepGapMs;
       if (this.eliteMissileRevealed === this.eliteMissilePoints.length) {
         this.eliteMissileDetonateAt = nowMs + this.def.eliteMissileWarnAfterMs;
+        // Warning: toca assim que a última área é revelada, cobrindo a
+        // espera antes do lançamento de verdade
+        this.scene.sound.play('sfx_elite_warning', { volume: 0.6 });
       }
     }
     this._drawMissileTelegraph();
     if (this.eliteMissileDetonateAt != null && nowMs >= this.eliteMissileDetonateAt) {
-      this._detonateMissiles(target, nowMs);
+      this._launchMissiles(nowMs);
     }
   }
 
@@ -676,11 +689,44 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  /** Fim do aviso: o míssil sai de verdade. Toca o som de lançamento e usa
+   * a DURAÇÃO REAL dele (já decodificado no preload, ver PreloadScene) pra
+   * cronometrar a detonação — ou seja, o impacto acontece exatamente
+   * quando o som de lançamento termina, em vez de um tempo fixo digitado
+   * à mão. As áreas continuam visíveis (ver _updateMissileLaunch) durante
+   * esse voo. */
+  _launchMissiles(nowMs) {
+    this.eliteState = 'missile_launch';
+    const travelMs = this._playTimedSfx('sfx_elite_launch', 0.6);
+    this.eliteLaunchDetonateAt = nowMs + travelMs;
+  }
+
+  /** Toca um sfx e devolve a duração dele em ms (a instância é descartada
+   * sozinha ao terminar, pra não acumular Sound objects a cada Elite). */
+  _playTimedSfx(key, volume) {
+    const sfx = this.scene.sound.add(key);
+    sfx.play({ volume });
+    sfx.once('complete', () => sfx.destroy());
+    return sfx.duration * 1000;
+  }
+
+  /** Míssil "voando": áreas continuam marcadas no chão até o tempo do som
+   * de lançamento acabar (ver _launchMissiles) — só então detona. */
+  _updateMissileLaunch(target, nowMs) {
+    this.setVelocity(0, 0);
+    this._drawMissileTelegraph();
+    if (nowMs >= this.eliteLaunchDetonateAt) {
+      this._detonateMissiles(target, nowMs);
+    }
+  }
+
   /** Passos 5-6: dano alto em área em cada um dos 3 pontos, só se o
    * jogador ainda estiver dentro do raio de impacto quando a bomba cai
-   * (dá pra escapar dos 3 se reposicionar durante o telegraph). Volta
-   * pra 'chasing' com o cooldown do ataque de mísseis. */
+   * (dá pra escapar dos 3 se reposicionar durante o telegraph/lançamento).
+   * Volta pra 'chasing' com o cooldown do ataque de mísseis. */
   _detonateMissiles(target, nowMs) {
+    this.scene.sound.play('sfx_elite_explosion', { volume: 0.6 });
+
     this.eliteMissilePoints.forEach((p) => {
       if (target.active && !target.healthSystem?.isDead()) {
         const dist = Phaser.Math.Distance.Between(p.x, p.y, target.x, target.y);
