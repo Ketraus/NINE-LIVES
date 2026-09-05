@@ -255,6 +255,15 @@ export default class EnemySpawner {
     return this.group.getChildren().some((e) => e.active && e.def.sealer);
   }
 
+  /** true se já existe um Boss (Minotauro) vivo agora. Usado pelo
+   * SpawnDirector pra pausar TODO spawn automático enquanto a arena do
+   * boss estiver rolando (pedido: "só ele na arena, a não ser se eu der
+   * spawn") — spawn manual (cheat "spawn", ver spawnByDefId) continua
+   * funcionando normalmente, porque nem passa por essa checagem. */
+  hasActiveBoss() {
+    return this.group.getChildren().some((e) => e.active && e.def.boss);
+  }
+
   /**
    * Cria de fato um Enemy num ponto e registra ele no grupo/colisor —
    * extraído de spawnOne pra ser reaproveitado por spawnByDefId (cheat

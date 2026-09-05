@@ -213,6 +213,13 @@ export default class SpawnDirector {
     // mundo (ver Enemy._updateArena).
     if (this.enemySpawner.hasActiveSealer()) return;
 
+    // Boss (Minotauro) vivo: arena do boss, ninguém mais nasce sozinho
+    // até ele morrer (pedido: "só ele na arena, a não ser se eu der
+    // spawn") — spawn manual (cheat "spawn" do DevConsole) continua
+    // funcionando, pois chama enemySpawner.spawnByDefId direto, sem
+    // passar por _spawnBatch/este guard.
+    if (this.enemySpawner.hasActiveBoss()) return;
+
     // Quando o teto sobe bastante entre uma leva e outra, o lote normal
     // (pequeno, pra não sufocar) demoraria muitos ciclos pra alcançar o
     // novo teto — daria a impressão de "poucos inimigos" logo depois da
