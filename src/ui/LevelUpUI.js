@@ -40,7 +40,16 @@ const EVOLUTION_SFX = {
   arsenal_expandido_evo_override: 'sfx_restock',
   cooldown_down_evo_sixth_sense: 'sfx_sexto_sentido',
   range_up_evo_hunter_instinct: 'sfx_instinto_cacador',
-  armor_up_evo_shield: 'sfx_barreira'
+  armor_up_evo_shield: 'sfx_barreira',
+  range_up_evo_katana_stray: 'sfx_corte_fantasma',
+  // Overcharge é UM id só (dmg_up_evo_overcharge) reaproveitado pelas 3
+  // armas — só o `name` muda (Impacto Paralisante/Corte Neural/Munição
+  // EM, ver namesByWeapon em data/upgrades.js) — então um único som cobre
+  // as três
+  dmg_up_evo_overcharge: 'sfx_overcharge',
+  katana_shuriken_evo_shurivex: 'sfx_neoshuriken',
+  pistol_drone_evo_catforce: 'sfx_catforce',
+  range_up_evo_fists_bullet_time: 'sfx_reflexos_predador'
 };
 
 // tamanho do quadrado de arte dentro da carta normal/evolução (ver

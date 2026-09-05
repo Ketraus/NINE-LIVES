@@ -83,6 +83,11 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_sexto_sentido', 'assets/sfx/sexto_sentido.mp3');
     this.load.audio('sfx_instinto_cacador', 'assets/sfx/instinto_cacador.mp3');
     this.load.audio('sfx_barreira', 'assets/sfx/barreira.mp3');
+    this.load.audio('sfx_corte_fantasma', 'assets/sfx/corte_fantasma.mp3');
+    this.load.audio('sfx_overcharge', 'assets/sfx/overcharge.mp3');
+    this.load.audio('sfx_neoshuriken', 'assets/sfx/neoshuriken.mp3');
+    this.load.audio('sfx_catforce', 'assets/sfx/catforce.mp3');
+    this.load.audio('sfx_reflexos_predador', 'assets/sfx/reflexos_predador.mp3');
 
     // sons de habilidade (não são de evolução, ver LevelUpUI/EVOLUTION_SFX
     // acima): tiro do GatoDrone (DroneAbility._fire), arremesso de shuriken
