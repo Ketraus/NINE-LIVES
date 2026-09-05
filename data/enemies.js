@@ -61,7 +61,7 @@ export default [
     "id": "elite",
     "name": "Elite",
     "sprite": "enemy",
-    "hp": 250,
+    "hp": 455,
     "speed": 60,
     "contactDamage": 22,
     "contactCooldownMs": 900,
@@ -70,6 +70,10 @@ export default [
     "scale": 2.0,
     "flocking": { "seek": 1.0, "cohesion": 0.4, "separation": 0.5, "density": 0.2 },
     "elite": true,
+    // 0..1: força final do knockback = force * knockbackResistance (ver
+    // Enemy.applyKnockback) — 1 é knockback normal, quanto MENOR, menos
+    // ele sente. Elite é pesado, quase não se move com o empurrão.
+    "knockbackResistance": 0.15,
     "eliteAttackIntervalMs": 4500,
     "eliteMeleeRange": 90,
     "eliteMeleeTelegraphMs": 500,

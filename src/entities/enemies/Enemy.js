@@ -44,6 +44,12 @@ const MISSILE_LAUNCH_SHAKE_INTENSITY = 0.006;
 const MISSILE_EXPLOSION_SHAKE_MS = 260;
 const MISSILE_EXPLOSION_SHAKE_INTENSITY = 0.012;
 
+// Tremida do golpe corpo a corpo do Elite — mesmo espírito do lançamento
+// de míssil, só que ainda mais forte (é um soco de um bicho pesado bem
+// colado no jogador, precisa pesar tanto quanto ou mais que a explosão).
+const MELEE_SHAKE_MS = 220;
+const MELEE_SHAKE_INTENSITY = 0.012;
+
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
    * @param {Phaser.Scene} scene
@@ -298,6 +304,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * por `durationMs`. Usado pelas armas (ver Weapon.js/RangedWeapon.js,
    * campo `knockback` em data/weapons.js) pra dar sensação de impacto:
    * punhos empurram forte, katana médio, pistola pouco.
+   * `def.knockbackResistance` (0..1, default 1 = sem resistência) reduz a
+   * força final — usado pelo Elite (ver data/enemies.js) pra ele "pesar":
+   * sente o empurrão, mas bem menos que um inimigo comum.
    * @param {number} dirX
    * @param {number} dirY
    * @param {number} force - "velocidade" do empurrão em px/s
@@ -306,7 +315,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    */
   applyKnockback(dirX, dirY, force, nowMs, durationMs = 130) {
     if (!this.active || this.healthSystem.isDead()) return;
-    this.setVelocity(dirX * force, dirY * force);
+    const resistance = this.def.knockbackResistance ?? 1;
+    this.setVelocity(dirX * force * resistance, dirY * force * resistance);
     this.knockbackUntil = nowMs + durationMs;
   }
 
@@ -856,6 +866,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * antes do próximo ataque, conforme pedido. */
   _resolveMelee(target, nowMs) {
     this.eliteTelegraphGraphics.clear();
+    this.scene.cameras.main.shake(MELEE_SHAKE_MS, MELEE_SHAKE_INTENSITY);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.eliteMeleeRange && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this.def.eliteMeleeDamage, this, nowMs);
