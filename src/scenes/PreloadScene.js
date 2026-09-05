@@ -103,6 +103,16 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_elite_launch', 'assets/sfx/elite_launch.mp3');
     this.load.audio('sfx_elite_explosion', 'assets/sfx/elite_explosion.mp3');
 
+    // sons específicos do Elite fora da sequência de mísseis acima: hit
+    // (substitui o sfx_hit genérico quando quem apanha é o Elite, ver
+    // DamageSystem.applyWeaponHit), death (Enemy.die() quando def.elite) e
+    // punch — o soco corpo a corpo em si, cuja duração REAL cronometra o
+    // impacto de verdade (ver Enemy._startEliteMeleeSwing/_playTimedSfx,
+    // mesmo padrão do sfx_elite_launch acima).
+    this.load.audio('sfx_elite_hit', 'assets/sfx/elitehitsound.mp3');
+    this.load.audio('sfx_elite_death', 'assets/sfx/elitedeathsound.mp3');
+    this.load.audio('sfx_elite_punch', 'assets/sfx/elitepunchsound.mp3');
+
     // sons de habilidade (não são de evolução, ver LevelUpUI/EVOLUTION_SFX
     // acima): tiro do GatoDrone (DroneAbility._fire), arremesso de shuriken
     // (ShurikenAbility._throw), onda de choque dos punhos (ShockwaveAbility

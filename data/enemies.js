@@ -79,6 +79,11 @@ export default [
     "eliteMeleeTelegraphMs": 500,
     "eliteMeleeDamage": 35,
     "eliteMeleeCooldownMs": 6000,
+    // instante (ms) dentro de elitepunchsound.mp3 em que o soco realmente
+    // "conecta" (pico de amplitude do áudio, analisado à parte) — é o que
+    // cronometra o dano do corpo a corpo, não a duração total do arquivo
+    // (ver Enemy._startEliteMeleeSwing)
+    "eliteMeleePunchImpactMs": 680,
     "eliteMissileCount": 5,
     "eliteMissileSpreadRadius": 140,
     "eliteMissileRadius": 70,

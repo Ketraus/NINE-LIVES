@@ -70,8 +70,10 @@ export default class DamageSystem {
     target.playHitReaction?.();
     // som de impacto genérico — toca sempre que um golpe de arma/ataque
     // realmente conecta (soco, katana, pistola e as habilidades que usam
-    // este mesmo método)
-    targetScene?.sound?.play('sfx_hit', { volume: 0.5 });
+    // este mesmo método). Exceção: se quem apanhou é o Elite (target.def.
+    // elite, ver data/enemies.js), toca o hit exclusivo dele em vez do
+    // genérico.
+    targetScene?.sound?.play(target.def?.elite ? 'sfx_elite_hit' : 'sfx_hit', { volume: 0.5 });
     this._applyLifesteal(source, damage);
     this._applyParalyze(target, source, nowMs);
     this._applyBleed(target, source, damage, nowMs);

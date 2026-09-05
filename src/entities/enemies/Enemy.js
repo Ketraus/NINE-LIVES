@@ -660,6 +660,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.eliteState === 'missile_telegraph') { this._updateMissileTelegraph(target, nowMs); return true; }
     if (this.eliteState === 'missile_launch') { this._updateMissileLaunch(target, nowMs); return true; }
     if (this.eliteState === 'melee_telegraph') { this._updateMeleeTelegraph(target, nowMs); return true; }
+    if (this.eliteState === 'melee_swing') { this._updateMeleeSwing(target, nowMs); return true; }
 
     if (nowMs < this.eliteNextAttackAt) return false; // ainda na horda, flocking normal
 
@@ -841,7 +842,25 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _updateMeleeTelegraph(target, nowMs) {
     this.setVelocity(0, 0);
     this._drawMeleeTelegraph(nowMs);
-    if (nowMs >= this.eliteMeleeTelegraphUntil) this._resolveMelee(target, nowMs);
+    if (nowMs >= this.eliteMeleeTelegraphUntil) this._startEliteMeleeSwing(nowMs);
+  }
+
+  /** Fim do aviso: o soco sai de verdade. Toca sfx_elite_punch e agenda o
+   * dano pro instante em que o IMPACTO do soco acontece dentro do áudio
+   * (def.eliteMeleePunchImpactMs, ver data/enemies.js) — não pela duração
+   * total do arquivo, que tem cauda/reverb bem mais longa que o baque em
+   * si (analisado no áudio: pico de amplitude por volta de 0.7s de um
+   * clipe de 2.25s). O círculo de aviso continua piscando até lá. */
+  _startEliteMeleeSwing(nowMs) {
+    this.eliteState = 'melee_swing';
+    this.scene.sound.play('sfx_elite_punch', { volume: 0.7 });
+    this.eliteMeleeSwingDetonateAt = nowMs + this.def.eliteMeleePunchImpactMs;
+  }
+
+  _updateMeleeSwing(target, nowMs) {
+    this.setVelocity(0, 0);
+    this._drawMeleeTelegraph(nowMs);
+    if (nowMs >= this.eliteMeleeSwingDetonateAt) this._resolveMelee(target, nowMs);
   }
 
   /** Mesmo piscar (alarme) do telegraph de mísseis, ver
@@ -889,6 +908,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // sem isto, ficariam "congeladas" no ar pra sempre se o Elite morrer
     // no meio do lançamento (ver _launchMissiles).
     this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
+    // Elite: som de morte próprio em vez de nenhum som (os inimigos
+    // normais não têm sfx de morte hoje) — toca antes do destroy(), que
+    // não afeta o áudio (Phaser Sound não é filho do sprite).
+    if (this.def.elite) this.scene.sound.play('sfx_elite_death', { volume: 0.6 });
     // `color` vai junto só pra quem quiser desenhar algo na cor do
     // inimigo (ver GameScene._spawnDeathFx) — o Enemy já não existe mais
     // no momento em que quem escuta o evento for usar isso.
