@@ -14,7 +14,16 @@ export default class PreloadScene extends Phaser.Scene {
     cardArtIds.forEach((id) => this.load.image(`card_${id}`, `assets/ui/cards/${id}.png`));
 
     // sprites placeholder
-    this.load.image('player', 'assets/sprites/player.png');
+    // gato jogável: idle (parado) e walk (andando), 4 frames de 28x28 cada
+    // (ver Player._handleMovement/_updateAnimation pra troca idle<->walk)
+    this.load.spritesheet('player_idle', 'assets/sprites/player_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_walk', 'assets/sprites/player_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('enemy', 'assets/sprites/enemy.png');
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
@@ -160,6 +169,21 @@ export default class PreloadScene extends Phaser.Scene {
       .concat(cardArtIds.map((id) => `card_${id}`));
     smoothKeys.forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
+
+    // animações do gato jogável (ver Player._updateAnimation) — criadas uma
+    // única vez aqui, reaproveitadas em toda run/GameScene nova
+    this.anims.create({
+      key: 'player-idle',
+      frames: this.anims.generateFrameNumbers('player_idle', { start: 0, end: 3 }),
+      frameRate: 4,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-walk',
+      frames: this.anims.generateFrameNumbers('player_walk', { start: 0, end: 3 }),
+      frameRate: 8,
+      repeat: -1
     });
 
     this.scene.start('MainMenuScene');

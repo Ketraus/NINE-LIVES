@@ -28,7 +28,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
    * @param {import('../roguelike/RunState.js').default} runState
    */
   constructor(scene, x, y, runState) {
-    super(scene, x, y, 'player');
+    super(scene, x, y, 'player_idle');
     this.runState = runState;
 
     scene.add.existing(this);
@@ -43,6 +43,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._baseOffsetY = this.height / 2 - this._baseRadius;
     this.body.setCircle(this._baseRadius, this._baseOffsetX, this._baseOffsetY);
     this.setDepth(10);
+    this.play('player-idle');
+    this._currentAnim = 'player-idle';
 
     const startingMaxHp = Math.round(BASE_MAX_HP * (1 + runState.maxHpPercentBonus)) + runState.maxHpBonus;
     this.healthSystem = new HealthSystem(startingMaxHp, {
@@ -264,6 +266,24 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.setVelocity(vec.x * this.speed, vec.y * this.speed);
+    this._updateAnimation(vec);
+  }
+
+  /**
+   * Troca idle<->walk conforme o jogador se move, e espelha o sprite
+   * (flipX) pro lado pra onde ele está indo — a arte original olha pra
+   * direita, então só espelha quando lastHorizontalDir é -1 (esquerda).
+   */
+  _updateAnimation(vec) {
+    const isMoving = vec.lengthSq() > 0;
+    const anim = isMoving ? 'player-walk' : 'player-idle';
+    if (this._currentAnim !== anim) {
+      this.play(anim);
+      this._currentAnim = anim;
+    }
+    if (this.lastHorizontalDir) {
+      this.setFlipX(this.lastHorizontalDir > 0);
+    }
   }
 
   /**
