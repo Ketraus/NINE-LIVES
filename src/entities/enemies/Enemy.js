@@ -52,12 +52,16 @@ const MELEE_SHAKE_INTENSITY = 0.012;
 
 // Fuga em massa (evento do Boss/Minotauro, ver SpawnDirector.
 // _checkBossSchedule/EnemySpawner.fleeAll): todo inimigo vivo na tela sai
-// correndo pra longe do jogador por um tempo curto e depois some sozinho
-// (sem emitir 'enemy-died' — ele não morreu, só foi embora, ver
-// Enemy._leave). Mais rápido que o normal (multiplicador) pra ficar
-// visualmente claro que é uma fuga em pânico, não o passeio de sempre.
+// correndo pra longe do jogador e só some de vez quando realmente sair da
+// visão da câmera (+ FLEE_DESPAWN_MARGIN, ver _isOutsideCameraView) — não
+// um tempo fixo (era o bug: um tempo fixo curto sumia com quem começou
+// mais perto da borda da câmera, ou era mais lento, ANTES de sair da
+// visão de verdade). FLEE_MAX_DURATION_MS é só uma rede de segurança
+// (nunca deveria ser atingida no jogo normal, sem obstáculo pra fuga)
+// pra garantir que ninguém fique fugindo pra sempre num caso extremo.
 const FLEE_SPEED_MULTIPLIER = 1.8;
-const FLEE_DURATION_MS = 3000;
+const FLEE_DESPAWN_MARGIN = 150;
+const FLEE_MAX_DURATION_MS = 15000;
 
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
@@ -109,7 +113,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // a só correr pra longe (ver _updateFlee), ignorando qualquer outro
     // estado (elite/sealer/explode).
     this.fleeing = false;
-    this.fleeUntil = 0;
+    this.fleeMaxUntil = 0;
     this.fleeDirX = 0;
     this.fleeDirY = 0;
 
@@ -930,7 +934,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   flee(target) {
     if (!this.active || this.fleeing) return;
     this.fleeing = true;
-    this.fleeUntil = this.scene.time.now + FLEE_DURATION_MS;
+    this.fleeMaxUntil = this.scene.time.now + FLEE_MAX_DURATION_MS;
 
     // Sealer é imóvel de propósito (ver constructor) — sem isto ele
     // ficaria travado no lugar mesmo com fleeing=true.
@@ -952,12 +956,29 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** Corre reto na direção sorteada em flee(), mais rápido que o normal
-   * (FLEE_SPEED_MULTIPLIER), até FLEE_DURATION_MS acabar — aí some (ver
-   * _leave), sem virar cadáver/XP/kill, ele só foi embora. */
+   * (FLEE_SPEED_MULTIPLIER), até realmente sair da visão da câmera (+
+   * margem, ver _isOutsideCameraView) — só aí some (ver _leave), sem virar
+   * cadáver/XP/kill, ele só foi embora. FLEE_MAX_DURATION_MS é só rede de
+   * segurança pro caso (não esperado) de nunca sair da visão. */
   _updateFlee(nowMs) {
     const speed = this.def.speed * FLEE_SPEED_MULTIPLIER;
     this.setVelocity(this.fleeDirX * speed, this.fleeDirY * speed);
-    if (nowMs >= this.fleeUntil) this._leave();
+    if (this._isOutsideCameraView(FLEE_DESPAWN_MARGIN) || nowMs >= this.fleeMaxUntil) this._leave();
+  }
+
+  /** true se este inimigo está fora do retângulo visível da câmera agora,
+   * expandido por `margin` — calculado na mão a partir de scrollX/scrollY/
+   * zoom (mesma técnica de EnemySpawner._currentCameraView, ver lá o
+   * porquê de não usar camera.worldView direto). Usado só por _updateFlee
+   * por enquanto. */
+  _isOutsideCameraView(margin) {
+    const cam = this.scene.cameras.main;
+    const zoom = cam.zoom || 1;
+    const left = cam.scrollX - margin;
+    const top = cam.scrollY - margin;
+    const right = cam.scrollX + cam.width / zoom + margin;
+    const bottom = cam.scrollY + cam.height / zoom + margin;
+    return this.x < left || this.x > right || this.y < top || this.y > bottom;
   }
 
   /** Fim da fuga: mesma limpeza de extras visuais do die() (ver ali),
