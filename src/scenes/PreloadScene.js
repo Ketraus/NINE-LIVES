@@ -88,6 +88,9 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_neoshuriken', 'assets/sfx/neoshuriken.mp3');
     this.load.audio('sfx_catforce', 'assets/sfx/catforce.mp3');
     this.load.audio('sfx_reflexos_predador', 'assets/sfx/reflexos_predador.mp3');
+    this.load.audio('sfx_cyberus_cannon', 'assets/sfx/cyberus_cannon.mp3');
+    this.load.audio('sfx_cyberus_click', 'assets/sfx/cyberus_click.mp3');
+    this.load.audio('sfx_cyberus_explosion', 'assets/sfx/cyberus_explosion.mp3');
 
     // sons de habilidade (não são de evolução, ver LevelUpUI/EVOLUTION_SFX
     // acima): tiro do GatoDrone (DroneAbility._fire), arremesso de shuriken

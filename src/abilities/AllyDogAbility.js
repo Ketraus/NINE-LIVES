@@ -187,6 +187,8 @@ export default class AllyDogAbility {
    *  extremos. A explosão em si só acontece em _advanceGrenadesInFlight,
    *  quando o projétil encosta em alguém ou termina o trajeto. */
   _launchGrenade(scene, targetX, targetY, time) {
+    scene.sound.play('sfx_cyberus_click', { volume: 0.6 });
+
     const startX = this.dog.x;
     const startY = this.dog.y;
     const dist = Phaser.Math.Distance.Between(startX, startY, targetX, targetY);
@@ -232,6 +234,8 @@ export default class AllyDogAbility {
    *  _updateGrenade (a explosão agora depende do voo do projétil, não do
    *  instante do arremesso). */
   _explodeGrenade(scene, x, y, time) {
+    scene.sound.play('sfx_cyberus_explosion', { volume: 0.6 });
+
     const fx = this._createFlameFx(scene, x, y);
     this.flameZones.push({ x, y, spawnMs: time, lastTickMs: 0, fx });
   }
@@ -334,6 +338,8 @@ export default class AllyDogAbility {
    *  cannonWidth. Também dá um pequeno screen shake, pra reforçar o peso
    *  do disparo (carta mais forte do jogo). */
   _fireCannon(scene, target, enemyGroup, time) {
+    scene.sound.play('sfx_cyberus_cannon', { volume: 0.6 });
+
     const aim = new Phaser.Math.Vector2(target.x - this.dog.x, target.y - this.dog.y).normalize();
     const startX = this.dog.x;
     const startY = this.dog.y;
