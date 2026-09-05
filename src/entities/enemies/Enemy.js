@@ -35,6 +35,15 @@ const MISSILE_BLINK_PERIOD_MS = 260;
 const MISSILE_BLINK_ALPHA_MIN = 0.12;
 const MISSILE_BLINK_ALPHA_MAX = 0.42;
 
+// Tremida de câmera do ataque de mísseis — leve no lançamento (dá peso ao
+// disparo, ver _launchMissiles), bem mais forte na explosão (dá peso ao
+// impacto de 5 áreas de uma vez, ver _detonateMissiles); mesma escala de
+// SlamAbility (0.004 leve / 0.008 forte), um pouco acima por ser um Elite.
+const MISSILE_LAUNCH_SHAKE_MS = 100;
+const MISSILE_LAUNCH_SHAKE_INTENSITY = 0.006;
+const MISSILE_EXPLOSION_SHAKE_MS = 260;
+const MISSILE_EXPLOSION_SHAKE_INTENSITY = 0.012;
+
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
    * @param {Phaser.Scene} scene
@@ -733,6 +742,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _launchMissiles(nowMs) {
     this.eliteState = 'missile_launch';
     const travelMs = this._playTimedSfx('sfx_elite_launch', 0.6, MISSILE_LAUNCH_SFX_RATE);
+    this.scene.cameras.main.shake(MISSILE_LAUNCH_SHAKE_MS, MISSILE_LAUNCH_SHAKE_INTENSITY);
     this.eliteLaunchStartMs = nowMs;
     this.eliteLaunchDetonateAt = nowMs + travelMs;
 
@@ -793,6 +803,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * Volta pra 'chasing' com o cooldown do ataque de mísseis. */
   _detonateMissiles(target, nowMs) {
     this.scene.sound.play('sfx_elite_explosion', { volume: 0.6 });
+    this.scene.cameras.main.shake(MISSILE_EXPLOSION_SHAKE_MS, MISSILE_EXPLOSION_SHAKE_INTENSITY);
 
     this.eliteMissilePoints.forEach((p) => {
       if (target.active && !target.healthSystem?.isDead()) {
