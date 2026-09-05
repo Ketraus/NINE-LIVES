@@ -153,6 +153,13 @@ export default class PreloadScene extends Phaser.Scene {
   }
 
   create() {
+    // as artes das cartas de arma não são pixel art, então usam filtro
+    // suave (LINEAR) mesmo com pixelArt:true global (gameConfig.js) —
+    // sem isso ficam serrilhadas ao serem redimensionadas pro card
+    ['card_fists', 'card_katana', 'card_pistol'].forEach((key) => {
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
+
     this.scene.start('MainMenuScene');
   }
 
