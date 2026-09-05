@@ -30,6 +30,9 @@ class MusicManager {
     // trilha da tela de cartas tocando por cima da música de jogo
     // "abaixada" (não parada), ver duckForCards()/restoreFromCards()
     this.duckedSound = null;
+    // guarda de idempotência da entrada do Boss (ver duckForBoss/
+    // restoreFromBoss) — evento único, mas não custa garantir
+    this._bossDucked = false;
   }
 
   /**
@@ -148,6 +151,38 @@ class MusicManager {
     if (this.currentSound) {
       scene.tweens.add({ targets: this.currentSound, volume: MUSIC_VOLUME, duration: FADE_MS });
     }
+  }
+
+  /**
+   * Entrada do Boss (ver SpawnDirector._startBossTensionBuildup): a
+   * música de jogo vai sumindo aos poucos ("cada vez mais distante") no
+   * mesmo ritmo do escurecimento da tela — por isso recebe a duração de
+   * fora (BOSS_SILENCE_MS) em vez de usar FADE_MS fixo. Sem trilha
+   * substituta por cima (diferente de duckForCards): aqui o silêncio É o
+   * efeito. Idempotente (this._bossDucked) — o evento do boss é único,
+   * mas não custa nada garantir.
+   * @param {Phaser.Scene} scene
+   * @param {number} durationMs
+   */
+  duckForBoss(scene, durationMs) {
+    if (this._bossDucked) return;
+    if (!this.currentSound) return;
+    this._bossDucked = true;
+    scene.tweens.add({ targets: this.currentSound, volume: 0, duration: durationMs, ease: 'Sine.easeIn' });
+  }
+
+  /**
+   * Fim da entrada do Boss (ver SpawnDirector._triggerBossEntrance): a
+   * música de jogo volta, de onde estava tocando, junto do momento em que
+   * o Minotauro nasce de verdade.
+   * @param {Phaser.Scene} scene
+   * @param {number} [durationMs]
+   */
+  restoreFromBoss(scene, durationMs = FADE_MS) {
+    if (!this._bossDucked) return;
+    this._bossDucked = false;
+    if (!this.currentSound) return;
+    scene.tweens.add({ targets: this.currentSound, volume: MUSIC_VOLUME, duration: durationMs });
   }
 }
 

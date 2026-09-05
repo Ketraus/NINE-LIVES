@@ -3,6 +3,7 @@
 // entre levas e tamanho da leva), interpoladas linearmente entre seus
 // pontos (ver _lerpCurve()) — suave entre um ponto e outro. Os valores
 // vivem em data/spawnCurves.js, não aqui — é lá que se edita.
+import MusicManager from '../systems/MusicManager.js';
 
 /**
  * Dono do "quando", "quantos" e "de que tipo" da sobrevivência por tempo:
@@ -42,7 +43,7 @@ const DEFAULT_SPAWN_CURVES = {
 // _waitForEmptyScreenThenBuildup — fugir ainda leva um tempinho até sair
 // de vista, não é instantâneo) e só ENTÃO conta BOSS_SILENCE_MS de
 // silêncio antes do flash + vibração + o Minotauro nascer de verdade.
-const BOSS_SILENCE_MS = 3000;
+const BOSS_SILENCE_MS = 6000;
 // Intervalo de checagem "a tela já esvaziou?" depois da fuga — polling
 // próprio, rápido, em vez de amarrado ao intervalo de leva normal
 // (spawnCurves.intervalCurve, que varia e pode passar de 1s de folga).
@@ -53,12 +54,15 @@ const BOSS_EMPTY_SCREEN_POLL_MS = 200;
 // estoura.
 const BOSS_OVERLAY_COLOR = 0x000000;
 const BOSS_OVERLAY_MAX_ALPHA = 0.55;
-// Tremores CRESCENTES tipo batimento cardíaco perto do fim do silêncio
-// (índice a índice com BOSS_HEARTBEAT_INTENSITIES) — tempos em ms a
-// partir do INÍCIO do silêncio (que só começa a contar com a tela já
-// vazia, ver acima), não do fim.
-const BOSS_HEARTBEAT_TIMES_MS = [1500, 2100, 2550, 2850];
-const BOSS_HEARTBEAT_INTENSITIES = [0.003, 0.005, 0.008, 0.012];
+// Tremores CRESCENTES tipo batimento cardíaco espalhados pelos 6s de
+// silêncio (índice a índice com BOSS_HEARTBEAT_INTENSITIES) — tempos em
+// ms a partir do INÍCIO do silêncio (que só começa a contar com a tela já
+// vazia, ver acima), não do fim. Mais pulsos que antes (eram só 4, perto
+// do fim de um silêncio de 3s) pra preencher o silêncio bem mais longo
+// sem deixar um vazio no meio — vai acelerando/intensificando de
+// verdade conforme se aproxima do fim, como um coração disparando.
+const BOSS_HEARTBEAT_TIMES_MS = [2500, 3600, 4400, 5000, 5450, 5750];
+const BOSS_HEARTBEAT_INTENSITIES = [0.003, 0.005, 0.007, 0.009, 0.011, 0.014];
 const BOSS_HEARTBEAT_SHAKE_MS = 130;
 // Flash branco na tela inteira (Phaser Camera FX nativo) — dura pouco de
 // propósito, é só o "clarão" do instante, não um fade longo.
@@ -134,6 +138,7 @@ export default class SpawnDirector {
     this.bossSchedule = bossSchedule;
     this.bossTriggered = false;
     this.bossHasSpawned = false;
+    this._bossMusicRestoreDone = false;
 
     // Cheat (DevConsole "autospawn"): true = levas automáticas continuam
     // sendo agendadas normalmente (_scheduleNextBatch/timerEvent), mas
@@ -247,6 +252,10 @@ export default class SpawnDirector {
     // Boss também é checado sempre, mesmo com autospawn desligado — evento
     // único, à parte de tudo o mais (ver _checkBossSchedule).
     this._checkBossSchedule();
+    // idem: música só volta quando o Minotauro morrer de verdade (ver
+    // _checkBossMusicRestore) — não é sorteio nem spawn, então também
+    // roda sempre, autospawn ligado ou não.
+    this._checkBossMusicRestore();
 
     if (!this.autoSpawnEnabled) return; // cheat "autospawn" desligado: só spawn manual (ver toggleAutoSpawn)
 
@@ -412,6 +421,10 @@ export default class SpawnDirector {
       ease: 'Sine.easeIn'
     });
 
+    // música de jogo vai sumindo ("cada vez mais distante") no mesmo
+    // ritmo do escurecimento acima — mesma duração, mesmo easing
+    MusicManager.duckForBoss(this.scene, BOSS_SILENCE_MS);
+
     BOSS_HEARTBEAT_TIMES_MS.forEach((t, i) => {
       this.scene.time.delayedCall(t, () => {
         this.scene.cameras.main.shake(BOSS_HEARTBEAT_SHAKE_MS, BOSS_HEARTBEAT_INTENSITIES[i]);
@@ -431,12 +444,30 @@ export default class SpawnDirector {
     const cam = this.scene.cameras.main;
     cam.flash(BOSS_FLASH_MS, 255, 255, 255);
     cam.shake(BOSS_FLASH_SHAKE_MS, BOSS_FLASH_SHAKE_INTENSITY);
+    // som grave/impacto gigantesco bem no instante do flash — reaproveita
+    // a explosão já pronta do Cyberus (grave e pesada), sem precisar de
+    // asset novo
+    this.scene.sound.play('sfx_cyberus_explosion', { volume: 0.9 });
 
     this.scene.physics.world.pause();
     this.scene.time.delayedCall(BOSS_HITSTOP_MS, () => {
       this.scene.physics.world.resume();
       this.enemySpawner.spawnByDefId('minotaur', 1);
+      // música NÃO volta aqui — fica parada (silêncio) durante toda a
+      // luta contra o Minotauro; só retorna quando ele morrer de verdade
+      // (ver _checkBossMusicRestore). Uma trilha própria de luta contra
+      // boss pode entrar aqui no futuro, no lugar deste silêncio.
     });
+  }
+
+  /** Música (ducked em _startBossTensionBuildup) só volta quando o
+   * Minotauro morre de verdade — checa todo frame, junto do resto dos
+   * scripts do Boss, e dispara só uma vez (_bossMusicRestoreDone). */
+  _checkBossMusicRestore() {
+    if (!this.bossHasSpawned || this._bossMusicRestoreDone) return;
+    if (this.enemySpawner.hasActiveBoss()) return; // ainda vivo
+    this._bossMusicRestoreDone = true;
+    MusicManager.restoreFromBoss(this.scene);
   }
 
   _currentIntervalMs() {
