@@ -21,6 +21,19 @@ const BLEED_TINT = 0x8a0000;
 const MISSILE_COLOR = 0xff6633;
 const MISSILE_RADIUS = 7;
 const MISSILE_ARC_HEIGHT = 60;
+// Toca o som de lançamento mais rápido que o normal (Sound.rate do
+// Phaser) — o áudio original é mais lento que o voo da bola; acelerando
+// os dois pelo MESMO fator (ver _launchMissiles/_playTimedSfx) eles ficam
+// sincronizados de novo, só que num ritmo mais "correndo pro impacto".
+const MISSILE_LAUNCH_SFX_RATE = 1.6;
+
+// Telegraph do Elite "piscando" (ver _drawMissileTelegraph) — alterna
+// entre esses dois níveis de alpha num ciclo de MISSILE_BLINK_PERIOD_MS,
+// em vez de ficar com opacidade fixa. Mais rápido/contrastado que um
+// "respirar" suave de propósito, pra passar alarme, não calma.
+const MISSILE_BLINK_PERIOD_MS = 260;
+const MISSILE_BLINK_ALPHA_MIN = 0.12;
+const MISSILE_BLINK_ALPHA_MAX = 0.42;
 
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   /**
@@ -682,20 +695,30 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.scene.sound.play('sfx_elite_warning', { volume: 0.6 });
       }
     }
-    this._drawMissileTelegraph();
+    this._drawMissileTelegraph(nowMs);
     if (this.eliteMissileDetonateAt != null && nowMs >= this.eliteMissileDetonateAt) {
       this._launchMissiles(nowMs);
     }
   }
 
-  _drawMissileTelegraph() {
+  /** Áreas vermelhas piscando (não opacidade fixa) — alterna entre
+   * MISSILE_BLINK_ALPHA_MIN/MAX num ciclo curto (ver MISSILE_BLINK_PERIOD_MS),
+   * o contorno pisca junto (mais forte que o preenchimento, sempre bem
+   * visível mesmo no vale do preenchimento) pra dar aquele "alarme"
+   * de perigo em vez de uma marcação parada no chão. */
+  _drawMissileTelegraph(nowMs) {
     const g = this.eliteTelegraphGraphics;
     g.clear();
+
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
+    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX, blinkT);
+    const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
+
     for (let i = 0; i < this.eliteMissileRevealed; i++) {
       const p = this.eliteMissilePoints[i];
-      g.fillStyle(0xff2222, 0.32);
+      g.fillStyle(0xff2222, fillAlpha);
       g.fillCircle(p.x, p.y, this.def.eliteMissileRadius);
-      g.lineStyle(3, 0xff4444, 0.9);
+      g.lineStyle(3, 0xff4444, strokeAlpha);
       g.strokeCircle(p.x, p.y, this.def.eliteMissileRadius);
     }
   }
@@ -709,7 +732,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * próprio Elite) e ao mesmo tempo. */
   _launchMissiles(nowMs) {
     this.eliteState = 'missile_launch';
-    const travelMs = this._playTimedSfx('sfx_elite_launch', 0.6);
+    const travelMs = this._playTimedSfx('sfx_elite_launch', 0.6, MISSILE_LAUNCH_SFX_RATE);
     this.eliteLaunchStartMs = nowMs;
     this.eliteLaunchDetonateAt = nowMs + travelMs;
 
@@ -725,13 +748,17 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     }));
   }
 
-  /** Toca um sfx e devolve a duração dele em ms (a instância é descartada
-   * sozinha ao terminar, pra não acumular Sound objects a cada Elite). */
-  _playTimedSfx(key, volume) {
+  /** Toca um sfx (opcionalmente mais rápido, ver `rate`) e devolve a
+   * duração JÁ CONSIDERANDO essa velocidade, em ms — dobrar o rate corta
+   * a duração pela metade, então quem cronometra a partir disto (ver
+   * _launchMissiles) acompanha o áudio de verdade, não o tempo do arquivo
+   * original. A instância é descartada sozinha ao terminar, pra não
+   * acumular Sound objects a cada Elite. */
+  _playTimedSfx(key, volume, rate = 1) {
     const sfx = this.scene.sound.add(key);
-    sfx.play({ volume });
+    sfx.play({ volume, rate });
     sfx.once('complete', () => sfx.destroy());
-    return sfx.duration * 1000;
+    return (sfx.duration / rate) * 1000;
   }
 
   /** Mísseis voando de verdade: interpola cada bola do Elite até a área
@@ -742,7 +769,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * e detona. */
   _updateMissileLaunch(target, nowMs) {
     this.setVelocity(0, 0);
-    this._drawMissileTelegraph();
+    this._drawMissileTelegraph(nowMs);
 
     const progress = Math.min(
       (nowMs - this.eliteLaunchStartMs) / (this.eliteLaunchDetonateAt - this.eliteLaunchStartMs),
