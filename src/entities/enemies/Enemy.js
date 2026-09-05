@@ -25,7 +25,7 @@ const MISSILE_ARC_HEIGHT = 60;
 // Phaser) — o áudio original é mais lento que o voo da bola; acelerando
 // os dois pelo MESMO fator (ver _launchMissiles/_playTimedSfx) eles ficam
 // sincronizados de novo, só que num ritmo mais "correndo pro impacto".
-const MISSILE_LAUNCH_SFX_RATE = 1.6;
+const MISSILE_LAUNCH_SFX_RATE = 2.2;
 
 // Telegraph do Elite "piscando" (ver _drawMissileTelegraph) — alterna
 // entre esses dois níveis de alpha num ciclo de MISSILE_BLINK_PERIOD_MS,
@@ -830,16 +830,24 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   _updateMeleeTelegraph(target, nowMs) {
     this.setVelocity(0, 0);
-    this._drawMeleeTelegraph();
+    this._drawMeleeTelegraph(nowMs);
     if (nowMs >= this.eliteMeleeTelegraphUntil) this._resolveMelee(target, nowMs);
   }
 
-  _drawMeleeTelegraph() {
+  /** Mesmo piscar (alarme) do telegraph de mísseis, ver
+   * _drawMissileTelegraph/MISSILE_BLINK_* — reaproveitado aqui pro círculo
+   * de aviso do corpo a corpo, em vez de opacidade fixa. */
+  _drawMeleeTelegraph(nowMs) {
     const g = this.eliteTelegraphGraphics;
     g.clear();
-    g.fillStyle(0xff2222, 0.28);
+
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
+    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX, blinkT);
+    const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
+
+    g.fillStyle(0xff2222, fillAlpha);
     g.fillCircle(this.x, this.y, this.def.eliteMeleeRange);
-    g.lineStyle(3, 0xff4444, 0.9);
+    g.lineStyle(3, 0xff4444, strokeAlpha);
     g.strokeCircle(this.x, this.y, this.def.eliteMeleeRange);
   }
 
