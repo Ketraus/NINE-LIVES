@@ -50,11 +50,13 @@ const MISSILE_EXPLOSION_SHAKE_INTENSITY = 0.012;
 const MELEE_SHAKE_MS = 220;
 const MELEE_SHAKE_INTENSITY = 0.012;
 
-// Investida do Minotauro (def.boss, ver _updateBossCharge e afins) — a
-// única habilidade dele por enquanto. Linha de aviso reaproveita o mesmo
-// piscar do Elite (MISSILE_BLINK_*, ver _drawChargeTelegraph), só que reta
-// em vez de área. Tremida de saída é leve (dá peso ao arranque); a do
-// impacto de verdade é a mais forte do jogo até aqui (é o golpe do Boss).
+// Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — uma
+// das duas habilidades dele, sorteada 50/50 com o Machado Arremessado
+// (ver bloco AXE_* abaixo) toda vez que o cooldown compartilhado libera.
+// Linha de aviso reaproveita o mesmo piscar do Elite (MISSILE_BLINK_*,
+// ver _drawChargeTelegraph), só que reta em vez de área. Tremida de saída
+// é leve (dá peso ao arranque); a do impacto de verdade é a mais forte do
+// jogo até aqui (é o golpe do Boss).
 const CHARGE_LINE_LENGTH = 1400;
 const CHARGE_LAUNCH_SHAKE_MS = 120;
 const CHARGE_LAUNCH_SHAKE_INTENSITY = 0.006;
@@ -73,6 +75,27 @@ const CHARGE_VULNERABLE_TINT = 0xffaaaa;
 const CHARGE_SWING_COLOR = 0xff8800;
 const CHARGE_SWING_SHAKE_MS = 280;
 const CHARGE_SWING_SHAKE_INTENSITY = 0.02;
+
+// Machado Arremessado (2ª habilidade do Minotauro, sorteada 50/50 com a
+// Investida — ver _updateBossAbility): para, prepara, arremessa o machado
+// até a posição do jogador travada no fim do preparo (ele viaja girando),
+// CRAVA no chão (impacto na hora), espera um instante, EXPLODE, levanta a
+// mão e só então é puxado de volta (dano também na volta). Visual do
+// machado é um simples emoji rotacionando (this.axeSprite,
+// this.scene.add.text) — sem precisar de um asset novo pra isto. Mais
+// lento e "de leitura" que a Investida de propósito: é o ataque à
+// distância dele, ela é o corpo a corpo.
+const AXE_SPIN_DEG_PER_MS = 0.9;
+const AXE_THROW_SHAKE_MS = 90;
+const AXE_THROW_SHAKE_INTENSITY = 0.004;
+const AXE_IMPACT_SHAKE_MS = 160;
+const AXE_IMPACT_SHAKE_INTENSITY = 0.01;
+const AXE_EXPLOSION_SHAKE_MS = 240;
+const AXE_EXPLOSION_SHAKE_INTENSITY = 0.016;
+// amarelo (impacto) e laranja-avermelhado (explosão) — bem diferentes do
+// vermelho da Investida e do laranja do Corte, pra não confundir os avisos
+const AXE_TELEGRAPH_COLOR = 0xffcc00;
+const AXE_EXPLOSION_COLOR = 0xff4400;
 
 // Fuga em massa (evento do Boss/Minotauro, ver SpawnDirector.
 // _checkBossSchedule/EnemySpawner.fleeAll): todo inimigo vivo na tela sai
@@ -227,25 +250,31 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMeleeTelegraphUntil = 0;
     }
 
-    // Boss/Minotauro (def.boss = true, ver data/enemies.js): habilidade
-    // Investida → Corte (mesmo espírito do golpe corpo a corpo do Elite:
-    // parado -> telegraph -> ataque -> cooldown), só que em vez de dano na
-    // área ao redor dele desde o início, ele primeiro DISPARA em linha
-    // reta na direção travada, e SÓ ENTÃO golpeia a área ao redor —
-    // "as duas coisas viram um único movimento natural" (pedido: pune
-    // quem tenta ficar colado nele assim que a investida termina, não só
-    // quem está no caminho da corrida). bossState: 'chasing' (flocking
-    // normal) -> 'charge_telegraph' (parado, linha vermelha mostrando a
-    // rota, ver _startCharge/_updateChargeTelegraph) -> 'charge_dash'
-    // (dispara de verdade, ver _launchCharge/_updateChargeDash) ->
-    // 'charge_swing_telegraph' (corte de machado IMEDIATO ao fim da
-    // investida, área laranja ao redor dele, ver _startSwing/
-    // _resolveSwing) -> 'charge_vulnerable' (parado, tint diferente,
-    // recebe mais dano — ver vulnerableDamageMultiplier em
+    // Boss/Minotauro (def.boss = true, ver data/enemies.js): DUAS
+    // habilidades sorteadas 50/50 sempre que bossChargeReadyAt libera (ver
+    // _updateBossAbility) — dividem o mesmo cooldown/estado (bossState),
+    // nunca acontecem ao mesmo tempo:
+    // 1) Investida → Corte (mesmo espírito do golpe corpo a corpo do
+    // Elite: parado -> telegraph -> ataque -> cooldown), só que em vez de
+    // dano na área ao redor dele desde o início, ele primeiro DISPARA em
+    // linha reta na direção travada, e SÓ ENTÃO golpeia a área ao redor.
+    // bossState: 'chasing' -> 'charge_telegraph' (parado, linha vermelha
+    // mostrando a rota, ver _startCharge/_updateChargeTelegraph) ->
+    // 'charge_dash' (dispara de verdade, ver _launchCharge/
+    // _updateChargeDash) -> 'charge_swing_telegraph' (corte de machado
+    // IMEDIATO ao fim da investida, área laranja ao redor dele, ver
+    // _startSwing/_resolveSwing) -> 'charge_vulnerable' (parado, tint
+    // diferente, recebe mais dano — ver vulnerableDamageMultiplier em
     // DamageSystem.applyWeaponHit — é a janela pro jogador revidar) ->
-    // volta pra 'chasing' com cooldown até a próxima. bossChargeReadyAt
-    // começa com um atraso curto (o Minotauro não investe no instante em
-    // que nasce).
+    // volta pra 'chasing'.
+    // 2) Machado Arremessado (ver AXE_* acima e _startAxeThrow e
+    // afins): ataque à distância, "de leitura" — para, prepara
+    // ('axe_telegraph'), arremessa até o jogador travado ('axe_outbound'),
+    // crava e causa o primeiro impacto ('axe_stuck'), explode
+    // (_explodeAxe), levanta a mão ('axe_raise') e puxa de volta
+    // ('axe_return', dano de novo) -> volta pra 'chasing'.
+    // bossChargeReadyAt começa com um atraso curto (o Minotauro não usa
+    // nenhuma habilidade no instante em que nasce).
     if (def.boss) {
       this.bossState = 'chasing';
       this.bossChargeReadyAt = scene.time.now + Phaser.Math.Between(1500, 2500);
@@ -256,6 +285,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.bossSwingUntil = 0;
       this.bossVulnerableUntil = 0;
       this.bossTelegraphGraphics = null;
+      // Machado Arremessado: ver _startAxeThrow e afins. axeSprite é o
+      // ícone (emoji) do machado voando/cravado — null enquanto não foi
+      // usado ainda nesta vida do Minotauro.
+      this.axeSprite = null;
+      this.axeTargetX = 0;
+      this.axeTargetY = 0;
       // multiplicador de dano recebido durante a janela vulnerável (ver
       // DamageSystem.applyWeaponHit) — 1 = normal, fora da janela
       this.vulnerableDamageMultiplier = 1;
@@ -373,9 +408,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.def.elite && this._updateElite(target, nowMs)) return;
 
     // Boss/Minotauro: mesma lógica do Elite acima — só assume o
-    // movimento durante telegraph/investida/vulnerável; em 'chasing' e
-    // fora do cooldown, cai no flocking normal abaixo.
-    if (this.def.boss && this._updateBossCharge(target, nowMs)) return;
+    // movimento durante telegraph/investida/machado/vulnerável; em
+    // 'chasing' e fora do cooldown, cai no flocking normal abaixo.
+    if (this.def.boss && this._updateBossAbility(target, nowMs)) return;
 
     const isParalyzed = nowMs < this.paralyzedUntil;
     this._refreshStatusTint(nowMs);
@@ -1036,18 +1071,26 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Estado da Investida do Minotauro (só roda quando def.boss = true).
-   * Retorna true nos estados que assumem o movimento (telegraph/dash/
-   * vulnerável); em 'chasing' fora do cooldown, retorna false e cai no
-   * flocking normal (ver chase() acima) — mesmo contrato do _updateElite.
+   * Estado das DUAS habilidades do Minotauro (só roda quando def.boss =
+   * true): Investida (charge_*) e Machado Arremessado (axe_*), sorteadas
+   * 50/50 sempre que bossChargeReadyAt libera. Retorna true nos estados
+   * que assumem o movimento (todo o resto exceto 'chasing'); em
+   * 'chasing' fora do cooldown, retorna false e cai no flocking normal
+   * (ver chase() acima) — mesmo contrato do _updateElite.
    */
-  _updateBossCharge(target, nowMs) {
+  _updateBossAbility(target, nowMs) {
     if (this.bossState === 'charge_telegraph') { this._updateChargeTelegraph(nowMs); return true; }
     if (this.bossState === 'charge_dash') { this._updateChargeDash(target, nowMs); return true; }
     if (this.bossState === 'charge_swing_telegraph') { this._updateChargeSwingTelegraph(target, nowMs); return true; }
     if (this.bossState === 'charge_vulnerable') { this._updateChargeVulnerable(nowMs); return true; }
+    if (this.bossState === 'axe_telegraph') { this._updateAxeTelegraph(nowMs); return true; }
+    if (this.bossState === 'axe_outbound') { this._updateAxeOutbound(target, nowMs); return true; }
+    if (this.bossState === 'axe_stuck') { this._updateAxeStuck(target, nowMs); return true; }
+    if (this.bossState === 'axe_raise') { this._updateAxeRaise(nowMs); return true; }
+    if (this.bossState === 'axe_return') { this._updateAxeReturn(target, nowMs); return true; }
     if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
-    this._startCharge(target, nowMs);
+    if (Math.random() < 0.5) this._startCharge(target, nowMs);
+    else this._startAxeThrow(target, nowMs);
     return true;
   }
 
@@ -1191,6 +1234,197 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     g.strokeCircle(this.x, this.y, this.def.chargeSwingRadius);
   }
 
+  /**
+   * Passos 1-3: para, trava o ALVO (posição do jogador AGORA, igual à
+   * Investida trava a DIREÇÃO) e mostra a linha+área de aviso amarela até
+   * lá enquanto prepara (def.axeThrowTelegraphMs).
+   */
+  _startAxeThrow(target, nowMs) {
+    this.bossState = 'axe_telegraph';
+    this.setVelocity(0, 0);
+    this.axeTargetX = target.x;
+    this.axeTargetY = target.y;
+    if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    this.axeTelegraphUntil = nowMs + this.def.axeThrowTelegraphMs;
+    this.scene.sound.play('sfx_elite_lock', { volume: 0.6 });
+  }
+
+  _updateAxeTelegraph(nowMs) {
+    this.setVelocity(0, 0);
+    this._drawAxeTelegraph(nowMs);
+    if (nowMs >= this.axeTelegraphUntil) this._launchAxe(nowMs);
+  }
+
+  /** Mesmo piscar (alarme) das outras marcações — linha até o ponto
+   * travado + a área de impacto já visível desde o preparo, pra dar
+   * tempo do jogador reagir antes do machado sair. */
+  _drawAxeTelegraph(nowMs) {
+    const g = this.bossTelegraphGraphics;
+    g.clear();
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
+    const lineAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.3, MISSILE_BLINK_ALPHA_MAX + 0.3, blinkT);
+    const areaAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX, blinkT);
+    g.lineStyle(4, AXE_TELEGRAPH_COLOR, lineAlpha);
+    g.beginPath();
+    g.moveTo(this.x, this.y);
+    g.lineTo(this.axeTargetX, this.axeTargetY);
+    g.strokePath();
+    g.fillStyle(AXE_TELEGRAPH_COLOR, areaAlpha);
+    g.fillCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius);
+    g.lineStyle(2, AXE_TELEGRAPH_COLOR, Phaser.Math.Linear(0.55, 1, blinkT));
+    g.strokeCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius);
+  }
+
+  /**
+   * Passo 4: fim do preparo — o machado sai de verdade do Minotauro até o
+   * ponto travado, girando (def.axeThrowFlightMs de voo). Visual é um
+   * simples emoji rotacionando (criado uma única vez e reaproveitado nas
+   * próximas vezes, ver axeSprite no constructor) — sem precisar de um
+   * asset novo pra isto.
+   */
+  _launchAxe(nowMs) {
+    this.bossState = 'axe_outbound';
+    this.bossTelegraphGraphics.clear();
+    this.axeOriginX = this.x;
+    this.axeOriginY = this.y;
+    this.axeFlightStartMs = nowMs;
+    this.axeFlightEndAt = nowMs + this.def.axeThrowFlightMs;
+    if (!this.axeSprite) {
+      this.axeSprite = this.scene.add.text(this.x, this.y, '🪓', { fontSize: '28px' }).setOrigin(0.5).setDepth(15);
+    }
+    this.axeSprite.setPosition(this.x, this.y).setRotation(0).setVisible(true);
+    this.scene.cameras.main.shake(AXE_THROW_SHAKE_MS, AXE_THROW_SHAKE_INTENSITY);
+    this.scene.sound.play('sfx_elite_punch', { volume: 0.6 });
+  }
+
+  _updateAxeOutbound(target, nowMs) {
+    this.setVelocity(0, 0);
+    const progress = Math.min((nowMs - this.axeFlightStartMs) / this.def.axeThrowFlightMs, 1);
+    this.axeSprite.x = Phaser.Math.Linear(this.axeOriginX, this.axeTargetX, progress);
+    this.axeSprite.y = Phaser.Math.Linear(this.axeOriginY, this.axeTargetY, progress);
+    this.axeSprite.setRotation(Phaser.Math.DegToRad((nowMs - this.axeFlightStartMs) * AXE_SPIN_DEG_PER_MS));
+    if (nowMs >= this.axeFlightEndAt) this._stickAxe(target, nowMs);
+  }
+
+  /**
+   * Passos 5-6: CRAVA no chão exatamente no ponto travado (para de girar)
+   * e já causa o primeiro impacto ali (def.axeThrowImpactRadius/Damage,
+   * avaliado contra a posição ATUAL do jogador — ele pode ter saído do
+   * raio durante o voo). Só depois espera o intervalo antes de explodir
+   * (ver _updateAxeStuck/_explodeAxe).
+   */
+  _stickAxe(target, nowMs) {
+    this.bossState = 'axe_stuck';
+    this.axeSprite.setPosition(this.axeTargetX, this.axeTargetY).setRotation(0);
+    this.scene.cameras.main.shake(AXE_IMPACT_SHAKE_MS, AXE_IMPACT_SHAKE_INTENSITY);
+    this.scene.sound.play('sfx_elite_punch', { volume: 0.7 });
+    this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius, AXE_TELEGRAPH_COLOR);
+    const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
+    if (dist <= this.def.axeThrowImpactRadius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this.def.axeThrowImpactDamage, this, nowMs);
+    }
+    this.axeStuckUntil = nowMs + this.def.axeThrowStuckMs;
+  }
+
+  _updateAxeStuck(target, nowMs) {
+    this.setVelocity(0, 0);
+    if (nowMs >= this.axeStuckUntil) this._explodeAxe(target, nowMs);
+  }
+
+  /** Passo 8: 💥 explosão de verdade — raio maior e mais dano que o
+   * impacto inicial, tremida mais forte, avaliada de novo contra a
+   * posição ATUAL do jogador (pode ter saído durante a espera). Emenda
+   * direto pro passo 9 (levantar a mão, ver _startAxeRaise). */
+  _explodeAxe(target, nowMs) {
+    this.scene.cameras.main.shake(AXE_EXPLOSION_SHAKE_MS, AXE_EXPLOSION_SHAKE_INTENSITY);
+    this.scene.sound.play('sfx_elite_explosion', { volume: 0.6 });
+    this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowExplosionRadius, AXE_EXPLOSION_COLOR);
+    const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
+    if (dist <= this.def.axeThrowExplosionRadius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this.def.axeThrowExplosionDamage, this, nowMs);
+    }
+    this._startAxeRaise(nowMs);
+  }
+
+  /** Passo 9: Minotauro "levanta a mão" — um pulo curto de escala nele
+   * mesmo (sem precisar de um frame de sprite novo) avisando que o
+   * machado tá voltando, antes do retorno de verdade (ver
+   * _startAxePullback). */
+  _startAxeRaise(nowMs) {
+    this.bossState = 'axe_raise';
+    this.axeRaiseUntil = nowMs + this.def.axeThrowRaiseMs;
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: this.baseScale * 1.12,
+      scaleY: this.baseScale * 1.12,
+      duration: this.def.axeThrowRaiseMs / 2,
+      yoyo: true,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
+  _updateAxeRaise(nowMs) {
+    this.setVelocity(0, 0);
+    if (nowMs >= this.axeRaiseUntil) this._startAxePullback(nowMs);
+  }
+
+  /**
+   * Passos 10-11: puxa o machado de volta do ponto cravado até a posição
+   * ATUAL do Minotauro (ele fica parado a habilidade inteira, então é a
+   * mesma de sempre), girando de novo, com verificação de acerto único
+   * (axeReturnHasHit) — mesma técnica de bossChargeHasHit na Investida,
+   * senão causaria dano a cada frame com o jogador em cima da linha de
+   * volta.
+   */
+  _startAxePullback(nowMs) {
+    this.bossState = 'axe_return';
+    this.axeReturnStartMs = nowMs;
+    this.axeReturnEndAt = nowMs + this.def.axeThrowReturnFlightMs;
+    this.axeReturnHasHit = false;
+    this.axeReturnFromX = this.axeTargetX;
+    this.axeReturnFromY = this.axeTargetY;
+  }
+
+  _updateAxeReturn(target, nowMs) {
+    this.setVelocity(0, 0);
+    const progress = Math.min((nowMs - this.axeReturnStartMs) / this.def.axeThrowReturnFlightMs, 1);
+    this.axeSprite.x = Phaser.Math.Linear(this.axeReturnFromX, this.x, progress);
+    this.axeSprite.y = Phaser.Math.Linear(this.axeReturnFromY, this.y, progress);
+    this.axeSprite.setRotation(Phaser.Math.DegToRad((nowMs - this.axeReturnStartMs) * AXE_SPIN_DEG_PER_MS));
+    if (!this.axeReturnHasHit) {
+      const dist = Phaser.Math.Distance.Between(this.axeSprite.x, this.axeSprite.y, target.x, target.y);
+      if (dist <= this.def.axeThrowReturnRadius && target.active && !target.healthSystem?.isDead()) {
+        this.axeReturnHasHit = true;
+        DamageSystem.applyWeaponHit(target, this.def.axeThrowReturnDamage, this, nowMs);
+      }
+    }
+    if (nowMs >= this.axeReturnEndAt) this._endAxeThrow(nowMs);
+  }
+
+  /** Passo 12: some o machado e volta a perseguir normalmente, com o
+   * cooldown compartilhado (bossChargeReadyAt) até a próxima habilidade
+   * (Investida OU Machado de novo, sorteado igual de novo). */
+  _endAxeThrow(nowMs) {
+    this.axeSprite?.setVisible(false);
+    this.bossState = 'chasing';
+    this.bossChargeReadyAt = nowMs + this.def.axeThrowCooldownMs;
+  }
+
+  /** Flash curto (círculo que nasce pequeno/opaco e cresce até sumir)
+   * usado tanto no impacto (passo 6) quanto na explosão (passo 8) do
+   * Machado — efeito pontual, não fica de graphics persistente pra
+   * limpar depois. */
+  _flashCircle(x, y, radius, color) {
+    const c = this.scene.add.circle(x, y, radius, color, 0.5).setDepth(14).setScale(0.3);
+    this.scene.tweens.add({
+      targets: c,
+      scale: 1,
+      alpha: 0,
+      duration: 220,
+      onComplete: () => c.destroy()
+    });
+  }
+
   /** Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.
    * _checkBossSchedule/EnemySpawner.fleeAll): cancela qualquer estado
    * especial em andamento (elite parado telegrafando, sealer imóvel) pra
@@ -1201,6 +1435,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    *   calcular de que lado fugir (sentido oposto a ele)
    */
   flee(target) {
+
     if (!this.active || this.fleeing) return;
     this.fleeing = true;
     this.fleeMaxUntil = this.scene.time.now + FLEE_MAX_DURATION_MS;
@@ -1217,6 +1452,16 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
       this.eliteMissileProjectiles = [];
       this.eliteState = 'chasing';
+    }
+
+    // Boss/Minotauro no meio de uma habilidade (Investida OU Machado):
+    // mesma ideia — cancela o telegraph e o machado em voo/cravado, senão
+    // ficaria com o machado flutuando/cravado no mapa pra sempre em vez
+    // de fugir junto com o Minotauro.
+    if (this.bossState && this.bossState !== 'chasing') {
+      this.bossTelegraphGraphics?.clear();
+      this.axeSprite?.setVisible(false);
+      this.bossState = 'chasing';
     }
 
     const angle = Phaser.Math.Angle.Between(target.x, target.y, this.x, this.y);
@@ -1259,6 +1504,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.arenaGraphics?.destroy();
     this.eliteTelegraphGraphics?.destroy();
     this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
+    this.bossTelegraphGraphics?.destroy();
+    this.axeSprite?.destroy();
     this.destroy();
   }
 
@@ -1279,6 +1526,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Boss: mesma lógica — a linha de aviso da investida também não é
     // filha do sprite (ver _startCharge).
     this.bossTelegraphGraphics?.destroy();
+    // Boss: o ícone do Machado Arremessado (voando ou já cravado) também
+    // não é filho do sprite (ver _launchAxe) — sem isto ficaria
+    // flutuando/cravado no mapa pra sempre se o Minotauro morrer no meio
+    // do arremesso.
+    this.axeSprite?.destroy();
     // Elite: som de morte próprio em vez de nenhum som (os inimigos
     // normais não têm sfx de morte hoje) — toca antes do destroy(), que
     // não afeta o áudio (Phaser Sound não é filho do sprite).

@@ -136,7 +136,8 @@ export default [
     // Boss é bem mais pesado que o Elite (knockbackResistance 0.15) —
     // quase não sente empurrão nenhum.
     "knockbackResistance": 0.05,
-    // Investida (única habilidade dele por enquanto, ver Enemy._updateBossCharge):
+    // Investida (1ª das duas habilidades, sorteada 50/50 com o Machado
+    // Arremessado abaixo — ver Enemy._updateBossAbility):
     // para, mostra a linha de aviso por chargeTelegraphMs + chargePauseMs
     // (parado o tempo todo), dispara a chargeSpeed por chargeDurationMs, e
     // fica vulnerável (recebe chargeVulnerableDamageMultiplier de dano) por
@@ -156,7 +157,30 @@ export default [
     "chargeSwingRadius": 100,
     "chargeSwingDamage": 45,
     "chargeVulnerableMs": 2000,
-    "chargeVulnerableDamageMultiplier": 1.5
+    "chargeVulnerableDamageMultiplier": 1.5,
+    // Machado Arremessado (2ª habilidade, sorteada 50/50 com a Investida
+    // sempre que o cooldown libera — ver Enemy._updateBossAbility): para,
+    // prepara por axeThrowTelegraphMs, arremessa até a posição do jogador
+    // travada nesse instante (axeThrowFlightMs de voo girando), CRAVA no
+    // chão e causa axeThrowImpactDamage na hora (raio
+    // axeThrowImpactRadius), espera axeThrowStuckMs, EXPLODE causando
+    // axeThrowExplosionDamage (raio axeThrowExplosionRadius), levanta a
+    // mão por axeThrowRaiseMs e puxa o machado de volta
+    // (axeThrowReturnFlightMs de voo), causando axeThrowReturnDamage em
+    // quem tocar nele na volta (raio axeThrowReturnRadius). Ataque à
+    // distância "de leitura", mais lento que a Investida de propósito.
+    "axeThrowTelegraphMs": 700,
+    "axeThrowFlightMs": 500,
+    "axeThrowImpactDamage": 35,
+    "axeThrowImpactRadius": 70,
+    "axeThrowStuckMs": 500,
+    "axeThrowExplosionDamage": 60,
+    "axeThrowExplosionRadius": 110,
+    "axeThrowRaiseMs": 350,
+    "axeThrowReturnFlightMs": 450,
+    "axeThrowReturnDamage": 35,
+    "axeThrowReturnRadius": 60,
+    "axeThrowCooldownMs": 6000
   }
 ]
 ;
