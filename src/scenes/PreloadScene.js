@@ -25,6 +25,9 @@ export default class PreloadScene extends Phaser.Scene {
       frameHeight: 64
     });
     this.load.image('enemy', 'assets/sprites/enemy.png');
+    // Minotauro parado (idle) — imagem única (64x64), só troca de textura
+    // quando ele não tá se movendo (ver Enemy.js updateAnimState)
+    this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): 4 frames de 32x32, spritesheet real substituindo o
     // placeholder tintado (ver data/enemies.js "minotaur" -> sprite/color,
     // e Enemy.js constructor -> def.walkAnim)

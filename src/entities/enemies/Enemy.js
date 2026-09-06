@@ -125,6 +125,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (def.walkAnim) {
       this.anims.play(def.walkAnim);
     }
+    this.walkAnim = def.walkAnim || null;
+    this.idleTexture = def.idleTexture || null;
+    this.isIdleVisual = false;
 
     this.healthSystem = new HealthSystem(def.hp, {
       onDeath: () => this.die()
@@ -320,6 +323,28 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const vx = this.body.velocity.x;
     if (vx > 5) this.setFlipX(true);
     else if (vx < -5) this.setFlipX(false);
+  }
+
+  /**
+   * Troca entre a animação de andar e a textura parada (idle) conforme a
+   * velocidade atual — só afeta inimigos com "idleTexture" definido em
+   * data/enemies.js (hoje só o Minotauro). Sem isso ele ficava "andando
+   * parado" (tocando a anim de caminhada mesmo com velocidade zero).
+   * Chamado todo frame pelo EnemySpawner.updateAll, junto com updateFacing().
+   */
+  updateAnimState() {
+    if (!this.active || !this.body || !this.idleTexture) return;
+    const speed = Math.hypot(this.body.velocity.x, this.body.velocity.y);
+    if (speed < 5) {
+      if (!this.isIdleVisual) {
+        this.anims.stop();
+        this.setTexture(this.idleTexture);
+        this.isIdleVisual = true;
+      }
+    } else if (this.isIdleVisual) {
+      if (this.walkAnim) this.anims.play(this.walkAnim);
+      this.isIdleVisual = false;
+    }
   }
 
   chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {

@@ -115,6 +115,10 @@ export default [
     "name": "Minotauro",
     "sprite": "minotaur_walk",
     "walkAnim": "minotaur-walk",
+    // textura estática mostrada quando ele não tá se movendo (ver
+    // Enemy.js updateAnimState) — "animação besta" pedida pelo usuário,
+    // é só uma troca de imagem, não uma spritesheet
+    "idleTexture": "minotaur_idle",
     "hp": 3000,
     "speed": 65,
     "contactDamage": 40,
