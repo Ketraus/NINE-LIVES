@@ -173,7 +173,7 @@ export default [
     "axeThrowFlightMs": 500,
     "axeThrowImpactDamage": 35,
     "axeThrowImpactRadius": 70,
-    "axeThrowStuckMs": 500,
+    "axeThrowStuckMs": 2000,
     "axeThrowExplosionDamage": 60,
     "axeThrowExplosionRadius": 110,
     "axeThrowRaiseMs": 350,
