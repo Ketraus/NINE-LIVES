@@ -118,6 +118,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.baseScale = def.scale || 1;
     this.setScale(this.baseScale, this.baseScale);
 
+    // Sprite com animação de verdade (hoje só o Minotauro, ver
+    // data/enemies.js "walkAnim") — toca em loop, independente do resto
+    // da IA; inimigos sem walkAnim continuam com a textura estática de
+    // sempre.
+    if (def.walkAnim) {
+      this.anims.play(def.walkAnim);
+    }
+
     this.healthSystem = new HealthSystem(def.hp, {
       onDeath: () => this.die()
     });
@@ -297,6 +305,23 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    *   vinda de SwarmSystem.computeMoveDir(). Se omitido, cai no seek puro
    *   de sempre (compat: cheat "spawn" antes do 1º frame, testes, etc.).
    */
+  /**
+   * Ajusta flipX pra virar o sprite conforme a direção horizontal do
+   * movimento — necessário pra sprites com arte real e lado definido
+   * (hoje só o Minotauro, ver data/enemies.js "walkAnim"); no placeholder
+   * genérico (quadrado colorido, sem "lado") isto não muda nada visível,
+   * então roda pra todos por simplicidade. Chamado todo frame pelo
+   * EnemySpawner.updateAll, depois de chase().
+   * A arte original (walkmino_png.png) olha pra ESQUERDA por padrão —
+   * flipX=true espelha pra ele olhar/andar pra DIREITA.
+   */
+  updateFacing() {
+    if (!this.active || !this.body) return; // pode já ter morrido dentro do próprio chase() (ex.: Exploder)
+    const vx = this.body.velocity.x;
+    if (vx > 5) this.setFlipX(true);
+    else if (vx < -5) this.setFlipX(false);
+  }
+
   chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {
     if (!this.active || this.healthSystem.isDead()) return;
 

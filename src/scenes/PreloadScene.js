@@ -25,6 +25,16 @@ export default class PreloadScene extends Phaser.Scene {
       frameHeight: 64
     });
     this.load.image('enemy', 'assets/sprites/enemy.png');
+    // Minotauro (boss): 4 frames de 32x32, spritesheet real substituindo o
+    // placeholder tintado (ver data/enemies.js "minotaur" -> sprite/color,
+    // e Enemy.js constructor -> def.walkAnim)
+    // grade 2x2 de quadros 64x64 (NÃO uma faixa 32xN) — Phaser lê em ordem
+    // de leitura (esquerda->direita, cima->baixo), então frames 0,1,2,3
+    // já saem na ordem certa da grade
+    this.load.spritesheet('minotaur_walk', 'assets/sprites/minotaur_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
@@ -183,6 +193,14 @@ export default class PreloadScene extends Phaser.Scene {
       key: 'player-walk',
       frames: this.anims.generateFrameNumbers('player_walk', { start: 0, end: 3 }),
       frameRate: 8,
+      repeat: -1
+    });
+
+    // animação de andar do Minotauro (ver Enemy.js constructor -> def.walkAnim)
+    this.anims.create({
+      key: 'minotaur-walk',
+      frames: this.anims.generateFrameNumbers('minotaur_walk', { start: 0, end: 3 }),
+      frameRate: 6,
       repeat: -1
     });
 

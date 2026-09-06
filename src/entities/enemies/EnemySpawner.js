@@ -513,6 +513,7 @@ export default class EnemySpawner {
       } else {
         const moveDir = this.swarmSystem.computeMoveDir(enemy, this.player);
         enemy.chase(this.player, nowMs, speedMultiplier, moveDir);
+        enemy.updateFacing();
       }
       enemy.updateBleed(nowMs);
     });

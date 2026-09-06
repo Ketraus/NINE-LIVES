@@ -113,14 +113,20 @@ export default [
   {
     "id": "minotaur",
     "name": "Minotauro",
-    "sprite": "enemy",
+    "sprite": "minotaur_walk",
+    "walkAnim": "minotaur-walk",
     "hp": 3000,
     "speed": 65,
     "contactDamage": 40,
     "contactCooldownMs": 800,
     "xpReward": 500,
-    "color": 9127187,
-    "scale": 3.2,
+    // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
+    // original do PNG passa direto (ver Enemy.js setTint(def.color))
+    "color": 16777215,
+    // frame real é 64x64 (grade 2x2, ver PreloadScene.js). Aumentado de
+    // 1.3 (~83px, ficou pequeno demais pra um boss) pra 2.2 (~140px) —
+    // ajuste este número de novo se ainda não estiver do tamanho certo
+    "scale": 2.2,
     "flocking": { "seek": 1.0, "cohesion": 0, "separation": 0.3, "density": 0 },
     "boss": true,
     // Boss é bem mais pesado que o Elite (knockbackResistance 0.15) —
