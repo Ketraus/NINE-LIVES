@@ -97,6 +97,28 @@ const AXE_EXPLOSION_SHAKE_INTENSITY = 0.016;
 const AXE_TELEGRAPH_COLOR = 0xffcc00;
 const AXE_EXPLOSION_COLOR = 0xff4400;
 
+// Corte Destrutivo (3ª habilidade do Minotauro, sorteada 1/3 com a
+// Investida e o Machado — ver _updateBossAbility): "carrega -> apita ->
+// XABLAU". A ideia inteira dela é o OPOSTO de pegar o jogador de
+// surpresa — telegraph BEM mais longo e visível que as outras duas
+// (CLEAVE_TELEGRAPH_ALPHA_* mais forte desde o início, nada de começar
+// quase invisível), com um apito (reaproveita sfx_elite_warning, sem
+// asset novo) que sobe de volume e de tom (Sound.rate) conforme carrega
+// — o "aviso ficando mais agudo" que o pedido descreve. Cone longo e
+// estreito (CLEAVE_HALF_ANGLE_DEG pequeno) na direção travada no início
+// do carregamento, igual a Investida trava a direção. Dano altíssimo,
+// alcance grande, mas o shake do golpe em si é PEQUENO de propósito
+// (contraste: o aviso é o evento grande, não o impacto).
+const CLEAVE_COLOR = 0xff1133;
+const CLEAVE_WHISTLE_VOLUME_START = 0.05;
+const CLEAVE_WHISTLE_VOLUME_END = 0.8;
+const CLEAVE_WHISTLE_RATE_START = 0.7;
+const CLEAVE_WHISTLE_RATE_END = 1.8;
+const CLEAVE_TELEGRAPH_ALPHA_START = 0.22;
+const CLEAVE_TELEGRAPH_ALPHA_END = 0.6;
+const CLEAVE_SHAKE_MS = 150;
+const CLEAVE_SHAKE_INTENSITY = 0.008;
+
 // Fuga em massa (evento do Boss/Minotauro, ver SpawnDirector.
 // _checkBossSchedule/EnemySpawner.fleeAll): todo inimigo vivo na tela sai
 // correndo pra longe do jogador e só some de vez quando realmente sair da
@@ -250,10 +272,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMeleeTelegraphUntil = 0;
     }
 
-    // Boss/Minotauro (def.boss = true, ver data/enemies.js): DUAS
-    // habilidades sorteadas 50/50 sempre que bossChargeReadyAt libera (ver
-    // _updateBossAbility) — dividem o mesmo cooldown/estado (bossState),
-    // nunca acontecem ao mesmo tempo:
+    // Boss/Minotauro (def.boss = true, ver data/enemies.js): TRÊS
+    // habilidades sorteadas 1/3 cada sempre que bossChargeReadyAt libera
+    // (ver _updateBossAbility) — dividem o mesmo cooldown/estado
+    // (bossState), nunca acontecem ao mesmo tempo:
     // 1) Investida → Corte (mesmo espírito do golpe corpo a corpo do
     // Elite: parado -> telegraph -> ataque -> cooldown), só que em vez de
     // dano na área ao redor dele desde o início, ele primeiro DISPARA em
@@ -273,6 +295,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // crava e causa o primeiro impacto ('axe_stuck'), explode
     // (_explodeAxe), levanta a mão ('axe_raise') e puxa de volta
     // ('axe_return', dano de novo) -> volta pra 'chasing'.
+    // 3) Corte Destrutivo (ver CLEAVE_* acima e _startCleave e afins):
+    // "carrega -> apita -> XABLAU" — telegraph BEM mais longo e visível
+    // que os outros dois de propósito (é o "eu avisei" da habilidade),
+    // cone estreito e longo na direção travada, apito subindo de volume/
+    // tom conforme carrega. 'cleave_telegraph' (carregando, cone +
+    // apito) -> 'cleave_pause' (pequena pausa final, apito já mudo) ->
+    // corte de verdade (_executeCleave, dano altíssimo, shake pequeno de
+    // propósito) -> 'cleave_recover' (recupera) -> volta pra 'chasing'.
     // bossChargeReadyAt começa com um atraso curto (o Minotauro não usa
     // nenhuma habilidade no instante em que nasce).
     if (def.boss) {
@@ -291,6 +321,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.axeSprite = null;
       this.axeTargetX = 0;
       this.axeTargetY = 0;
+      // Corte Destrutivo: ver _startCleave e afins. cleaveWhistle é a
+      // instância de som do apito (criada/destruída a cada uso, ver
+      // _startCleave/_stopCleaveWhistle) — null enquanto não tá tocando.
+      this.cleaveWhistle = null;
+      this.cleaveAngle = 0;
       // multiplicador de dano recebido durante a janela vulnerável (ver
       // DamageSystem.applyWeaponHit) — 1 = normal, fora da janela
       this.vulnerableDamageMultiplier = 1;
@@ -1071,12 +1106,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Estado das DUAS habilidades do Minotauro (só roda quando def.boss =
-   * true): Investida (charge_*) e Machado Arremessado (axe_*), sorteadas
-   * 50/50 sempre que bossChargeReadyAt libera. Retorna true nos estados
-   * que assumem o movimento (todo o resto exceto 'chasing'); em
-   * 'chasing' fora do cooldown, retorna false e cai no flocking normal
-   * (ver chase() acima) — mesmo contrato do _updateElite.
+   * Estado das TRÊS habilidades do Minotauro (só roda quando def.boss =
+   * true): Investida (charge_*), Machado Arremessado (axe_*) e Corte
+   * Destrutivo (cleave_*), sorteadas 1/3 cada sempre que
+   * bossChargeReadyAt libera. Retorna true nos estados que assumem o
+   * movimento (todo o resto exceto 'chasing'); em 'chasing' fora do
+   * cooldown, retorna false e cai no flocking normal (ver chase() acima)
+   * — mesmo contrato do _updateElite.
    */
   _updateBossAbility(target, nowMs) {
     if (this.bossState === 'charge_telegraph') { this._updateChargeTelegraph(nowMs); return true; }
@@ -1088,9 +1124,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.bossState === 'axe_stuck') { this._updateAxeStuck(target, nowMs); return true; }
     if (this.bossState === 'axe_raise') { this._updateAxeRaise(nowMs); return true; }
     if (this.bossState === 'axe_return') { this._updateAxeReturn(target, nowMs); return true; }
+    if (this.bossState === 'cleave_telegraph') { this._updateCleaveTelegraph(nowMs); return true; }
+    if (this.bossState === 'cleave_pause') { this._updateCleavePause(target, nowMs); return true; }
+    if (this.bossState === 'cleave_recover') { this._updateCleaveRecover(nowMs); return true; }
     if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
-    if (Math.random() < 0.5) this._startCharge(target, nowMs);
-    else this._startAxeThrow(target, nowMs);
+    const roll = Math.random();
+    if (roll < 1 / 3) this._startCharge(target, nowMs);
+    else if (roll < 2 / 3) this._startAxeThrow(target, nowMs);
+    else this._startCleave(target, nowMs);
     return true;
   }
 
@@ -1425,6 +1466,138 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     });
   }
 
+  /**
+   * Passos 1-4: para, trava a DIREÇÃO no instante atual (igual a
+   * Investida) e começa o carregamento — cone de perigo longo/estreito
+   * já bem visível desde o início (CLEAVE_TELEGRAPH_ALPHA_START, nada de
+   * "quase invisível no começo") + apito (reaproveita sfx_elite_warning
+   * em loop, sem asset novo) que sobe de volume/tom a cada frame em
+   * _updateCleaveTelegraph. def.cleaveTelegraphMs é de propósito bem mais
+   * longo que o das outras habilidades — é a habilidade "eu avisei".
+   */
+  _startCleave(target, nowMs) {
+    this.bossState = 'cleave_telegraph';
+    this.setVelocity(0, 0);
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    this.cleaveAngle = Math.atan2(dy, dx);
+    if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    this.cleaveTelegraphStartMs = nowMs;
+    this.cleaveTelegraphEndAt = nowMs + this.def.cleaveTelegraphMs;
+    this.cleaveWhistle = this.scene.sound.add('sfx_elite_warning', { loop: true });
+    this.cleaveWhistle.play({ volume: CLEAVE_WHISTLE_VOLUME_START, rate: CLEAVE_WHISTLE_RATE_START });
+  }
+
+  _updateCleaveTelegraph(nowMs) {
+    this.setVelocity(0, 0);
+    const progress = Math.min((nowMs - this.cleaveTelegraphStartMs) / this.def.cleaveTelegraphMs, 1);
+    if (this.cleaveWhistle) {
+      this.cleaveWhistle.setVolume(Phaser.Math.Linear(CLEAVE_WHISTLE_VOLUME_START, CLEAVE_WHISTLE_VOLUME_END, progress));
+      this.cleaveWhistle.setRate(Phaser.Math.Linear(CLEAVE_WHISTLE_RATE_START, CLEAVE_WHISTLE_RATE_END, progress));
+    }
+    this._drawCleaveTelegraph(progress);
+    if (nowMs >= this.cleaveTelegraphEndAt) this._startCleavePause(nowMs);
+  }
+
+  /** Cone de perigo (Graphics.slice = pizza/leque, mais simples que
+   * desenhar o triângulo na mão) na direção travada em _startCleave —
+   * alpha sobe linearmente com o progresso do carregamento (mesma leitura
+   * do apito ficando mais intenso), já começando bem visível. */
+  _drawCleaveTelegraph(progress) {
+    const g = this.bossTelegraphGraphics;
+    g.clear();
+    const alpha = Phaser.Math.Linear(CLEAVE_TELEGRAPH_ALPHA_START, CLEAVE_TELEGRAPH_ALPHA_END, progress);
+    const half = Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg);
+    g.fillStyle(CLEAVE_COLOR, alpha);
+    g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    g.fillPath();
+    g.lineStyle(3, CLEAVE_COLOR, Math.min(alpha + 0.35, 1));
+    g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    g.strokePath();
+  }
+
+  /** Passo 5: apito já mudo, cone parado no máximo, pequena pausa final
+   * antes do golpe de verdade sair (def.cleavePauseMs) — o "respirar
+   * fundo antes do XABLAU". */
+  _startCleavePause(nowMs) {
+    this.bossState = 'cleave_pause';
+    this._stopCleaveWhistle();
+    this.cleavePauseEndAt = nowMs + this.def.cleavePauseMs;
+  }
+
+  _updateCleavePause(target, nowMs) {
+    this.setVelocity(0, 0);
+    this._drawCleaveTelegraph(1); // mantém o cone no máximo durante a pausa
+    if (nowMs >= this.cleavePauseEndAt) this._executeCleave(target, nowMs);
+  }
+
+  /**
+   * Passos 6-9: CORTE de verdade — dano altíssimo em todo mundo dentro do
+   * cone (mesma direção/ângulo/alcance travados no início), shake
+   * PEQUENO de propósito (def diferente de CHARGE_SWING/AXE_EXPLOSION —
+   * aqui o evento grande já foi o aviso, não o impacto) e um flash rápido
+   * do próprio cone pra marcar visualmente o golpe.
+   */
+  _executeCleave(target, nowMs) {
+    this.bossTelegraphGraphics.clear();
+    this.scene.sound.play('sfx_cyberus_slash', { volume: 0.9 });
+    this.scene.cameras.main.shake(CLEAVE_SHAKE_MS, CLEAVE_SHAKE_INTENSITY);
+    this._flashCleaveCone();
+    if (target.active && !target.healthSystem?.isDead()) {
+      const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+      const angleTo = Math.atan2(target.y - this.y, target.x - this.x);
+      const angleDiff = Math.abs(Phaser.Math.Angle.Wrap(angleTo - this.cleaveAngle));
+      if (dist <= this.def.cleaveRange && angleDiff <= Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg)) {
+        DamageSystem.applyWeaponHit(target, this.def.cleaveDamage, this, nowMs);
+      }
+    }
+    this._startCleaveRecover(nowMs);
+  }
+
+  /** Flash do cone (mesma técnica do _flashCircle, mas com o formato de
+   * leque em vez de círculo) — nasce no branco/cor cheia e some rápido,
+   * marcando o instante exato do golpe. */
+  _flashCleaveCone() {
+    const half = Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg);
+    const g = this.scene.add.graphics().setDepth(14);
+    g.fillStyle(0xffffff, 0.85);
+    g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    g.fillPath();
+    this.scene.tweens.add({
+      targets: g,
+      alpha: 0,
+      duration: 180,
+      onComplete: () => g.destroy()
+    });
+  }
+
+  /** Passo 10: pequena recuperação parado (def.cleaveRecoverMs) antes de
+   * voltar a perseguir — sem isto ele sairia andando/investindo de novo
+   * no MESMO frame do corte, o que não combina com "recupera". */
+  _startCleaveRecover(nowMs) {
+    this.bossState = 'cleave_recover';
+    this.cleaveRecoverEndAt = nowMs + this.def.cleaveRecoverMs;
+  }
+
+  _updateCleaveRecover(nowMs) {
+    this.setVelocity(0, 0);
+    if (nowMs >= this.cleaveRecoverEndAt) {
+      this.bossState = 'chasing';
+      this.bossChargeReadyAt = nowMs + this.def.cleaveCooldownMs;
+    }
+  }
+
+  /** Para o apito (fade curto em vez de corte seco) e limpa a referência
+   * — chamado ao fim do carregamento (_startCleavePause) e também na
+   * fuga/morte (flee()/die()/_leave()), senão ele ficaria tocando pra
+   * sempre se o Minotauro for interrompido no meio do carregamento. */
+  _stopCleaveWhistle() {
+    if (!this.cleaveWhistle) return;
+    this.cleaveWhistle.stop();
+    this.cleaveWhistle.destroy();
+    this.cleaveWhistle = null;
+  }
+
   /** Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.
    * _checkBossSchedule/EnemySpawner.fleeAll): cancela qualquer estado
    * especial em andamento (elite parado telegrafando, sealer imóvel) pra
@@ -1454,13 +1627,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteState = 'chasing';
     }
 
-    // Boss/Minotauro no meio de uma habilidade (Investida OU Machado):
-    // mesma ideia — cancela o telegraph e o machado em voo/cravado, senão
-    // ficaria com o machado flutuando/cravado no mapa pra sempre em vez
-    // de fugir junto com o Minotauro.
+    // Boss/Minotauro no meio de uma habilidade (Investida, Machado ou
+    // Corte Destrutivo): mesma ideia — cancela o telegraph, o machado em
+    // voo/cravado e o apito do Corte, senão ficaria com efeitos "presos"
+    // no mapa/tocando pra sempre em vez de fugir junto com o Minotauro.
     if (this.bossState && this.bossState !== 'chasing') {
       this.bossTelegraphGraphics?.clear();
       this.axeSprite?.setVisible(false);
+      this._stopCleaveWhistle();
       this.bossState = 'chasing';
     }
 
@@ -1506,6 +1680,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
     this.bossTelegraphGraphics?.destroy();
     this.axeSprite?.destroy();
+    this._stopCleaveWhistle();
     this.destroy();
   }
 
@@ -1531,6 +1706,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // flutuando/cravado no mapa pra sempre se o Minotauro morrer no meio
     // do arremesso.
     this.axeSprite?.destroy();
+    // Boss: o apito do Corte Destrutivo também precisa ser parado na mão
+    // (Phaser Sound não é filho do sprite) — sem isto ficaria tocando pra
+    // sempre se o Minotauro morrer no meio do carregamento.
+    this._stopCleaveWhistle();
     // Elite: som de morte próprio em vez de nenhum som (os inimigos
     // normais não têm sfx de morte hoje) — toca antes do destroy(), que
     // não afeta o áudio (Phaser Sound não é filho do sprite).

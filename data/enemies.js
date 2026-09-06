@@ -180,7 +180,30 @@ export default [
     "axeThrowReturnFlightMs": 450,
     "axeThrowReturnDamage": 35,
     "axeThrowReturnRadius": 60,
-    "axeThrowCooldownMs": 6000
+    "axeThrowCooldownMs": 6000,
+    // Corte Destrutivo (3ª habilidade, sorteada 1/3 com a Investida e o
+    // Machado — ver Enemy._updateBossAbility): "carrega -> apita ->
+    // XABLAU". cleaveTelegraphMs é de propósito BEM mais longo que os
+    // telegraphs das outras duas — é a habilidade "eu avisei que você
+    // deveria sair daí", não uma pegadinha. Cone longo (cleaveRange) e
+    // estreito (cleaveHalfAngleDeg pequeno) na direção travada no início
+    // do carregamento. cleavePauseMs é a pausa final antes do golpe sair
+    // de verdade. cleaveDamage é o mais alto do Minotauro; em
+    // contraste, o shake do impacto é pequeno (o aviso já foi o evento
+    // grande). cleaveRecoverMs é a pequena recuperação antes de voltar a
+    // perseguir.
+    "cleaveTelegraphMs": 2000,
+    "cleavePauseMs": 350,
+    // Área bem maior que a primeira versão (320 alcance / 18° meio-ângulo)
+    // — pra justificar os ~2.35s de aviso todo (telegraph + pausa): um
+    // cone pequeno com um aviso tão longo não fazia sentido, dava tempo
+    // demais pra sair de uma área pequena. Ainda um cone (não círculo),
+    // só que cobrindo boa parte da tela na direção travada.
+    "cleaveRange": 650,
+    "cleaveHalfAngleDeg": 26,
+    "cleaveDamage": 110,
+    "cleaveRecoverMs": 400,
+    "cleaveCooldownMs": 9000
   }
 ]
 ;
