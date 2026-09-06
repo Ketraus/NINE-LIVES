@@ -119,6 +119,17 @@ const CLEAVE_TELEGRAPH_ALPHA_END = 0.6;
 const CLEAVE_SHAKE_MS = 150;
 const CLEAVE_SHAKE_INTENSITY = 0.008;
 
+// Pisão (4ª habilidade do Minotauro, "SAI DE PERTO" — ver
+// _updateBossStomp e afins): ao contrário de Investida/Machado/Corte,
+// não entra no sorteio 1/3 nem usa o cooldown compartilhado
+// (bossChargeReadyAt) — é puramente reativa a ficar perto dele (ver
+// stompTriggerRadius/stompReadyAt, cooldown PRÓPRIO). Cor branca (o pé/
+// chão), bem diferente das outras três cores de aviso já usadas.
+const STOMP_TELEGRAPH_COLOR = 0xffffff;
+const STOMP_IMPACT_COLOR = 0xdddddd;
+const STOMP_SHAKE_MS = 140;
+const STOMP_SHAKE_INTENSITY = 0.01;
+
 // Fuga em massa (evento do Boss/Minotauro, ver SpawnDirector.
 // _checkBossSchedule/EnemySpawner.fleeAll): todo inimigo vivo na tela sai
 // correndo pra longe do jogador e só some de vez quando realmente sair da
@@ -329,6 +340,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       // multiplicador de dano recebido durante a janela vulnerável (ver
       // DamageSystem.applyWeaponHit) — 1 = normal, fora da janela
       this.vulnerableDamageMultiplier = 1;
+      // Pisão: cooldown PRÓPRIO, separado de bossChargeReadyAt — pode
+      // disparar mesmo enquanto as outras três ainda estão "contando" pra
+      // liberar de novo, já que é reativo a proximidade, não sorteado.
+      this.stompReadyAt = scene.time.now + Phaser.Math.Between(1500, 2500);
+      this.stompRaiseUntil = 0;
     }
   }
 
@@ -1127,6 +1143,18 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.bossState === 'cleave_telegraph') { this._updateCleaveTelegraph(nowMs); return true; }
     if (this.bossState === 'cleave_pause') { this._updateCleavePause(target, nowMs); return true; }
     if (this.bossState === 'cleave_recover') { this._updateCleaveRecover(nowMs); return true; }
+    if (this.bossState === 'stomp_raise') { this._updateStompRaise(target, nowMs); return true; }
+    // Pisão: checado ANTES do cooldown compartilhado — é reativo (dispara
+    // sozinho quando o jogador chega perto, cooldown PRÓPRIO abaixo), não
+    // faz parte do sorteio 1/3 das outras três, então roda mesmo com
+    // bossState 'chasing' e bossChargeReadyAt ainda contando.
+    if (nowMs >= this.stompReadyAt) {
+      const distToTarget = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+      if (distToTarget <= this.def.stompTriggerRadius) {
+        this._startStomp(nowMs);
+        return true;
+      }
+    }
     if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
     const roll = Math.random();
     if (roll < 1 / 3) this._startCharge(target, nowMs);
@@ -1596,6 +1624,69 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.cleaveWhistle.stop();
     this.cleaveWhistle.destroy();
     this.cleaveWhistle = null;
+  }
+
+  /** Passo 1: jogador detectado muito perto (ver _updateBossAbility) —
+   * para, "levanta o pé" (só um círculo branco crescendo no lugar, sem
+   * asset novo) por stompRaiseMs + stompPauseMs (aviso curto de
+   * propósito, é um "susto" reativo, não uma habilidade telegrafada de
+   * longe como as outras três). Reaproveita sfx_elite_lock (mesmo "travar
+   * mira" das outras). */
+  _startStomp(nowMs) {
+    this.bossState = 'stomp_raise';
+    this.setVelocity(0, 0);
+    if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    this.stompRaiseUntil = nowMs + this.def.stompRaiseMs + this.def.stompPauseMs;
+    this.scene.sound.play('sfx_elite_lock', { volume: 0.5 });
+  }
+
+  _updateStompRaise(target, nowMs) {
+    this.setVelocity(0, 0);
+    this._drawStompTelegraph(nowMs);
+    if (nowMs >= this.stompRaiseUntil) this._resolveStomp(target, nowMs);
+  }
+
+  /** Círculo de aviso (área de impacto) no próprio Minotauro, crescendo
+   * até o tamanho final conforme "levanta o pé" — mesmo piscar (alarme)
+   * das outras marcações, cor branca pra não confundir com as outras
+   * três. */
+  _drawStompTelegraph(nowMs) {
+    const g = this.bossTelegraphGraphics;
+    g.clear();
+    const progress = Phaser.Math.Clamp(
+      1 - (this.stompRaiseUntil - nowMs) / (this.def.stompRaiseMs + this.def.stompPauseMs), 0, 1
+    );
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
+    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.1, MISSILE_BLINK_ALPHA_MAX + 0.1, blinkT);
+    const radius = Phaser.Math.Linear(this.def.stompImpactRadius * 0.3, this.def.stompImpactRadius, progress);
+    g.fillStyle(STOMP_TELEGRAPH_COLOR, fillAlpha);
+    g.fillCircle(this.x, this.y, radius);
+    g.lineStyle(3, STOMP_TELEGRAPH_COLOR, Math.min(fillAlpha + 0.4, 1));
+    g.strokeCircle(this.x, this.y, radius);
+  }
+
+  /**
+   * PISA: dano baixo em área pequena ao redor dele + knockback MUITO
+   * forte no jogador (ver Player.applyKnockback) na direção pra longe do
+   * Minotauro, shake curto, e volta a perseguir IMEDIATAMENTE — ao
+   * contrário da Investida+Corte, não tem janela vulnerável nenhuma, é só
+   * "sai de perto" e segue o jogo.
+   */
+  _resolveStomp(target, nowMs) {
+    this.bossTelegraphGraphics.clear();
+    this.scene.cameras.main.shake(STOMP_SHAKE_MS, STOMP_SHAKE_INTENSITY);
+    this.scene.sound.play('sfx_elite_punch', { volume: 0.7 });
+    this._flashCircle(this.x, this.y, this.def.stompImpactRadius, STOMP_IMPACT_COLOR);
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist <= this.def.stompImpactRadius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this.def.stompDamage, this, nowMs);
+      const dx = (target.x - this.x) || 0.01;
+      const dy = (target.y - this.y) || 0;
+      const len = Math.hypot(dx, dy) || 1;
+      target.applyKnockback?.(dx / len, dy / len, this.def.stompKnockbackForce, nowMs, this.def.stompKnockbackDurationMs);
+    }
+    this.bossState = 'chasing';
+    this.stompReadyAt = nowMs + this.def.stompCooldownMs;
   }
 
   /** Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.

@@ -78,6 +78,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.weaponManager = null; // injetado pela GameScene depois de criado
     this.isDead = false;
+    // Knockback (ex.: Pisão do Minotauro) — enquanto ativo, sobrescreve o
+    // movimento normal por input (ver applyKnockback/_handleMovement),
+    // mesmo padrão que Enemy.js já usa pro knockback dos inimigos.
+    this.knockbackUntil = 0;
     // God Mode (cheat "god" do DevConsole, F9): checado em DamageSystem
     // .applyContactDamage/applyWeaponHit — nenhum dano passa enquanto true.
     this.godMode = false;
@@ -231,7 +235,21 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._dodgeFlashUntil = this.scene.time.now + DODGE_FLASH_MS;
   }
 
+  /**
+   * Empurra o jogador na direção (dirX, dirY) — vetor já normalizado —
+   * por `durationMs`, ignorando o input normal enquanto durar (ver
+   * _handleMovement). Usado pelo Pisão do Minotauro (ver Enemy.js
+   * _resolveStomp) pra dar o "recuo" de quem ficou muito perto do boss.
+   */
+  applyKnockback(dirX, dirY, force, nowMs, durationMs = 200) {
+    if (this.isDead) return;
+    this.setVelocity(dirX * force, dirY * force);
+    this.knockbackUntil = nowMs + durationMs;
+  }
+
   _handleMovement() {
+    if (this.scene.time.now < this.knockbackUntil) return; // ainda sendo empurrado, não sobrescreve a velocity
+
     const left = this.cursors.left.isDown || this.keys.A.isDown;
     const right = this.cursors.right.isDown || this.keys.D.isDown;
     const up = this.cursors.up.isDown || this.keys.W.isDown;

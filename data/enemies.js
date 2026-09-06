@@ -121,7 +121,7 @@ export default [
     "idleTexture": "minotaur_idle",
     "hp": 3000,
     "speed": 65,
-    "contactDamage": 40,
+    "contactDamage": 0,
     "contactCooldownMs": 800,
     "xpReward": 500,
     // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
@@ -203,7 +203,24 @@ export default [
     "cleaveHalfAngleDeg": 26,
     "cleaveDamage": 110,
     "cleaveRecoverMs": 400,
-    "cleaveCooldownMs": 9000
+    "cleaveCooldownMs": 9000,
+    // Pisão (4ª habilidade, "SAI DE PERTO" — ver Enemy._updateBossStomp e
+    // afins): diferente das outras três, NÃO entra no sorteio 1/3 e não
+    // usa o cooldown compartilhado (bossChargeReadyAt) — é puramente
+    // reativa, dispara sozinha sempre que o jogador fica a menos de
+    // stompTriggerRadius dele (e o cooldown PRÓPRIO abaixo já liberou).
+    // Levanta o pé (stompRaiseMs) -> pequena pausa (stompPauseMs) -> pisa:
+    // área pequena (stompImpactRadius), dano baixo, knockback MUITO forte
+    // no jogador, shake curto -> volta a perseguir normalmente (sem
+    // janela vulnerável, ao contrário da Investida+Corte).
+    "stompTriggerRadius": 90,
+    "stompCooldownMs": 4000,
+    "stompRaiseMs": 350,
+    "stompPauseMs": 200,
+    "stompImpactRadius": 110,
+    "stompDamage": 15,
+    "stompKnockbackForce": 900,
+    "stompKnockbackDurationMs": 260
   }
 ]
 ;
