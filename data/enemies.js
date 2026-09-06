@@ -138,6 +138,13 @@ export default [
     "chargeDurationMs": 550,
     "chargeDamage": 55,
     "chargeHitRadius": 46,
+    // Corte (evolução da Investida, ver Enemy._startSwing/_resolveSwing):
+    // dispara IMEDIATAMENTE ao fim do dash, antes da janela vulnerável —
+    // telegraph bem curto de propósito (é o "castigo" de ficar colado
+    // nele assim que a investida termina).
+    "chargeSwingTelegraphMs": 200,
+    "chargeSwingRadius": 100,
+    "chargeSwingDamage": 45,
     "chargeVulnerableMs": 2000,
     "chargeVulnerableDamageMultiplier": 1.5
   }

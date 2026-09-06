@@ -64,6 +64,15 @@ const CHARGE_IMPACT_SHAKE_INTENSITY = 0.018;
 // _endCharge) — vermelho claro, bem diferente do PARALYZE_TINT/BLEED_TINT
 // de cima e da cor normal do Minotauro
 const CHARGE_VULNERABLE_TINT = 0xffaaaa;
+// Corte (evolução da Investida — ver _startSwing/_resolveSwing): o golpe
+// de machado que sai IMEDIATAMENTE ao fim da investida, antes da janela
+// vulnerável. Cor laranja no aviso (em vez do vermelho da linha reta) pra
+// não confundir os dois avisos visualmente; tremida ainda mais forte que
+// o impacto da própria investida — é o "castigo" de quem tentou ficar
+// colado nele assim que a investida acabou.
+const CHARGE_SWING_COLOR = 0xff8800;
+const CHARGE_SWING_SHAKE_MS = 280;
+const CHARGE_SWING_SHAKE_INTENSITY = 0.02;
 
 // Fuga em massa (evento do Boss/Minotauro, ver SpawnDirector.
 // _checkBossSchedule/EnemySpawner.fleeAll): todo inimigo vivo na tela sai
@@ -207,20 +216,25 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMeleeTelegraphUntil = 0;
     }
 
-    // Boss/Minotauro (def.boss = true, ver data/enemies.js): primeira (e
-    // até aqui única) habilidade, a Investida — mesmo espírito do golpe
-    // corpo a corpo do Elite (parado -> telegraph -> ataque -> cooldown),
-    // só que em vez de dano na área ao redor dele, ele DISPARA em linha
-    // reta na direção travada no início do telegraph. bossState:
-    // 'chasing' (comportamento normal, flocking igual a qualquer inimigo)
-    // -> 'charge_telegraph' (parado, linha vermelha mostrando a rota,
-    // ver _startCharge/_updateChargeTelegraph) -> 'charge_dash' (dispara
-    // de verdade na direção travada, ver _launchCharge/_updateChargeDash)
-    // -> 'charge_vulnerable' (parado, tint diferente, recebe mais dano —
-    // ver vulnerableDamageMultiplier em DamageSystem.applyWeaponHit — é a
-    // "janela pro jogador atacar" pedida) -> volta pra 'chasing' com
-    // cooldown até a próxima. bossChargeReadyAt começa com um atraso
-    // curto (o Minotauro não investe no instante em que nasce).
+    // Boss/Minotauro (def.boss = true, ver data/enemies.js): habilidade
+    // Investida → Corte (mesmo espírito do golpe corpo a corpo do Elite:
+    // parado -> telegraph -> ataque -> cooldown), só que em vez de dano na
+    // área ao redor dele desde o início, ele primeiro DISPARA em linha
+    // reta na direção travada, e SÓ ENTÃO golpeia a área ao redor —
+    // "as duas coisas viram um único movimento natural" (pedido: pune
+    // quem tenta ficar colado nele assim que a investida termina, não só
+    // quem está no caminho da corrida). bossState: 'chasing' (flocking
+    // normal) -> 'charge_telegraph' (parado, linha vermelha mostrando a
+    // rota, ver _startCharge/_updateChargeTelegraph) -> 'charge_dash'
+    // (dispara de verdade, ver _launchCharge/_updateChargeDash) ->
+    // 'charge_swing_telegraph' (corte de machado IMEDIATO ao fim da
+    // investida, área laranja ao redor dele, ver _startSwing/
+    // _resolveSwing) -> 'charge_vulnerable' (parado, tint diferente,
+    // recebe mais dano — ver vulnerableDamageMultiplier em
+    // DamageSystem.applyWeaponHit — é a janela pro jogador revidar) ->
+    // volta pra 'chasing' com cooldown até a próxima. bossChargeReadyAt
+    // começa com um atraso curto (o Minotauro não investe no instante em
+    // que nasce).
     if (def.boss) {
       this.bossState = 'chasing';
       this.bossChargeReadyAt = scene.time.now + Phaser.Math.Between(1500, 2500);
@@ -228,6 +242,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.bossChargeTelegraphUntil = 0;
       this.bossChargeDashUntil = 0;
       this.bossChargeHasHit = false;
+      this.bossSwingUntil = 0;
       this.bossVulnerableUntil = 0;
       this.bossTelegraphGraphics = null;
       // multiplicador de dano recebido durante a janela vulnerável (ver
@@ -979,6 +994,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _updateBossCharge(target, nowMs) {
     if (this.bossState === 'charge_telegraph') { this._updateChargeTelegraph(nowMs); return true; }
     if (this.bossState === 'charge_dash') { this._updateChargeDash(target, nowMs); return true; }
+    if (this.bossState === 'charge_swing_telegraph') { this._updateChargeSwingTelegraph(target, nowMs); return true; }
     if (this.bossState === 'charge_vulnerable') { this._updateChargeVulnerable(nowMs); return true; }
     if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
     this._startCharge(target, nowMs);
@@ -1035,10 +1051,42 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.scene.cameras.main.shake(CHARGE_IMPACT_SHAKE_MS, CHARGE_IMPACT_SHAKE_INTENSITY);
       }
     }
-    if (nowMs >= this.bossChargeDashUntil) this._endCharge(nowMs);
+    if (nowMs >= this.bossChargeDashUntil) this._startSwing(nowMs);
   }
 
-  /** Fim da investida (acertou ou não): para, fica "atordoado" (tint +
+  /** Corte (evolução da Investida): IMEDIATAMENTE ao fim da investida,
+   * antes de qualquer outra coisa, um golpe de machado em área ao redor
+   * do próprio Minotauro — pega quem tentou ficar colado nele assim que
+   * a corrida acabou, em vez de só quem estava no caminho dela. Telegraph
+   * bem curto de propósito (def.chargeSwingTelegraphMs) — é o "castigo",
+   * não dá tempo de reagir depois de já ter decidido ficar perto. */
+  _startSwing(nowMs) {
+    this.bossState = 'charge_swing_telegraph';
+    this.setVelocity(0, 0);
+    this.bossSwingUntil = nowMs + this.def.chargeSwingTelegraphMs;
+    this.scene.sound.play('sfx_cyberus_slash', { volume: 0.8 });
+  }
+
+  _updateChargeSwingTelegraph(target, nowMs) {
+    this.setVelocity(0, 0);
+    this._drawSwingTelegraph(nowMs);
+    if (nowMs >= this.bossSwingUntil) this._resolveSwing(target, nowMs);
+  }
+
+  /** Dano em área (def.chargeSwingRadius/chargeSwingDamage) + a tremida
+   * mais forte do jogo até aqui, e SÓ DEPOIS entra na janela vulnerável
+   * (ver _endCharge) — o corte acontece antes dela, não durante. */
+  _resolveSwing(target, nowMs) {
+    this.bossTelegraphGraphics.clear();
+    this.scene.cameras.main.shake(CHARGE_SWING_SHAKE_MS, CHARGE_SWING_SHAKE_INTENSITY);
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist <= this.def.chargeSwingRadius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this.def.chargeSwingDamage, this, nowMs);
+    }
+    this._endCharge(nowMs);
+  }
+
+  /** Fim da investida+corte: para, fica "atordoado" (tint +
    * vulnerableDamageMultiplier, ver DamageSystem.applyWeaponHit) pela
    * janela pedida — é a abertura pro jogador revidar. */
   _endCharge(nowMs) {
@@ -1076,6 +1124,21 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     g.moveTo(this.x, this.y);
     g.lineTo(this.x + this.bossChargeDir.x * CHARGE_LINE_LENGTH, this.y + this.bossChargeDir.y * CHARGE_LINE_LENGTH);
     g.strokePath();
+  }
+
+  /** Área do Corte (laranja, pra não confundir com a linha vermelha da
+   * Investida) ao redor do próprio Minotauro — mesmo círculo cheio+borda
+   * do aviso corpo a corpo do Elite (_drawMeleeTelegraph), cor diferente. */
+  _drawSwingTelegraph(nowMs) {
+    const g = this.bossTelegraphGraphics;
+    g.clear();
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
+    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.15, MISSILE_BLINK_ALPHA_MAX + 0.15, blinkT);
+    const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
+    g.fillStyle(CHARGE_SWING_COLOR, fillAlpha);
+    g.fillCircle(this.x, this.y, this.def.chargeSwingRadius);
+    g.lineStyle(3, CHARGE_SWING_COLOR, strokeAlpha);
+    g.strokeCircle(this.x, this.y, this.def.chargeSwingRadius);
   }
 
   /** Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.
