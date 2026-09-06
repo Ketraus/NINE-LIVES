@@ -125,7 +125,21 @@ export default [
     "boss": true,
     // Boss é bem mais pesado que o Elite (knockbackResistance 0.15) —
     // quase não sente empurrão nenhum.
-    "knockbackResistance": 0.05
+    "knockbackResistance": 0.05,
+    // Investida (única habilidade dele por enquanto, ver Enemy._updateBossCharge):
+    // para, mostra a linha de aviso por chargeTelegraphMs + chargePauseMs
+    // (parado o tempo todo), dispara a chargeSpeed por chargeDurationMs, e
+    // fica vulnerável (recebe chargeVulnerableDamageMultiplier de dano) por
+    // chargeVulnerableMs antes de poder investir de novo.
+    "chargeCooldownMs": 6000,
+    "chargeTelegraphMs": 900,
+    "chargePauseMs": 400,
+    "chargeSpeed": 620,
+    "chargeDurationMs": 550,
+    "chargeDamage": 55,
+    "chargeHitRadius": 46,
+    "chargeVulnerableMs": 2000,
+    "chargeVulnerableDamageMultiplier": 1.5
   }
 ]
 ;

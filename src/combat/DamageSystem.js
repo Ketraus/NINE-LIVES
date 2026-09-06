@@ -59,6 +59,11 @@ export default class DamageSystem {
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (this._rollDodge(target)) return false;
+    // janela vulnerável do Minotauro pós-investida (ver Enemy._endCharge) —
+    // multiplica o dano ANTES de escudo/redução, igual qualquer outro
+    // ajuste bruto de dano aqui. 1 (padrão) = sem efeito nenhum, então não
+    // muda nada pra ninguém que não tenha essa propriedade (Player incluso).
+    damage *= target.vulnerableDamageMultiplier || 1;
     // guardado ANTES de takeDamage: se este golpe matar o alvo, o
     // onDeath() do HealthSystem chama target.destroy() na hora (dentro do
     // próprio takeDamage), e um sprite destruído perde target.scene (fica

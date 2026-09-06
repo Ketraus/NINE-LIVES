@@ -50,6 +50,21 @@ const MISSILE_EXPLOSION_SHAKE_INTENSITY = 0.012;
 const MELEE_SHAKE_MS = 220;
 const MELEE_SHAKE_INTENSITY = 0.012;
 
+// Investida do Minotauro (def.boss, ver _updateBossCharge e afins) — a
+// única habilidade dele por enquanto. Linha de aviso reaproveita o mesmo
+// piscar do Elite (MISSILE_BLINK_*, ver _drawChargeTelegraph), só que reta
+// em vez de área. Tremida de saída é leve (dá peso ao arranque); a do
+// impacto de verdade é a mais forte do jogo até aqui (é o golpe do Boss).
+const CHARGE_LINE_LENGTH = 1400;
+const CHARGE_LAUNCH_SHAKE_MS = 120;
+const CHARGE_LAUNCH_SHAKE_INTENSITY = 0.006;
+const CHARGE_IMPACT_SHAKE_MS = 260;
+const CHARGE_IMPACT_SHAKE_INTENSITY = 0.018;
+// tint "atordoado" durante a janela vulnerável pós-investida (ver
+// _endCharge) — vermelho claro, bem diferente do PARALYZE_TINT/BLEED_TINT
+// de cima e da cor normal do Minotauro
+const CHARGE_VULNERABLE_TINT = 0xffaaaa;
+
 // Fuga em massa (evento do Boss/Minotauro, ver SpawnDirector.
 // _checkBossSchedule/EnemySpawner.fleeAll): todo inimigo vivo na tela sai
 // correndo pra longe do jogador e só some de vez quando realmente sair da
@@ -191,6 +206,34 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.eliteMissileProjectiles = []; // bolas visuais em voo, ver _launchMissiles
       this.eliteMeleeTelegraphUntil = 0;
     }
+
+    // Boss/Minotauro (def.boss = true, ver data/enemies.js): primeira (e
+    // até aqui única) habilidade, a Investida — mesmo espírito do golpe
+    // corpo a corpo do Elite (parado -> telegraph -> ataque -> cooldown),
+    // só que em vez de dano na área ao redor dele, ele DISPARA em linha
+    // reta na direção travada no início do telegraph. bossState:
+    // 'chasing' (comportamento normal, flocking igual a qualquer inimigo)
+    // -> 'charge_telegraph' (parado, linha vermelha mostrando a rota,
+    // ver _startCharge/_updateChargeTelegraph) -> 'charge_dash' (dispara
+    // de verdade na direção travada, ver _launchCharge/_updateChargeDash)
+    // -> 'charge_vulnerable' (parado, tint diferente, recebe mais dano —
+    // ver vulnerableDamageMultiplier em DamageSystem.applyWeaponHit — é a
+    // "janela pro jogador atacar" pedida) -> volta pra 'chasing' com
+    // cooldown até a próxima. bossChargeReadyAt começa com um atraso
+    // curto (o Minotauro não investe no instante em que nasce).
+    if (def.boss) {
+      this.bossState = 'chasing';
+      this.bossChargeReadyAt = scene.time.now + Phaser.Math.Between(1500, 2500);
+      this.bossChargeDir = { x: 0, y: 0 };
+      this.bossChargeTelegraphUntil = 0;
+      this.bossChargeDashUntil = 0;
+      this.bossChargeHasHit = false;
+      this.bossVulnerableUntil = 0;
+      this.bossTelegraphGraphics = null;
+      // multiplicador de dano recebido durante a janela vulnerável (ver
+      // DamageSystem.applyWeaponHit) — 1 = normal, fora da janela
+      this.vulnerableDamageMultiplier = 1;
+    }
   }
 
   /**
@@ -263,6 +306,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // é assim que ele "não precisa ser um evento que interrompe o jogo",
     // continuando na horda normalmente entre um ataque e outro.
     if (this.def.elite && this._updateElite(target, nowMs)) return;
+
+    // Boss/Minotauro: mesma lógica do Elite acima — só assume o
+    // movimento durante telegraph/investida/vulnerável; em 'chasing' e
+    // fora do cooldown, cai no flocking normal abaixo.
+    if (this.def.boss && this._updateBossCharge(target, nowMs)) return;
 
     const isParalyzed = nowMs < this.paralyzedUntil;
     this._refreshStatusTint(nowMs);
@@ -922,6 +970,114 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.eliteNextAttackAt = nowMs + this.def.eliteMeleeCooldownMs;
   }
 
+  /**
+   * Estado da Investida do Minotauro (só roda quando def.boss = true).
+   * Retorna true nos estados que assumem o movimento (telegraph/dash/
+   * vulnerável); em 'chasing' fora do cooldown, retorna false e cai no
+   * flocking normal (ver chase() acima) — mesmo contrato do _updateElite.
+   */
+  _updateBossCharge(target, nowMs) {
+    if (this.bossState === 'charge_telegraph') { this._updateChargeTelegraph(nowMs); return true; }
+    if (this.bossState === 'charge_dash') { this._updateChargeDash(target, nowMs); return true; }
+    if (this.bossState === 'charge_vulnerable') { this._updateChargeVulnerable(nowMs); return true; }
+    if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
+    this._startCharge(target, nowMs);
+    return true;
+  }
+
+  /** Para, trava a direção da investida NO INSTANTE ATUAL do jogador (o
+   * Minotauro não reajusta depois disto — é o que torna o telegraph um
+   * aviso de verdade, dá pro jogador desviar saindo da linha) e desenha o
+   * aviso. Reaproveita sfx_elite_lock (mesma sensação de "travar mira"). */
+  _startCharge(target, nowMs) {
+    this.bossState = 'charge_telegraph';
+    this.setVelocity(0, 0);
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const len = Math.hypot(dx, dy) || 1;
+    this.bossChargeDir = { x: dx / len, y: dy / len };
+    if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    // telegraph + pequena pausa contam juntos aqui: a linha fica visível
+    // o tempo todo, incluindo a pausa "segurando o fôlego" antes de sair
+    this.bossChargeTelegraphUntil = nowMs + this.def.chargeTelegraphMs + this.def.chargePauseMs;
+    this.scene.sound.play('sfx_elite_lock', { volume: 0.6 });
+  }
+
+  _updateChargeTelegraph(nowMs) {
+    this.setVelocity(0, 0);
+    this._drawChargeTelegraph(nowMs);
+    if (nowMs >= this.bossChargeTelegraphUntil) this._launchCharge(nowMs);
+  }
+
+  /** Fim do aviso: dispara de verdade na direção travada em _startCharge,
+   * por def.chargeDurationMs (ver _updateChargeDash). */
+  _launchCharge(nowMs) {
+    this.bossState = 'charge_dash';
+    this.bossTelegraphGraphics.clear();
+    this.bossChargeHasHit = false;
+    this.bossChargeDashUntil = nowMs + this.def.chargeDurationMs;
+    this.setVelocity(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
+    this.scene.cameras.main.shake(CHARGE_LAUNCH_SHAKE_MS, CHARGE_LAUNCH_SHAKE_INTENSITY);
+    this.scene.sound.play('sfx_elite_punch', { volume: 0.8 });
+  }
+
+  /** Mantém a velocidade reta em linha (chase() normal não roda neste
+   * estado, então nada mais mexe na velocity) e checa o acerto no
+   * jogador UMA vez por investida (bossChargeHasHit) — sem isto, ele
+   * causaria dano a cada frame enquanto o jogador estivesse na frente. */
+  _updateChargeDash(target, nowMs) {
+    this.setVelocity(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
+    if (!this.bossChargeHasHit) {
+      const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+      if (dist <= this.def.chargeHitRadius && target.active && !target.healthSystem?.isDead()) {
+        this.bossChargeHasHit = true;
+        DamageSystem.applyWeaponHit(target, this.def.chargeDamage, this, nowMs);
+        this.scene.cameras.main.shake(CHARGE_IMPACT_SHAKE_MS, CHARGE_IMPACT_SHAKE_INTENSITY);
+      }
+    }
+    if (nowMs >= this.bossChargeDashUntil) this._endCharge(nowMs);
+  }
+
+  /** Fim da investida (acertou ou não): para, fica "atordoado" (tint +
+   * vulnerableDamageMultiplier, ver DamageSystem.applyWeaponHit) pela
+   * janela pedida — é a abertura pro jogador revidar. */
+  _endCharge(nowMs) {
+    this.bossState = 'charge_vulnerable';
+    this.setVelocity(0, 0);
+    this.setTint(CHARGE_VULNERABLE_TINT);
+    // mantém _currentStatusTint em sincronia (ver _refreshStatusTint) —
+    // sem isto, ele "esqueceria" que o tint atual não é mais def.color e
+    // deixaria de restaurar a cor normal quando a janela acabar
+    this._currentStatusTint = CHARGE_VULNERABLE_TINT;
+    this.vulnerableDamageMultiplier = this.def.chargeVulnerableDamageMultiplier;
+    this.bossVulnerableUntil = nowMs + this.def.chargeVulnerableMs;
+  }
+
+  _updateChargeVulnerable(nowMs) {
+    this.setVelocity(0, 0);
+    if (nowMs >= this.bossVulnerableUntil) {
+      this._refreshStatusTint(nowMs); // volta pro tint normal (ou de status, se houver)
+      this.vulnerableDamageMultiplier = 1;
+      this.bossState = 'chasing';
+      this.bossChargeReadyAt = nowMs + this.def.chargeCooldownMs;
+    }
+  }
+
+  /** Linha reta piscando (mesmo piscar do Elite, ver MISSILE_BLINK_*) na
+   * direção travada — fixa do começo ao fim do telegraph, já que o
+   * Minotauro fica parado durante toda essa janela (nada recalcula). */
+  _drawChargeTelegraph(nowMs) {
+    const g = this.bossTelegraphGraphics;
+    g.clear();
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
+    const alpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.3, MISSILE_BLINK_ALPHA_MAX + 0.3, blinkT);
+    g.lineStyle(5, 0xff2222, alpha);
+    g.beginPath();
+    g.moveTo(this.x, this.y);
+    g.lineTo(this.x + this.bossChargeDir.x * CHARGE_LINE_LENGTH, this.y + this.bossChargeDir.y * CHARGE_LINE_LENGTH);
+    g.strokePath();
+  }
+
   /** Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.
    * _checkBossSchedule/EnemySpawner.fleeAll): cancela qualquer estado
    * especial em andamento (elite parado telegrafando, sealer imóvel) pra
@@ -1007,6 +1163,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // sem isto, ficariam "congeladas" no ar pra sempre se o Elite morrer
     // no meio do lançamento (ver _launchMissiles).
     this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
+    // Boss: mesma lógica — a linha de aviso da investida também não é
+    // filha do sprite (ver _startCharge).
+    this.bossTelegraphGraphics?.destroy();
     // Elite: som de morte próprio em vez de nenhum som (os inimigos
     // normais não têm sfx de morte hoje) — toca antes do destroy(), que
     // não afeta o áudio (Phaser Sound não é filho do sprite).
