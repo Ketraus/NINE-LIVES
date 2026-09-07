@@ -1,39 +1,14 @@
 import DamageSystem from '../combat/DamageSystem.js';
 
 // Visual: verde claro, condizente com a descrição da carta. Fica só aqui
-// (não em data/upgrades.js) porque é puramente estético — mesmo padrão
-// que SlamAbility usa pro tint da onda de choque (0xff5555 hardcoded).
 const TORNADO_COLOR = 0x90ee90;
 
-// Fração final da vida do tornado em que ele começa a piscar e desvanecer
-// (ex.: durationMs 1500 -> últimos 600ms). Mesmo estilo de piscada que
-// Player._updateInvulnerableFlash já usa pros i-frames (liga/desliga a
-// cada 80ms), só que aqui combinado com um fade progressivo até alpha 0.
+// Fração final da vida do tornado em que ele começa a piscar e desvanec…
 const FADE_OUT_RATIO = 0.4;
 const FADE_BLINK_INTERVAL_MS = 80;
 
-/**
- * Habilidade exclusiva da evolução "Vórtice Turbo" (Patas Turbo evoluída,
- * carta "speed_up_evo_tornado"): a cada def.cooldownMs de tempo efetivo
- * ANDANDO (o acúmulo só avança enquanto o jogador está em movimento; parado,
- * ele simplesmente pausa em vez de zerar — não pune uma parada rápida pra
- * atirar/desviar), gera um tornado fixo na posição atual do jogador.
- *
- * Cada tornado:
- *  - fica parado (não segue o jogador nem os inimigos);
- *  - dura def.durationMs e então some;
- *  - causa def.damage a cada def.tickIntervalMs em TODO inimigo dentro de
- *    def.radius (pode acertar vários inimigos ao mesmo tempo, e o mesmo
- *    inimigo várias vezes se ficar parado dentro da área);
- *  - dano baixo por tick de propósito ("não muito dano" — é chão de área
- *    passivo, não o ataque principal).
- *
- * Mesma interface que as outras habilidades (update(time, player,
- * enemyGroup, scene)) — é o que permite o AbilityManager tratá-la sem
- * saber o que tem "dentro" dela.
- */
+// Habilidade exclusiva da evolução "Vórtice Turbo" (Patas Turbo evoluíd…
 export default class TornadoAbility {
-  /** @param {object} def - efeito de data/upgrades.js (type: "unlockAbility") */
   constructor(def) {
     this.def = def;
     this.walkAccumMs = 0;
@@ -42,12 +17,12 @@ export default class TornadoAbility {
   }
 
   update(time, player, enemyGroup, scene) {
-    this.player = player; // guardado só pra passar como `source` do dano nos ticks (lifesteal/paralisia)
+    this.player = player; // guardado só pra passar como `source` do dano nos ticks (lifesteal/par…
     this._advanceWalkTimer(time, player, scene);
     this._updateTornadoes(time, enemyGroup);
   }
 
-  /** Acumula tempo só enquanto o jogador está de fato se movendo. */
+  // Acumula tempo só enquanto o jogador está de fato se movendo.
   _advanceWalkTimer(time, player, scene) {
     const delta = this._lastFrameMs === null ? 0 : time - this._lastFrameMs;
     this._lastFrameMs = time;
@@ -94,12 +69,7 @@ export default class TornadoAbility {
     });
   }
 
-  /**
-   * Nos últimos FADE_OUT_RATIO da vida do tornado, ele pisca (liga/desliga
-   * a cada FADE_BLINK_INTERVAL_MS, igual ao i-frame do jogador) enquanto o
-   * alpha-base vai caindo até 0 — dá pra ler tanto "piscando" quanto
-   * "sumindo" ao mesmo tempo, sem esperar o corte seco no fim da duração.
-   */
+  // Nos últimos FADE_OUT_RATIO da vida do tornado, ele pisca (liga/desliga
   _updateFadeOut(tornado, age, time) {
     const fadeStartAge = this.def.durationMs * (1 - FADE_OUT_RATIO);
     if (age < fadeStartAge) return;
@@ -112,8 +82,7 @@ export default class TornadoAbility {
     tornado.fx.setAlpha(Math.max(0, isBlinkOn ? baseAlpha : baseAlpha * 0.35));
   }
 
-  /** Mata os tweens (rotação, pulso, pop de hit) antes de destruir, senão
-   *  eles continuam tentando escrever em propriedades de objetos já mortos. */
+  // Mata os tweens (rotação, pulso, pop de hit) antes de destruir, senão
   _destroyFx(fx) {
     fx.scene?.tweens.killTweensOf([fx, ...fx.list]);
     fx.destroy();
@@ -131,11 +100,10 @@ export default class TornadoAbility {
       }
     });
     // um "aperta" só por tick (mesmo que tenha acertado vários inimigos de
-    // uma vez), senão o pop empilha várias vezes no mesmo frame
     if (hitSomeone) this._pulseHit(tornado.fx);
   }
 
-  /** Container simples com dois anéis girando em sentidos opostos. */
+  // Container simples com dois anéis girando em sentidos opostos.
   _createFx(scene, x, y) {
     const radius = this.def.radius;
     const outer = scene.add.circle(0, 0, radius, TORNADO_COLOR, 0.22).setStrokeStyle(2, TORNADO_COLOR, 0.55);
@@ -168,14 +136,7 @@ export default class TornadoAbility {
     return container;
   }
 
-  /**
-   * Mesma sensação de "aperto" que Enemy.playHitReaction dá quando um
-   * inimigo toma dano (estica/encolhe rápido e volta ao normal) — aplicada
-   * aqui nos dois anéis (scaleX/scaleY), não no container, pra não brigar
-   * com o tween de pulso contínuo do vórtice (esse mexe em `scale` do
-   * container; o pop mexe em scaleX/scaleY dos filhos, propriedades
-   * diferentes, então os dois tocam juntos sem se cortar).
-   */
+  // Mesma sensação de "aperto" que Enemy.playHitReaction dá quando um
   _pulseHit(fx) {
     if (!fx.scene) return;
     fx.list.forEach((ring) => {

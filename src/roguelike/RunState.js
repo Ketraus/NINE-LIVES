@@ -1,18 +1,11 @@
-/**
- * Dados puros da run em andamento. Sem lógica de fluxo (isso é o
- * RunManager) — só os números que o resto do jogo consulta.
- * Já vem com os campos que features futuras (XP, waves, progressão)
- * vão precisar, mesmo usando só uma fração deles agora.
- */
+// Dados puros da run em andamento. Sem lógica de fluxo (isso é o
 export default class RunState {
-  /** @param {string} [weaponId] - arma escolhida na WeaponSelectScene */
   constructor(weaponId = null) {
     this.weaponId = weaponId;
     this.reset();
   }
 
   // weaponId não é resetado aqui de propósito: um restart (tecla R)
-  // deve manter a arma escolhida, só zerar o progresso da run.
   reset() {
     this.level = 1;
     this.xp = 0;
@@ -22,12 +15,7 @@ export default class RunState {
     this.resetUpgrades();
   }
 
-  /**
-   * Zera só a parte de cartas/upgrades (multiplicadores, contagens,
-   * habilidades desbloqueadas), sem mexer em level/xp/kills/wave. Extraído
-   * de reset() pra ser reaproveitado pelo cheat "resetcards" do DevConsole
-   * (F9) — reseta o build sem reiniciar a run inteira.
-   */
+  // Zera só a parte de cartas/upgrades (multiplicadores, contagens,
   resetUpgrades() {
     // multiplicadores/bônus que upgrades (cartas) alteram
     this.damageMultiplier = 0;
@@ -38,59 +26,39 @@ export default class RunState {
     this.maxHpPercentBonus = 0; // fração da vida BASE, ex 0.2 = +20% (ver Player.BASE_MAX_HP)
     this.sizeMultiplier = 0; // fração de crescimento do sprite, ex 0.4 = +40% de tamanho
     this.thornsDamage = 2; // dano de contra-ataque ao ser atingido (base pequena, upgradável)
-    this.lifestealFraction = 0; // fração do dano causado pelo jogador convertida em cura (carta "Sanguessuga")
-    this.damageReductionFraction = 0; // fração do dano recebido que é ignorada (carta "Blindagem"), acumula normalmente por cópia
-    this.paralyzeOnHitChance = 0; // chance (0-1) de paralisar o inimigo ao acertar (evolução "Overcharge" do Overclock)
-    this.paralyzeOnHitDurationMs = 0; // duração da paralisia quando ela procar (ver DamageSystem._applyParalyze)
-    this.dodgeChance = 0; // chance (0-1) de desviar de um ataque por completo, sem tomar dano nenhum (evolução "Sexto Sentido" do Reflexo Felino)
+    this.lifestealFraction = 0; // fração do dano causado pelo jogador convertida em cura (carta "Sangue…
+    this.damageReductionFraction = 0; // fração do dano recebido que é ignorada (carta "Blindagem"), acumula n…
+    this.paralyzeOnHitChance = 0; // chance (0-1) de paralisar o inimigo ao acertar (evolução "Overcharge"…
+    this.paralyzeOnHitDurationMs = 0; // duração da paralisia quando ela procar (ver DamageSystem._applyParaly…
+    this.dodgeChance = 0; // chance (0-1) de desviar de um ataque por completo, sem tomar dano nen…
 
     // evolução "Hemorragia" (Sanguessuga): fração do dano do ataque
-    // aplicada como Sangramento no alvo, e a cadência/duração dos ticks
-    // (ver DamageSystem._applyBleed / Enemy.applyBleed). fraction em 0 =
-    // evolução não obtida.
     this.bleedFraction = 0;
     this.bleedTickIntervalMs = 0;
     this.bleedDurationMs = 0;
 
     // evolução "Corte Fantasma" (Visão Aguçada, katana): chance por golpe de
-    // também acertar inimigos fora da faixa reta da espada, dentro de um
-    // raio ao redor do jogador, até um número máximo de alvos "avulsos"
-    // (ver Weapon._applyStrayHits). maxTargets em 0 = evolução não obtida.
     this.strayHitsChance = 0;
     this.strayHitsRadius = 0;
     this.strayHitsMaxTargets = 0;
 
     // evolução "Reflexos de Predador" (Visão Aguçada, punhos): chance por
-    // soco de deixar os inimigos em câmera lenta por um tempo (ver
-    // src/systems/SlowmoSystem.js) — o jogador nunca é afetado.
-    // chance em 0 = evolução não obtida.
     this.bulletTimeChance = 0;
     this.bulletTimeDurationMs = 0;
 
     // bônus ao número de opções de carta mostradas em cada level-up (carta
-    // "Arsenal Expandido": pegar ela faz o PRÓXIMO level-up em diante
-    // oferecer +1 opção). Consultado por RunManager._triggerLevelUp
-    // (BASE_LEVEL_UP_OPTIONS + este valor).
     this.maxCardSlotsBonus = 0;
 
     // evolução "ARSENAL OVERRIDE" (Arsenal Expandido): libera a carta
-    // "Restock" ao lado do baralho de opções no level-up, que sorteia as
-    // opções de novo (ver LevelUpUI._buildRestockCard / RunManager.rerollOptions)
     this.hasRestock = false;
 
-    // ids de habilidades exclusivas desbloqueadas (ex.: 'slam', 'doubleStrike',
-    // 'drone') — cartas do tipo "unlockAbility" só podem ser tiradas uma vez,
-    // então RunManager consulta este set pra não reoferecer o que já foi pego
+    // ids de habilidades exclusivas desbloqueadas (ex.: 'slam', 'doubleStri…
     this.unlockedAbilities = new Set();
 
     // todo id de carta (ou evolução) já escolhida nesta run — usado pra
-    // filtrar ofertas repetidas (unlockAbility) e esconder a carta base
-    // depois que ela evolui (ver RunManager._getAvailableUpgrades)
     this.ownedUpgradeIds = new Set();
 
     // quantas vezes cada carta base foi escolhida (por id). É isto que
-    // RunManager consulta pra saber quando uma carta completou o número de
-    // cópias necessário pra evoluir (ver RunManager._findPendingEvolution)
     this.upgradeCounts = {};
   }
 
@@ -98,7 +66,6 @@ export default class RunState {
     this.kills += 1;
   }
 
-  /** @returns {boolean} true se subiu de nível */
   addXp(amount) {
     this.xp += amount;
     if (this.xp >= this.xpToNext) {
@@ -110,30 +77,14 @@ export default class RunState {
     return false;
   }
 
-  /**
-   * Sobe 1 nível sem exigir XP de verdade — usado só pelo cheat "levelup"
-   * do DevConsole (F9). Mesma progressão de xpToNext que addXp usa, mas
-   * sem disparar a tela de escolha de cartas (RunManager.cheatLevelUp
-   * decide isso, este método só mexe nos números).
-   */
+  // Sobe 1 nível sem exigir XP de verdade — usado só pelo cheat "levelup"
   forceLevelUp() {
     this.xp = 0;
     this.level += 1;
     this.xpToNext = Math.round(this.xpToNext * 1.2);
   }
 
-  /**
-   * Inverso de applyUpgrade — usado só pelo cheat "remove" do DevConsole
-   * (F9). Desfaz até `times` cópias de uma carta BASE (evoluções não
-   * podem ser removidas direto, ver RunManager.cheatRemoveCard),
-   * subtraindo o mesmo valor por cópia que _applyEffect somou. Efeitos
-   * sem contrapartida numérica simples (unlockAbility, unlockRestock,
-   * unlockBleed, strayHits, bulletTimeOnAttack) só têm a contagem/flag
-   * desfeita quando chega a 0 cópias — a instância/visual já spawnada
-   * (ex.: drone, cachorro) não é desmontada aqui, isso é papel do cheat
-   * "resetcards" (ver AbilityManager.reset via evento 'ability-reset').
-   * @returns {number} quantas cópias foram de fato removidas
-   */
+  // Inverso de applyUpgrade — usado só pelo cheat "remove" do DevConsole
   removeUpgrade(upgrade, times = 1) {
     const owned = this.upgradeCounts[upgrade.id] || 0;
     const toRemove = Math.min(times, owned);
@@ -194,30 +145,18 @@ export default class RunState {
         break;
       default:
         // unlockAbility/unlockRestock/unlockBleed/strayHits/bulletTimeOnAttack:
-        // sem valor numérico incremental por cópia pra desfazer aqui.
         break;
     }
   }
 
-  /**
-   * Registra mais uma cópia de uma carta (sem aplicar efeito nenhum) —
-   * usado por RunManager quando a escolha vira uma evolução em vez do
-   * efeito normal, mas a contagem de cópias ainda precisa avançar.
-   * @returns {number} quantas cópias desta carta já foram registadas
-   */
+  // Registra mais uma cópia de uma carta (sem aplicar efeito nenhum) —
   registerPick(id) {
     this.ownedUpgradeIds.add(id);
     this.upgradeCounts[id] = (this.upgradeCounts[id] || 0) + 1;
     return this.upgradeCounts[id];
   }
 
-  /**
-   * Aplica uma carta normal (um efeito só) ou uma evolução (`effects`:
-   * vários efeitos de uma vez, ex.: COLOSSO = +vida% + tamanho + -velocidade).
-   * Ponto de extensão: um efeito novo só precisa de um `case` aqui SE for
-   * puramente numérico; efeitos que mexem no Player/scene de verdade (vida
-   * atual, sprite, spawnar habilidade) são tratados em RunManager, não aqui.
-   */
+  // Aplica uma carta normal (um efeito só) ou uma evolução (`effects`:
   applyUpgrade(upgrade) {
     this.registerPick(upgrade.id);
 
@@ -256,7 +195,6 @@ export default class RunState {
         break;
       case 'damageReductionFraction':
         // cap em 0.9 pelo mesmo motivo do cooldownMultiplier: várias cópias
-        // empilhadas não podem chegar a 100%+ e tornar o dano recebido nulo/negativo
         this.damageReductionFraction = Math.min(0.9, this.damageReductionFraction + effect.value);
         break;
       case 'maxCardSlotsBonus':
@@ -270,34 +208,27 @@ export default class RunState {
         break;
       case 'unlockBleed':
         // atribuição direta, não soma: única fonte possível hoje
-        // (Hemorragia), mesmo raciocínio de strayHits/bulletTimeOnAttack.
         this.bleedFraction = effect.fraction ?? this.bleedFraction;
         this.bleedTickIntervalMs = effect.tickIntervalMs ?? this.bleedTickIntervalMs;
         this.bleedDurationMs = effect.durationMs ?? this.bleedDurationMs;
         break;
       case 'paralyzeOnHit':
         // acumula igual às outras frações (thorns, lifesteal etc.) caso um
-        // dia exista mais de uma fonte; hoje só a evolução "Overcharge" seta
         this.paralyzeOnHitChance += effect.chance ?? 0;
         this.paralyzeOnHitDurationMs = Math.max(this.paralyzeOnHitDurationMs, effect.durationMs ?? 0);
         break;
       case 'dodgeChance':
         // cap em 0.9 pelo mesmo motivo do damageReductionFraction: não
-        // pode chegar a 100% e tornar o jogador literalmente intocável
         this.dodgeChance = Math.min(0.9, this.dodgeChance + effect.value);
         break;
       case 'strayHits':
         // não acumula (+=) de propósito: só existe uma fonte possível hoje
-        // (a evolução "Corte Fantasma"), então atribuir direto é equivalente
-        // e mais simples de ler — se um dia surgir uma segunda fonte, aí sim
-        // vira soma/Math.max como os outros casos acima.
         this.strayHitsChance = effect.chance ?? this.strayHitsChance;
         this.strayHitsRadius = effect.radius ?? this.strayHitsRadius;
         this.strayHitsMaxTargets = effect.maxTargets ?? this.strayHitsMaxTargets;
         break;
       case 'bulletTimeOnAttack':
         // mesmo raciocínio do case 'strayHits' acima: única fonte hoje
-        // ("Reflexos de Predador"), atribuição direta em vez de acúmulo.
         this.bulletTimeChance = effect.chance ?? this.bulletTimeChance;
         this.bulletTimeDurationMs = effect.durationMs ?? this.bulletTimeDurationMs;
         break;

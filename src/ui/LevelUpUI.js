@@ -5,28 +5,18 @@ const CARD_H = 200;
 const GAP = 20;
 const ROW_GAP = 24;
 // Máximo de cartas por linha antes de quebrar pra próxima — com
-// BASE_LEVEL_UP_OPTIONS (3) + até +3 de "Arsenal Expandido" empilhado
-// (ver RunManager), o level-up pode oferecer até 6 cartas de uma vez;
-// numa linha só isso não cabe na tela (704px de largura), então a partir
-// de CARDS_PER_ROW+1 opções o layout vira grade em vez de fila única.
 const CARDS_PER_ROW = 3;
 
-// Carta "Restock" (evolução ARSENAL OVERRIDE): fica ao lado do baralho de
-// opções, não numa linha/coluna junto das outras — por isso tem largura
-// própria e o grid principal é deslocado pra deixar espaço pra ela na
-// direita (ver show()).
+// Carta "Restock" (evolução ARSENAL OVERRIDE): fica ao lado do baralho…
 const RESTOCK_W = 96;
 const RESTOCK_GAP = 22;
 
-// Visual da raridade (ver campo independente `rarity` em data/upgrades.js):
-// cor do contorno/nome da carta + ícone/rótulo mostrados no topo dela.
+// Visual da raridade (ver campo independente `rarity` em data/upgrades.…
 const RARITY_COLORS = { common: 0xe6e6e6, rare: 0x4fd1ff, epic: 0xb26bff };
 const RARITY_ICONS = { common: '⚪', rare: '🔵', epic: '🟣' };
 const RARITY_LABELS = { common: 'COMUM', rare: 'RARA', epic: 'ÉPICA' };
 
 // Som extra por evolução (id de data/upgrades.js -> chave carregada em
-// PreloadScene.js), tocado por cima do sfx_evolution_effect genérico em
-// _chooseEvolution — cada evolução nova só precisa de uma linha aqui.
 const EVOLUTION_SFX = {
   dog_purify_evo_cyberus: 'sfx_cyberus_wakeup',
   speed_up_evo_tornado: 'sfx_tornado',
@@ -43,9 +33,6 @@ const EVOLUTION_SFX = {
   armor_up_evo_shield: 'sfx_barreira',
   range_up_evo_katana_stray: 'sfx_corte_fantasma',
   // Overcharge é UM id só (dmg_up_evo_overcharge) reaproveitado pelas 3
-  // armas — só o `name` muda (Impacto Paralisante/Corte Neural/Munição
-  // EM, ver namesByWeapon em data/upgrades.js) — então um único som cobre
-  // as três
   dmg_up_evo_overcharge: 'sfx_overcharge',
   katana_shuriken_evo_shurivex: 'sfx_neoshuriken',
   pistol_drone_evo_catforce: 'sfx_catforce',
@@ -53,34 +40,17 @@ const EVOLUTION_SFX = {
 };
 
 // tamanho do quadrado de arte dentro da carta normal/evolução (ver
-// data/cardArt.js) — só desenhado se a textura 'card_<id>' foi carregada;
-// carta sem arte ainda fica exatamente como hoje, sem espaço reservado.
 const CARD_ART_SIZE = 56;
 const EVOLUTION_ART_SIZE = 72;
 
-/**
- * Mostra as cartas de progressão, pausa a física enquanto escolhe, aplica
- * a escolha via RunManager e despausa. Dois modos, dois eventos:
- *  - 'level-up' (show): as 3 opções normais de sempre.
- *  - 'evolution-ready' (showEvolution): UMA carta só, em destaque, forçada
- *    — nunca misturada com as opções normais (ver RunManager.chooseUpgrade).
- * Os dois reaproveitam o mesmo container e os mesmos eventos de
- * pause/resume ('levelup-opened'/'levelup-closed'), então GameScene não
- * precisa saber qual dos dois está na tela.
- */
+// Mostra as cartas de progressão, pausa a física enquanto escolhe, apli…
 export default class LevelUpUI {
-  /**
-   * @param {Phaser.Scene} scene
-   * @param {import('../roguelike/RunManager.js').default} runManager
-   */
   constructor(scene, runManager) {
     this.scene = scene;
     this.runManager = runManager;
     this.container = scene.add.container(0, 0).setDepth(300).setVisible(false);
     this._applyZoomCompensation(this.container);
     // limite do Restock: 1 uso por level-up (zera só quando um NOVO level-up
-    // abre — não em cada redesenho causado pelo próprio Restock, por isso
-    // fica fora de show() e é resetado aqui, no listener do evento).
     this._restockUsed = false;
 
     EventBus.on('level-up', ({ options }) => {
@@ -90,12 +60,7 @@ export default class LevelUpUI {
     EventBus.on('evolution-ready', ({ evolution }) => this.showEvolution(evolution));
   }
 
-  /**
-   * Mesmo bug/correção do HUD (ver HUD._applyZoomCompensation): a câmera
-   * zoomada no celular (GameScene._buildPlayer) também empurra as cartas
-   * de level-up pra fora da posição pensada em pixels de tela. Contra-
-   * escala o container e reposiciona pra cancelar o zoom só na UI.
-   */
+  // Mesmo bug/correção do HUD (ver HUD._applyZoomCompensation): a câmera
   _applyZoomCompensation(container) {
     const cam = this.scene.cameras.main;
     const zoom = cam.zoom || 1;
@@ -112,13 +77,9 @@ export default class LevelUpUI {
     const cy = this.scene.scale.height / 2;
     const hasRestock = !!this.runManager.runState.hasRestock;
     // com Restock ativo, o baralho normal é deslocado pra esquerda pra
-    // sobrar espaço fixo pra ela na direita (não é só mais uma carta na
-    // fila/grade das outras — ver RESTOCK_W/RESTOCK_GAP acima)
     const cx = hasRestock ? screenCx - (RESTOCK_W + RESTOCK_GAP) / 2 : screenCx;
 
     // quebra as opções em linhas de até CARDS_PER_ROW cartas, pra não
-    // estourar a largura da tela quando o level-up oferece mais de 3
-    // (ver comentário de CARDS_PER_ROW acima)
     const rows = [];
     for (let i = 0; i < options.length; i += CARDS_PER_ROW) {
       rows.push(options.slice(i, i + CARDS_PER_ROW));
@@ -154,13 +115,11 @@ export default class LevelUpUI {
     this.container.setVisible(true);
   }
 
-  /** Tela dedicada de evolução: uma carta só, sem escolha entre opções — só confirmação. */
+  // Tela dedicada de evolução: uma carta só, sem escolha entre opções — s…
   showEvolution(evolution) {
     this._openOverlay();
 
     // toca assim que a carta evoluída APARECE na tela (o jogador acabou de
-    // receber a evolução), não quando ele clica pra confirmar — antes o som
-    // estava em _chooseEvolution() e disparava no clique, não no recebimento
     this.scene.sound.play('sfx_evolution_effect', { volume: 0.6 });
 
     const cx = this.scene.scale.width / 2;
@@ -180,7 +139,7 @@ export default class LevelUpUI {
     this.container.setVisible(true);
   }
 
-  /** Comum a show() e showEvolution(): limpa a tela anterior e pausa o jogo. */
+  // Comum a show() e showEvolution(): limpa a tela anterior e pausa o jog…
   _openOverlay() {
     this.container.removeAll(true);
     this.scene.physics.pause();
@@ -199,9 +158,6 @@ export default class LevelUpUI {
     const group = this.scene.add.container(x, y);
 
     // com arte própria (ver data/cardArt.js), a imagem VIRA a carta inteira
-    // (igual à seleção de arma em WeaponSelectScene) — nada de painel de
-    // texto por baixo, já que a arte já traz nome/descrição/raridade
-    // desenhados nela. Sem arte, cai no layout antigo (texto + moldura).
     const artKey = `card_${upgrade.id}`;
     if (this.scene.textures.exists(artKey)) {
       const art = this.scene.add
@@ -251,8 +207,6 @@ export default class LevelUpUI {
       .setScrollFactor(0);
 
     // topo da carta: raridade sempre visível (ícone + rótulo); cartas
-    // exclusivas de arma ganham o sufixo "· EXCLUSIVA" na mesma linha em
-    // vez de uma segunda tag, pra não disputar espaço vertical com o nome
     const rarityLabel = RARITY_LABELS[rarity] ?? RARITY_LABELS.common;
     const tagText = isExclusive
       ? `${RARITY_ICONS[rarity]} ${rarityLabel} · EXCLUSIVA`
@@ -266,7 +220,7 @@ export default class LevelUpUI {
 
     bg.on('pointerover', () => {
       bg.setStrokeStyle(2, 0xffffff);
-      group.setScale(1.05); // mesmo efeito de "expandir" que a seleção de arma já tinha (WeaponSelectScene)
+      group.setScale(1.05); // mesmo efeito de "expandir" que a seleção de arma já tinha (WeaponSele…
       this.scene.sound.play('sfx_hover', { volume: 0.5 });
     });
     bg.on('pointerout', () => {
@@ -279,16 +233,13 @@ export default class LevelUpUI {
     return group;
   }
 
-  /** Carta única de evolução: maior, com brilho dourado, sem "rivais" ao lado. */
+  // Carta única de evolução: maior, com brilho dourado, sem "rivais" ao l…
   _buildEvolutionCard(x, y, evolution) {
     const w = CARD_W * 1.3;
     const h = CARD_H * 1.15;
     const group = this.scene.add.container(x, y);
 
     // mesma arte da carta base (ver data/cardArt.js) — a evolução usa o
-    // id dela mesma (ex.: 'hp_up_evo_colosso'), não o id da carta base.
-    // Com arte própria, ela vira a carta inteira (mesmo esquema de
-    // _buildCard) em vez de um ícone pequeno sobre o painel de texto.
     const artKey = `card_${evolution.id}`;
     if (this.scene.textures.exists(artKey)) {
       const glow = this.scene.add.rectangle(0, 0, w + 18, h + 18, 0xffd166, 0.22).setScrollFactor(0);
@@ -354,17 +305,10 @@ export default class LevelUpUI {
     return group;
   }
 
-  /**
-   * Carta especial da evolução ARSENAL OVERRIDE: fica plantada ao lado do
-   * baralho normal (não é uma opção de upgrade), altura igual ao bloco
-   * inteiro de cartas normais, e ao clicar sorteia as opções de novo SEM
-   * fechar/pausar/despausar (a tela já está pausada — só troca as cartas).
-   */
+  // Carta especial da evolução ARSENAL OVERRIDE: fica plantada ao lado do
   _buildRestockCard(x, y, h) {
     const group = this.scene.add.container(x, y);
     // 1 uso por level-up (ver this._restockUsed) — esgotada, a carta fica
-    // acinzentada e sem clique em vez de simplesmente sumir, pra deixar
-    // claro que ela existe mas já foi gasta nesta tela.
     const used = this._restockUsed;
     const accent = used ? 0x555f66 : 0x4fd1ff;
 
@@ -414,11 +358,7 @@ export default class LevelUpUI {
     return group;
   }
 
-  /**
-   * Reamostra as opções do level-up atual e redesenha a tela (mantém
-   * pausado). Limitado a 1 uso por level-up — marca `_restockUsed` ANTES de
-   * chamar show() de novo, pra a carta já nascer desabilitada no redesenho.
-   */
+  // Reamostra as opções do level-up atual e redesenha a tela (mantém
   _restock() {
     if (this._restockUsed) return;
     const options = this.runManager.rerollOptions();
@@ -430,12 +370,6 @@ export default class LevelUpUI {
   _choose(upgrade) {
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
     // chooseUpgrade() pode, de forma síncrona, emitir 'evolution-ready' e
-    // portanto chamar showEvolution() (que já reabre o overlay com a carta
-    // de evolução). Esse era o bug: fechar aqui incondicionalmente destruía
-    // a carta de evolução um instante depois dela aparecer, então o
-    // jogador nunca via/clicava nela e a evolução nunca era confirmada.
-    // Só fecha se NÃO houver evolução pendente — showEvolution() cuida do
-    // resto e quem fecha, ao confirmar, é _chooseEvolution().
     const evolutionTriggered = this.runManager.chooseUpgrade(upgrade);
     if (!evolutionTriggered) {
       this._close();
@@ -445,8 +379,6 @@ export default class LevelUpUI {
   _chooseEvolution(evolution) {
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
     // sfx_evolution_effect agora toca em showEvolution() (quando a carta
-    // aparece), não mais aqui no clique de confirmação
-    // som extra específico desta evolução, por cima do clique normal
     const extraSfx = EVOLUTION_SFX[evolution.id];
     if (extraSfx) this.scene.sound.play(extraSfx, { volume: 0.7 });
     this.runManager.confirmEvolution(evolution);

@@ -1,64 +1,34 @@
-// Volume da música de fundo (0 a 1) e duração do fade ao trocar de faixa.
+// Volume da música de fundo (0 a 1) e duração do fade ao trocar de faix…
 const MUSIC_VOLUME = 0.4;
 const FADE_MS = 600;
 // fade ao PARAR de vez (ex.: menu -> início da run, sem música de
-// gameplay pronta ainda) — mais lento que a troca entre faixas, pedido
-// explicitamente em 3s pra não cortar seco.
 const STOP_FADE_MS = 3000;
 // volume da trilha da tela de cartas (level-up/evolução) — mais baixa e
-// suave que a música de jogo normal, ver duckForCards().
 const CARD_MUSIC_VOLUME = 0.22;
 
-/**
- * Toca a música de fundo do jogo (menu e run) com fade entre as trocas de
- * cena. Singleton (mesmo padrão do EventBus.js) porque precisa lembrar
- * qual faixa está tocando MESMO quando a cena muda (MainMenuScene ->
- * WeaponSelectScene -> GameScene) — o som do Phaser já é global por
- * padrão (this.sys.game.sound), então isto é só um controle fino em cima
- * disso: não reinicia a mesma faixa do zero, e cross-fada ao trocar.
- *
- * Chaves esperadas (ver PreloadScene): 'music_menu', 'music_game'. Os
- * .mp3 ainda não foram adicionados pela Ketlin — até lá, play() não faz
- * nada (silencioso, sem quebrar o jogo). Basta salvar os arquivos em
- * assets/music/ com o nome certo e descomentar as duas linhas em
- * PreloadScene.preload(); nenhum outro lugar do código precisa mudar.
- */
+// Toca a música de fundo do jogo (menu e run) com fade entre as trocas…
 class MusicManager {
   constructor() {
     this.currentKey = null;
     this.currentSound = null;
     // trilha da tela de cartas tocando por cima da música de jogo
-    // "abaixada" (não parada), ver duckForCards()/restoreFromCards()
     this.duckedSound = null;
     // guarda de idempotência da entrada do Boss (ver duckForBoss/
-    // restoreFromBoss) — evento único, mas não custa garantir
     this._bossDucked = false;
   }
 
-  /**
-   * @param {Phaser.Scene} scene - cena atual (só usada pra ter acesso a
-   *   scene.sound/scene.tweens/scene.cache; a faixa em si sobrevive à
-   *   troca de cena)
-   * @param {string} key - 'music_menu' ou 'music_game'
-   */
+  // scene.sound/scene.tweens/scene.cache; a faixa em si sobrevive à
   play(scene, key) {
     if (this.currentKey === key) return; // já é a faixa tocando, não reinicia
 
     if (!scene.cache.audio.exists(key)) {
       // faixa ainda não adicionada (ver PreloadScene) — não fica tocando
-      // a anterior pra sempre, desliga ela com fade de 3s. Assim que o
-      // arquivo chegar e for carregado, isto passa a trocar de faixa
-      // normalmente sozinho, sem precisar mexer aqui de novo.
       this.stop(scene, STOP_FADE_MS);
       return;
     }
 
     if (scene.sound.locked) {
       // navegador bloqueia autoplay de áudio até o primeiro clique/toque
-      // em QUALQUER lugar da página — sem isso, a música tenta tocar aqui,
-      // fica muda, e só "começa" de verdade na cena onde o clique
-      // acontece (ex.: o próprio botão de Jogar). Agenda pra tocar assim
-      // que destravar, em vez de simplesmente desistir.
       scene.sound.once(Phaser.Sound.Events.UNLOCKED, () => this.play(scene, key));
       return;
     }
@@ -81,14 +51,7 @@ class MusicManager {
     this.currentSound = sound;
   }
 
-  /**
-   * Some com a música atual (fade) sem tocar outra no lugar. Usada
-   * automaticamente por play() quando a faixa pedida ainda não existe,
-   * mas também dá pra chamar direto (ex.: tela de vitória, se quiser
-   * silêncio total).
-   * @param {Phaser.Scene} scene
-   * @param {number} [fadeMs] - duração do fade; padrão 3s
-   */
+  // Some com a música atual (fade) sem tocar outra no lugar. Usada
   stop(scene, fadeMs = STOP_FADE_MS) {
     if (!this.currentSound) return;
     const old = this.currentSound;
@@ -102,20 +65,7 @@ class MusicManager {
     this.currentSound = null;
   }
 
-  /**
-   * Tela de cartas (level-up/evolução) abriu: a música de jogo dá fade
-   * out e a trilha da tela de cartas (mais baixa/suave) dá fade in por
-   * cima. Chamado a cada 'levelup-opened' (ver GameScene) — idempotente
-   * (this.duckedSound já setado) porque esse evento pode disparar mais de
-   * uma vez na mesma sessão aberta (Restock redesenhando as opções,
-   * evolução encadeada logo depois de escolher upgrade).
-   *
-   * NÃO usa play()/stop() na música de jogo (que destroem e recriam a
-   * faixa do zero): só abaixa o volume dela sem pausar/parar de verdade —
-   * ela continua tocando, muda, por baixo. Por isso restoreFromCards()
-   * consegue trazê-la de volta "de onde estava", nunca do começo.
-   * @param {Phaser.Scene} scene
-   */
+  // Tela de cartas (level-up/evolução) abriu: a música de jogo dá fade
   duckForCards(scene) {
     if (this.duckedSound) return; // já ducked (chamada repetida do mesmo open)
     if (!this.currentSound) return; // sem música de jogo tocando, nada a abaixar
@@ -129,13 +79,7 @@ class MusicManager {
     this.duckedSound = overlay;
   }
 
-  /**
-   * Tela de cartas fechou: a trilha dela dá fade out (e para/destrói) e a
-   * música de jogo volta com fade in, direto de onde estava tocando
-   * (nunca foi parada de verdade, ver duckForCards() acima). Idempotente
-   * igual duckForCards() — só desfaz se realmente havia algo ducked.
-   * @param {Phaser.Scene} scene
-   */
+  // Tela de cartas fechou: a trilha dela dá fade out (e para/destrói) e a
   restoreFromCards(scene) {
     if (!this.duckedSound) return;
     const overlay = this.duckedSound;
@@ -153,17 +97,7 @@ class MusicManager {
     }
   }
 
-  /**
-   * Entrada do Boss (ver SpawnDirector._startBossTensionBuildup): a
-   * música de jogo vai sumindo aos poucos ("cada vez mais distante") no
-   * mesmo ritmo do escurecimento da tela — por isso recebe a duração de
-   * fora (BOSS_SILENCE_MS) em vez de usar FADE_MS fixo. Sem trilha
-   * substituta por cima (diferente de duckForCards): aqui o silêncio É o
-   * efeito. Idempotente (this._bossDucked) — o evento do boss é único,
-   * mas não custa nada garantir.
-   * @param {Phaser.Scene} scene
-   * @param {number} durationMs
-   */
+  // Entrada do Boss (ver SpawnDirector._startBossTensionBuildup): a
   duckForBoss(scene, durationMs) {
     if (this._bossDucked) return;
     if (!this.currentSound) return;
@@ -171,13 +105,7 @@ class MusicManager {
     scene.tweens.add({ targets: this.currentSound, volume: 0, duration: durationMs, ease: 'Sine.easeIn' });
   }
 
-  /**
-   * Fim da entrada do Boss (ver SpawnDirector._triggerBossEntrance): a
-   * música de jogo volta, de onde estava tocando, junto do momento em que
-   * o Minotauro nasce de verdade.
-   * @param {Phaser.Scene} scene
-   * @param {number} [durationMs]
-   */
+  // Fim da entrada do Boss (ver SpawnDirector._triggerBossEntrance): a
   restoreFromBoss(scene, durationMs = FADE_MS) {
     if (!this._bossDucked) return;
     this._bossDucked = false;

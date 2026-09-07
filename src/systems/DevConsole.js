@@ -1,26 +1,7 @@
 import EventBus from './EventBus.js';
 
-/**
- * Console de debug/hack: F9 abre uma caixa de texto (elemento HTML de
- * verdade sobre o canvas — não dá pra digitar texto direto no Phaser sem
- * reimplementar um teclado inteiro) onde dá pra digitar comandos.
- *
- * Toda a validação de regras (carta existe? é da classe certa? já foi
- * pega?) mora em RunManager.cheatGiveCard/cheatListCards — este arquivo só
- * lê o comando, chama o método certo e mostra o resultado. Isso garante
- * que uma carta exclusiva de outra arma continua impossível de pegar,
- * porque é a MESMA checagem que o level-up normal usa.
- *
- * Existe só pra testes/demonstração — nunca é chamado pelo fluxo normal
- * do jogo, e cada instância é presa à GameScene que a criou (destruída no
- * shutdown dela, ver construtor) pra não acumular listeners de partidas
- * anteriores quando o jogador reinicia com R.
- */
+// Console de debug/hack: F9 abre uma caixa de texto (elemento HTML de
 export default class DevConsole {
-  /**
-   * @param {Phaser.Scene} scene - GameScene atual
-   * @param {import('../roguelike/RunManager.js').default} runManager
-   */
   constructor(scene, runManager) {
     this.scene = scene;
     this.runManager = runManager;
@@ -49,8 +30,6 @@ export default class DevConsole {
 
   open() {
     // não abre em cima da tela de escolha de carta do level-up — os dois
-    // usam o mesmo pause (physics.pause/timeScale/'levelup-opened') e
-    // fechar um por cima do outro deixaria o jogo destravado errado
     if (this.scene.levelUpUI?.container?.visible) return;
     if (this.isOpen) return;
 
@@ -93,7 +72,6 @@ export default class DevConsole {
 
   _onInputKeydown(e) {
     // impede que o EventBus/Phaser vejam essas teclas (ex.: barra de
-    // espaço não deve disparar ataque enquanto o jogador digita)
     e.stopPropagation();
     if (e.key !== 'Enter') return;
 

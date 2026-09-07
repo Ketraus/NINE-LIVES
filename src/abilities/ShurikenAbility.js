@@ -2,44 +2,21 @@ import DamageSystem from '../combat/DamageSystem.js';
 
 const BULLET_LIFETIME_MS = 1500;
 const DEFAULT_PROJECTILE_SPEED = 380;
-// intervalo entre cada shuriken dentro da MESMA rajada (ver _fireVolley) —
-// "uma atrás da outra, só que rápido": não é o mesmo frame, mas também não
-// espera o cooldown inteiro de novo entre elas.
+// intervalo entre cada shuriken dentro da MESMA rajada (ver _fireVolley…
 const VOLLEY_STAGGER_MS = 120;
 // giro contínuo do shuriken no ar (puramente visual, não mexe na
-// velocity/hitbox) — duração de uma volta completa
 const SPIN_DURATION_MS = 260;
 
 const SHURIKEN_COLOR = 0xd9d9e6;
 const SHURIKEN_TEX_SIZE = 16;
 
 // Visual/feedback da evolução "Shurivex" (ver upgrade()) — rastro cyber
-// roxo, mesma técnica de "fantasmas" desbotando que o laser do GatoDrone
-// evoluído usa (ver DroneAbility._attachLaserTrail).
 const CHAIN_COLOR_DEFAULT = 0xb26bff;
 const TRAIL_INTERVAL_MS = 45;
 const CHAIN_SPARK_COUNT = 5;
 
-/**
- * Habilidade exclusiva da Katana (carta "katana_shuriken"): a cada
- * this.def.cooldownMs, arremessa `this.volleyCount` shurikens, um logo
- * atrás do outro (VOLLEY_STAGGER_MS de intervalo, não todos no mesmo
- * frame). Cada cópia extra da carta soma +1 shuriken por rajada (ver
- * restack) em vez de somar mais uma instância rodando em paralelo — mesmo
- * padrão de SlamAbility.
- *
- * Não evoluída: cada shuriken mira um inimigo próximo DIFERENTE, acerta e
- * some (só repete alvo se não houver inimigos suficientes por perto).
- * Evoluída (evolução "Shurivex" — ver upgrade()): mesma lógica de mira
- * (um inimigo diferente por shuriken, repetindo só quando faltam alvos),
- * mas ao acertar, cada shuriken salta pra um segundo alvo próximo em vez
- * de sumir.
- *
- * Mesma interface que as outras habilidades (update(time, player,
- * enemyGroup, scene)).
- */
+// Habilidade exclusiva da Katana (carta "katana_shuriken"): a cada
 export default class ShurikenAbility {
-  /** @param {object} def - entrada de data/upgrades.js (type: "unlockAbility") */
   constructor(def) {
     this.def = def;
     this.lastMs = 0;
@@ -48,29 +25,16 @@ export default class ShurikenAbility {
     this.scene = null;
 
     // ligado por upgrade() quando Shurivex é confirmada — ver
-    // AbilityManager._upgrade / RunManager effect "upgradeAbility"
     this.evolved = false;
     this.chainColor = CHAIN_COLOR_DEFAULT;
   }
 
-  /**
-   * Chamado a cada cópia extra da carta (até 4, ver data/upgrades.js
-   * maxStacks) — em vez de outra instância arremessando em paralelo no
-   * mesmo cooldown, a MESMA habilidade passa a jogar mais um shuriken por
-   * rajada.
-   */
+  // Chamado a cada cópia extra da carta (até 4, ver data/upgrades.js
   restack() {
     this.volleyCount += 1;
   }
 
-  /**
-   * Chamado pela evolução Shurivex (upgradeAbility, não unlockAbility —
-   * ver AbilityManager._upgrade): melhora ESTA habilidade que já existe.
-   * Cooldown/dano/alcance (this.def) não são tocados — só o comportamento
-   * de mira (converge no primeiro alvo, ver _findNearbyTargets) e o de
-   * impacto (salta pra um segundo alvo em vez de sumir, ver _create) e o
-   * visual (tint + rastro roxo, ver _throw).
-   */
+  // Chamado pela evolução Shurivex (upgradeAbility, não unlockAbility —
   upgrade(def) {
     this.evolved = true;
     this.chainColor = def.chainColor ?? CHAIN_COLOR_DEFAULT;
@@ -92,7 +56,6 @@ export default class ShurikenAbility {
     this.bulletGroup = scene.physics.add.group();
     scene.physics.add.overlap(this.bulletGroup, enemyGroup, (bullet, enemy) => {
       // hitSet evita o mesmo shuriken acertar o mesmo inimigo 2x seguidas
-      // (overlap dispara todo frame enquanto os corpos se sobrepõem)
       const hitSet = bullet.getData('hitSet');
       if (hitSet.has(enemy)) return;
       hitSet.add(enemy);
@@ -100,9 +63,6 @@ export default class ShurikenAbility {
       DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player, scene.time.now);
 
       // Shurivex: ainda tem 1 salto disponível -> procura um segundo alvo
-      // próximo (que este shuriken ainda não acertou) e redireciona pra
-      // ele em vez de sumir. Sem alvo pra saltar (ou não evoluída, 0
-      // saltos), o shuriken se consome normalmente no impacto.
       const chainsLeft = bullet.getData('chainsLeft');
       if (chainsLeft > 0) {
         const next = this._findChainTarget(enemy, enemyGroup, hitSet);
@@ -118,15 +78,7 @@ export default class ShurikenAbility {
     scene.mapManager?.addCollider(this.bulletGroup, (bullet) => bullet.destroy());
   }
 
-  /**
-   * Alvos pra uma rajada de `count` shurikens — mesma lógica pra
-   * não evoluída e pra Shurivex: até `count` inimigos DIFERENTES dentro de
-   * def.range, mais próximos primeiro. Só repete um inimigo (ciclando pela
-   * lista de candidatos, começando pelo mais próximo) quando não há
-   * inimigos suficientes por perto pra cobrir toda a rajada. Na Shurivex é
-   * o impacto de cada shuriken que depois salta pra um segundo alvo (ver
-   * _create), não a mira inicial.
-   */
+  // Alvos pra uma rajada de `count` shurikens — mesma lógica pra
   _findNearbyTargets(player, enemyGroup, count) {
     const candidates = [];
     enemyGroup.children.iterate((enemy) => {
@@ -144,8 +96,7 @@ export default class ShurikenAbility {
     return targets;
   }
 
-  /** Inimigo vivo mais próximo de `fromEnemy`, dentro de def.range, que
-   * `hitSet` ainda não contém — usado só pelo salto da Shurivex. */
+  // Inimigo vivo mais próximo de `fromEnemy`, dentro de def.range, que
   _findChainTarget(fromEnemy, enemyGroup, hitSet) {
     let nearest = null;
     let nearestDist = this.def.range;
@@ -160,16 +111,14 @@ export default class ShurikenAbility {
     return nearest;
   }
 
-  /** Recalcula a velocity do shuriken a partir da posição ATUAL dele (não
-   * da do inimigo que acabou de acertar) rumo ao próximo alvo do salto. */
+  // Recalcula a velocity do shuriken a partir da posição ATUAL dele (não
   _redirect(scene, bullet, next) {
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
     const dir = new Phaser.Math.Vector2(next.x - bullet.x, next.y - bullet.y).normalize();
     bullet.setVelocity(dir.x * speed, dir.y * speed);
   }
 
-  /** Arremessa um shuriken por alvo, espaçados por VOLLEY_STAGGER_MS —
-   * "um atrás do outro, rápido" em vez de uma saraivada no mesmo instante. */
+  // Arremessa um shuriken por alvo, espaçados por VOLLEY_STAGGER_MS —
   _fireVolley(scene, player, targets) {
     targets.forEach((target, i) => {
       scene.time.delayedCall(i * VOLLEY_STAGGER_MS, () => {
@@ -193,7 +142,6 @@ export default class ShurikenAbility {
     bullet.setData('damage', this.def.damage);
     bullet.setData('hitSet', new Set());
     // 1 salto disponível pra shurikens evoluídos (Shurivex); 0 = se
-    // consome no primeiro impacto, igual à Shuriken base
     bullet.setData('chainsLeft', this.evolved ? 1 : 0);
 
     // giro contínuo no ar — puro visual (rotation), não mexe na velocity
@@ -207,7 +155,6 @@ export default class ShurikenAbility {
 
     if (this.evolved) {
       // visual mais "cyber": tint roxo + brilho + rastro de fantasmas
-      // desbotando atrás do shuriken enquanto ele voa/salta
       bullet.setTint(this.chainColor);
       if (bullet.preFX) bullet.preFX.addGlow(this.chainColor, 0, 1.2, false, 0.2, 5);
       this._attachTrail(scene, bullet, this.chainColor);
@@ -216,10 +163,7 @@ export default class ShurikenAbility {
     scene.time.delayedCall(BULLET_LIFETIME_MS, () => bullet.destroy());
   }
 
-  /** Rastro de "fantasmas" desbotando atrás do shuriken enquanto ele viaja
-   * — mesma técnica do laser evoluído do GatoDrone (ver
-   * DroneAbility._attachLaserTrail), só que reaproveitando a própria
-   * textura do shuriken (girando também) em vez do hit_fx esticado. */
+  // Rastro de "fantasmas" desbotando atrás do shuriken enquanto ele viaja
   _attachTrail(scene, bullet, color) {
     scene.time.addEvent({
       delay: TRAIL_INTERVAL_MS,
@@ -245,8 +189,7 @@ export default class ShurikenAbility {
     });
   }
 
-  /** Faísca roxa no instante do salto (Shurivex) — marca bem o "pulo" de
-   * um inimigo pro outro, mesma técnica de DroneAbility._spawnHitSpark. */
+  // Faísca roxa no instante do salto (Shurivex) — marca bem o "pulo" de
   _spawnChainSpark(scene, x, y) {
     for (let i = 0; i < CHAIN_SPARK_COUNT; i++) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -272,14 +215,7 @@ export default class ShurikenAbility {
     }
   }
 
-  /**
-   * Desenha (uma única vez, com Graphics + generateTexture) a textura do
-   * shuriken: 4 pontas partindo de um núcleo — silhueta reconhecível de
-   * "estrela ninja" mesmo pequena e girando rápido. Cacheada em
-   * scene.textures, gerada só no primeiro arremesso da run. O tint (cor
-   * base cinza ou roxo cyber da Shurivex) é aplicado depois, em cima
-   * desta textura neutra — ver _throw.
-   */
+  // Desenha (uma única vez, com Graphics + generateTexture) a textura do
   _ensureTexture(scene) {
     const key = 'fx_shuriken';
     if (scene.textures.exists(key)) return key;
@@ -290,7 +226,6 @@ export default class ShurikenAbility {
 
     g.fillStyle(SHURIKEN_COLOR, 1);
     // 4 pontas (losangos) em cruz, cada uma desenhada como um triângulo
-    // saindo do centro até a borda, alternando entre eixo X e Y
     const tip = s * 0.5;
     const wing = s * 0.16;
     [

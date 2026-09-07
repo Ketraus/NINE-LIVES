@@ -3,9 +3,7 @@ import AllyDog from '../entities/AllyDog.js';
 
 const FOLLOW_STOP_DIST = 50; // não fica colado no jogador, dá um respiro visual
 
-// Posição de "escolta" de cada cópia relativa ao jogador — até 3 cachorros
-// (carta Purificação, maxStacks: 3 em data/upgrades.js) se espalham em vez
-// de ficar todos empilhados no mesmo pixel atrás do jogador.
+// Posição de "escolta" de cada cópia relativa ao jogador — até 3 cachor…
 const FORMATION_OFFSETS = [
   { x: -26, y: 20 },
   { x: -44, y: -8 },
@@ -13,84 +11,45 @@ const FORMATION_OFFSETS = [
 ];
 
 // Posição de escolta do Cyberus já fundido (1 cachorro só, maior) — mais
-// central que os offsets de formação acima, que foram pensados pra
-// espalhar 3 cachorros pequenos.
 const CYBERUS_OFFSET = { x: -34, y: 6 };
 
 // Visual da poça de chamas azuis da granada (1ª cabeça do Cyberus,
-// evolução "Cyberus" — dog_purify_evo_cyberus). Fica aqui (não em
-// data/upgrades.js) por ser puramente estético, mesmo padrão do
-// TORNADO_COLOR em TornadoAbility.js.
 const FLAME_COLOR = 0x33bbff;
 const FLAME_FADE_OUT_RATIO = 0.35;
 const FLAME_FADE_BLINK_INTERVAL_MS = 90;
 
-// Visual do laser da 3ª cabeça do Cyberus: roxo bem escuro por fora, núcleo
-// mais claro por dentro — fica aqui (não em data/upgrades.js) pelo mesmo
-// motivo do FLAME_COLOR acima, é puramente estético.
+// Visual do laser da 3ª cabeça do Cyberus: roxo bem escuro por fora, nú…
 const CANNON_COLOR_OUTER = 0x2a0845;
 const CANNON_COLOR_CORE = 0xd9a3ff;
 const CANNON_BEAM_DURATION_MS = 140; // curto de propósito: parecer descarga, não feixe contínuo
 
-// Projétil da granada em voo (arremesso de verdade: sai do cachorro, viaja
-// pelo ar, e só explode — cria a poça de chamas — ao ENCOSTAR num inimigo
-// ou ao terminar o trajeto). Puramente estético/timing, por isso também
-// fica aqui e não em data/upgrades.js.
+// Projétil da granada em voo (arremesso de verdade: sai do cachorro, vi…
 const GRENADE_PROJECTILE_SPEED = 480; // px/s — mais rápido que o cachorro anda, é um arremesso
 const GRENADE_PROJECTILE_RADIUS = 7;
-const GRENADE_HIT_RADIUS = 20; // raio de detecção em voo: qualquer inimigo que encostar aqui detona a granada
-const GRENADE_ARC_HEIGHT = 18; // "salto" visual do arremesso — puramente estético, offset renderizado em y
+const GRENADE_HIT_RADIUS = 20; // raio de detecção em voo: qualquer inimigo que encostar aqui detona a…
+const GRENADE_ARC_HEIGHT = 18; // "salto" visual do arremesso — puramente estético, offset renderizado…
 const GRENADE_MIN_TRAVEL_MS = 150;
 const GRENADE_MAX_TRAVEL_MS = 900;
 
 // Comportamento "frio" do Cyberus: depois de atacar um inimigo (com
-// qualquer uma das 3 cabeças), esse alvo fica "esfriando" por um tempo — o
-// cachorro prefere ir pro próximo inimigo livre em vez de ficar preso
-// batendo repetidamente no mesmo (ver _findNearestEnemy/_markAttacked).
-// Não se aplica ao cachorro normal (pré-evolução), só ao Cyberus.
 const TARGET_COOLDOWN_MS = 900;
 
-/**
- * Habilidade da carta base épica "Purificação" (dog_purify): nasce um
- * cachorro aliado ao lado do jogador que persiste pro resto da run. Mesma
- * interface que SlamAbility/DroneAbility (update(time, player, enemyGroup,
- * scene)) — é o que permite AbilityManager tratar ela igual às outras,
- * sem precisar saber o que tem "dentro" dela.
- *
- * Comportamento simples de propósito ("por enquanto", como pedido):
- *  - se houver algum inimigo dentro de def.engageRadius, persegue o mais
- *    próximo e causa dano de contato nele (reaproveita DamageSystem.
- *    applyContactDamage, o mesmo mecanismo que os inimigos usam contra o
- *    jogador, só que invertido: aqui o cachorro é o atacante).
- *  - senão, segue o jogador a uma distância curta.
- * O dano do cachorro NÃO conta pra "Sanguessuga" (lifesteal) — ele é um
- * aliado próprio, com dano próprio, não uma extensão do jogador (ao
- * contrário de espinhos/soco/drone, que já eram habilidades do próprio
- * jogador antes desta carta existir).
- */
+// Habilidade da carta base épica "Purificação" (dog_purify): nasce um
 export default class AllyDogAbility {
-  /**
-   * @param {object} def - entrada de data/upgrades.js (type: "unlockAbility")
-   * @param {number} [formationIndex] - 0 pro 1º cachorro, 1 pro 2º, etc.
-   *   (ver AbilityManager._unlock) — define o offset de escolta usado.
-   */
+  // (ver AbilityManager._unlock) — define o offset de escolta usado.
   constructor(def, formationIndex = 0) {
     this.def = def;
     this.dog = null;
     this.offset = FORMATION_OFFSETS[formationIndex % FORMATION_OFFSETS.length];
 
     // Dados combinados das cabeças já ligadas do Cyberus (granada +
-    // espada), ligado por upgrade() quando a evolução "Cyberus" é
-    // confirmada — ver AbilityManager._upgrade / RunManager effect
-    // "upgradeAbility". Sem ele, comportamento de sempre (só
-    // perseguir/contato).
     this.evoDef = null;
     this.lastGrenadeMs = 0;
     this.lastSwordMs = 0;
     this.lastCannonMs = 0;
     this.flameZones = []; // { x, y, spawnMs, lastTickMs, fx }
     this.grenadesInFlight = []; // { fx, startX, startY, targetX, targetY, startMs, durationMs }
-    this.recentTargets = new Map(); // enemy -> timestamp do último ataque (só usado com evoDef, ver _findNearestEnemy)
+    this.recentTargets = new Map(); // enemy -> timestamp do último ataque (só usado com evoDef, ver _findNe…
   }
 
   update(time, player, enemyGroup, scene) {
@@ -98,9 +57,6 @@ export default class AllyDogAbility {
     if (!this.dog.active) return;
 
     // Reafirma a aparência do Cyberus a cada frame (não só no instante da
-    // fusão) — becomeCyberus() é idempotente, então isto não tem custo real
-    // depois da 1ª aplicação, mas garante que a cor cinza/tamanho maior
-    // sempre "pegam", mesmo se a 1ª tentativa tivesse falhado silenciosa.
     if (this.evoDef) this.dog.becomeCyberus();
 
     const speed = this.evoDef?.cyberusSpeed ?? this.def.speed;
@@ -109,9 +65,6 @@ export default class AllyDogAbility {
       this.dog.moveToward(target, speed);
 
       // O Cyberus não "morde" mais: sem dano de contato pós-evolução, só as
-      // 3 cabeças (granada/espada/canhão) — ver _updateGrenade/_updateSword/
-      // _updateCannon abaixo. O cachorro normal (pré-evolução) continua
-      // batendo por contato como sempre.
       if (!this.evoDef) {
         const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
         if (dist <= this.def.contactRange) {
@@ -129,24 +82,14 @@ export default class AllyDogAbility {
     }
   }
 
-  /** Liga as cabeças já obtidas do Cyberus (granada + espada) e aplica o
-   *  visual de fusão (cachorro maior e cinza) nesta cópia — chamado só na
-   *  instância sobrevivente, ver mergeOnUpgrade abaixo. */
+  // Liga as cabeças já obtidas do Cyberus (granada + espada) e aplica o
   upgrade(def) {
     this.evoDef = def;
     this.dog?.becomeCyberus();
     this.offset = CYBERUS_OFFSET;
   }
 
-  /** Extension point lido por AbilityManager._upgrade: quando "Purificação"
-   *  evolui pra Cyberus, as até-3 AllyDogAbility ativas (uma por cópia)
-   *  precisam virar UM cachorro só, maior e cinza — a fusão visual dos 3
-   *  cachorros num Cyberus, em vez de 3 cachorros ciano soltos como era
-   *  antes desta correção. Mantém a primeira instância (com seu AllyDog já
-   *  existente) como sobrevivente, destrói o AllyDog das outras e as
-   *  remove — AbilityManager troca `this.active` pelo array devolvido
-   *  aqui. Cabeça 3 do Cyberus fica pra depois: por ora ele segue sendo
-   *  controlado por esta mesma AllyDogAbility, só com o evoDef ligado. */
+  // Extension point lido por AbilityManager._upgrade: quando "Purificação"
   static mergeOnUpgrade(instances, def) {
     const [survivor, ...extras] = instances;
 
@@ -160,12 +103,7 @@ export default class AllyDogAbility {
     return [survivor];
   }
 
-  /** A cada grenadeCooldownMs, se houver um inimigo à vista dentro de
-   *  grenadeRange, arremessa a granada nele — o projétil viaja pelo ar e só
-   *  explode (cria a poça de chamas azuis) ao encostar num inimigo ou ao
-   *  fim do trajeto, ver _advanceGrenadesInFlight/_launchGrenade. A poça
-   *  causa dano contínuo a quem entrar/ficar dentro dela — mesmo padrão de
-   *  zona persistente que TornadoAbility usa. */
+  // A cada grenadeCooldownMs, se houver um inimigo à vista dentro de
   _updateGrenade(time, target, enemyGroup, scene) {
     this._advanceFlameZones(time, enemyGroup);
     this._advanceGrenadesInFlight(time, enemyGroup, scene);
@@ -180,12 +118,7 @@ export default class AllyDogAbility {
     this._launchGrenade(scene, target.x, target.y, time);
   }
 
-  /** Cria o projétil visual (bolinha) que sai do cachorro e viaja em linha
-   *  reta até o ponto mirado (com um leve arco pra "ler" como arremesso,
-   *  não deslizamento). A duração escala com a distância, dentro de um
-   *  teto mín/máx pra não ficar nem instantâneo nem eterno em alcances
-   *  extremos. A explosão em si só acontece em _advanceGrenadesInFlight,
-   *  quando o projétil encosta em alguém ou termina o trajeto. */
+  // Cria o projétil visual (bolinha) que sai do cachorro e viaja em linha
   _launchGrenade(scene, targetX, targetY, time) {
     scene.sound.play('sfx_cyberus_click', { volume: 0.6 });
 
@@ -206,16 +139,12 @@ export default class AllyDogAbility {
     this.grenadesInFlight.push({ fx, startX, startY, targetX, targetY, startMs: time, durationMs });
   }
 
-  /** Move cada granada em voo (interpolação manual, não Phaser.tweens, pra
-   *  poder checar contato com inimigos a cada frame) e detona a que
-   *  encostar em algum inimigo — ou, se não encostar em ninguém, a que
-   *  completar o trajeto até o ponto mirado originalmente. */
+  // Move cada granada em voo (interpolação manual, não Phaser.tweens, pra
   _advanceGrenadesInFlight(time, enemyGroup, scene) {
     this.grenadesInFlight = this.grenadesInFlight.filter((g) => {
       const progress = Math.min((time - g.startMs) / g.durationMs, 1);
       g.fx.x = Phaser.Math.Linear(g.startX, g.targetX, progress);
       // arco: sobe no meio do trajeto e volta a "aterrissar" no fim —
-      // puramente visual, offset de y por cima da linha reta
       g.fx.y = Phaser.Math.Linear(g.startY, g.targetY, progress) - Math.sin(progress * Math.PI) * GRENADE_ARC_HEIGHT;
 
       const hitEnemy = this._findEnemyNear(g.fx.x, g.fx.y, GRENADE_HIT_RADIUS, enemyGroup);
@@ -229,10 +158,7 @@ export default class AllyDogAbility {
     });
   }
 
-  /** Cria a poça de chamas persistente no ponto de detonação — chamado só
-   *  daqui pra frente por _advanceGrenadesInFlight, nunca direto de
-   *  _updateGrenade (a explosão agora depende do voo do projétil, não do
-   *  instante do arremesso). */
+  // Cria a poça de chamas persistente no ponto de detonação — chamado só
   _explodeGrenade(scene, x, y, time) {
     scene.sound.play('sfx_cyberus_explosion', { volume: 0.6 });
 
@@ -240,14 +166,7 @@ export default class AllyDogAbility {
     this.flameZones.push({ x, y, spawnMs: time, lastTickMs: 0, fx });
   }
 
-  /** 2ª cabeça do Cyberus: um golpe de espada em arco na direção do alvo,
-   *  mesmo teste geométrico (ângulo dentro de um leque) que a katana do
-   *  jogador usa em Weapon._fireArc, só que partindo do próprio cachorro
-   *  e num azul bem mais escuro (def.swordTint) — cor de identidade desta
-   *  cabeça, diferente do azul claro da poça de chamas da 1ª. Só ativa
-   *  quando o cachorro já está engajado com um alvo dentro do alcance da
-   *  espada (mesmo `target` do ataque de contato) — sem alvo, sem pra
-   *  onde apontar o golpe. */
+  // 2ª cabeça do Cyberus: um golpe de espada em arco na direção do alvo,
   _updateSword(time, target, enemyGroup, scene) {
     if (!target || time - this.lastSwordMs < this.evoDef.swordCooldownMs) return;
     const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
@@ -260,10 +179,7 @@ export default class AllyDogAbility {
     this._swingSword(scene, target, enemyGroup);
   }
 
-  /** Faz o corte de verdade: desenha o leque (_showSwordFx) e aplica dano
-   *  a QUALQUER inimigo dentro do arco/alcance, não só no `target` que
-   *  disparou o golpe — igual à katana, que corta todo mundo na frente,
-   *  não só o alvo mirado. */
+  // Faz o corte de verdade: desenha o leque (_showSwordFx) e aplica dano
   _swingSword(scene, target, enemyGroup) {
     const aim = new Phaser.Math.Vector2(target.x - this.dog.x, target.y - this.dog.y).normalize();
     const halfArc = Phaser.Math.DegToRad(this.evoDef.swordArcDegrees) / 2;
@@ -281,15 +197,11 @@ export default class AllyDogAbility {
       if (normalizedAngle > halfArc) return;
 
       // sem `source`: dano do Cyberus, mesmo motivo da granada/contato não
-      // contarem pra Sanguessuga (ver topo do arquivo)
       DamageSystem.applyWeaponHit(enemy, this.evoDef.swordDamage, undefined, scene.time.now);
     });
   }
 
-  /** Visual do corte — mesma técnica de leque desenhado com Graphics que
-   *  Weapon._showSwordSwingFx usa pra katana do jogador (fatia preenchida
-   *  + contorno acompanhando o fio da lâmina), só que nascendo no
-   *  cachorro em vez do jogador, e no azul escuro da 2ª cabeça. */
+  // Visual do corte — mesma técnica de leque desenhado com Graphics que
   _showSwordFx(scene, aim, range, halfArc) {
     const baseAngle = aim.angle();
     const tint = this.evoDef.swordTint ?? 0x1b2a6b;
@@ -315,12 +227,7 @@ export default class AllyDogAbility {
     });
   }
 
-  /** 3ª cabeça do Cyberus: um laser fino e reto, bem longo, disparado na
-   *  direção do alvo mais próximo — atravessa e causa dano a TODOS os
-   *  inimigos que a linha do feixe encostar no caminho, não só no `target`
-   *  que disparou (mesmo espírito da espada da 2ª cabeça, que corta todo
-   *  mundo na frente). Duração do visual é curta de propósito: deve ler
-   *  como uma descarga brutal, não como um raio contínuo. */
+  // 3ª cabeça do Cyberus: um laser fino e reto, bem longo, disparado na
   _updateCannon(time, target, enemyGroup, scene) {
     if (!target || time - this.lastCannonMs < this.evoDef.cannonCooldownMs) return;
     const dist = Phaser.Math.Distance.Between(this.dog.x, this.dog.y, target.x, target.y);
@@ -332,11 +239,7 @@ export default class AllyDogAbility {
     this._fireCannon(scene, target, enemyGroup, time);
   }
 
-  /** Dispara o feixe de verdade: calcula o segmento (cachorro -> muito além
-   *  do alvo, ver evoDef.cannonLength), desenha o FX e aplica dano a
-   *  qualquer inimigo cuja distância até a linha do feixe seja <=
-   *  cannonWidth. Também dá um pequeno screen shake, pra reforçar o peso
-   *  do disparo (carta mais forte do jogo). */
+  // Dispara o feixe de verdade: calcula o segmento (cachorro -> muito além
   _fireCannon(scene, target, enemyGroup, time) {
     scene.sound.play('sfx_cyberus_cannon', { volume: 0.6 });
 
@@ -355,16 +258,11 @@ export default class AllyDogAbility {
       if (distToBeam > this.evoDef.cannonWidth) return;
 
       // sem `source`: dano do Cyberus, mesmo motivo da granada/espada não
-      // contarem pra Sanguessuga (ver topo do arquivo)
       DamageSystem.applyWeaponHit(enemy, this.evoDef.cannonDamage, undefined, time);
     });
   }
 
-  /** Visual do laser: um traço grosso roxo bem escuro por baixo (glow) e um
-   *  núcleo fino mais claro por cima, seguindo a mesma linha — mais um
-   *  flash redondo na origem, pra vender o "disparo" saindo do cachorro.
-   *  Some rápido (fade), reforçando a leitura de descarga curta e não de
-   *  raio sustentado. */
+  // Visual do laser: um traço grosso roxo bem escuro por baixo (glow) e um
   _showCannonFx(scene, x1, y1, x2, y2) {
     const g = scene.add.graphics().setDepth(21);
 
@@ -396,9 +294,7 @@ export default class AllyDogAbility {
     });
   }
 
-  /** Menor distância de um ponto (px, py) até o segmento de reta (x1,y1)-
-   *  (x2,y2) — usado por _fireCannon pra saber quem o feixe "atravessou",
-   *  já que o laser não é um alvo único como a granada, é uma linha. */
+  // Menor distância de um ponto (px, py) até o segmento de reta (x1,y1)-
   _distanceToSegment(px, py, x1, y1, x2, y2) {
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -437,7 +333,6 @@ export default class AllyDogAbility {
       const dist = Phaser.Math.Distance.Between(zone.x, zone.y, enemy.x, enemy.y);
       if (dist <= this.evoDef.grenadeRadius) {
         // sem `source`: dano do Cyberus, igual ao contato normal do
-        // cachorro, não conta pra Sanguessuga (ver topo do arquivo)
         DamageSystem.applyWeaponHit(enemy, this.evoDef.grenadeDamage, undefined, time);
       }
     });
@@ -478,13 +373,7 @@ export default class AllyDogAbility {
     fx.destroy();
   }
 
-  /** Acha o inimigo mais próximo dentro de engageRadius. Com evoDef ativo
-   *  (Cyberus), prefere um inimigo que NÃO foi atacado recentemente (ver
-   *  TARGET_COOLDOWN_MS/_markAttacked) — é o que faz o comportamento
-   *  "frio": chegar, bater com uma cabeça, e ir pro próximo, em vez de
-   *  ficar preso perseguindo/rebatendo o mesmo alvo. Se não houver nenhum
-   *  outro livre, cai de volta pro mais próximo "esfriando" mesmo assim —
-   *  melhor reengajar do que ficar parado sem fazer nada. */
+  // Acha o inimigo mais próximo dentro de engageRadius. Com evoDef ativo
   _findNearestEnemy(enemyGroup, time) {
     let nearest = null;
     let nearestDist = this.def.engageRadius;
@@ -518,9 +407,7 @@ export default class AllyDogAbility {
     return lastMs !== undefined && time - lastMs < TARGET_COOLDOWN_MS;
   }
 
-  /** Marca `enemy` como "recém-atacado" (ver TARGET_COOLDOWN_MS acima) e
-   *  aproveita pra limpar entradas velhas do mapa, pra não crescer sem
-   *  limite ao longo da run inteira. */
+  // Marca `enemy` como "recém-atacado" (ver TARGET_COOLDOWN_MS acima) e
   _markAttacked(enemy, time) {
     this.recentTargets.set(enemy, time);
     this.recentTargets.forEach((ts, e) => {
@@ -528,10 +415,7 @@ export default class AllyDogAbility {
     });
   }
 
-  /** Usado pelo projétil da granada em voo (_advanceGrenadesInFlight) pra
-   *  saber se encostou em algum inimigo — primeiro que encontrar dentro do
-   *  raio, não necessariamente o mais próximo (o projétil já está bem
-   *  perto de qualquer um que retorne aqui). */
+  // Usado pelo projétil da granada em voo (_advanceGrenadesInFlight) pra
   _findEnemyNear(x, y, radius, enemyGroup) {
     let found = null;
     enemyGroup.children.iterate((enemy) => {

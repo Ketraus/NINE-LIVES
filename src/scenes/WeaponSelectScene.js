@@ -1,43 +1,24 @@
 import weaponsData from '../../data/weapons.js';
 
 // arte real das cartas (feita pelo Ketlin + usuário, ver assets/ui/) —
-// carregada em PreloadScene com estas chaves. Mapeada por weaponId porque
-// o nome do arquivo não precisa bater com o id.
 const CARD_TEXTURE_BY_WEAPON = {
   fists: 'card_fists',
   katana: 'card_katana',
   pistol: 'card_pistol'
 };
 
-// arte nasce em 331x459 (ver assets/ui/); exibida um pouco menor pra caber
-// as 3 lado a lado com folga, mantendo a proporção original.
+// arte nasce em 331x459 (ver assets/ui/); exibida um pouco menor pra ca…
 const CARD_DISPLAY_H = 260;
 const CARD_DISPLAY_W = Math.round((331 / 459) * CARD_DISPLAY_H);
 const GAP = 32;
 
-// transição de entrada na run ("sistema carregando... PÁ, no jogo"), mesma
-// linguagem da saída do menu (MainMenuScene._playExitTransition) só que
-// mais forte, porque aqui o jogo de fato começa: CLACK (sfx_card_select) +
-// vibração (shake de câmera + haptic real em touch) tocam JUNTOS -> tela
-// vai a preto -> ~100ms de silêncio puro -> só então troca de cena (o
-// resto — mapa clareando + HUD entrando — acontece em GameScene.create()).
+// transição de entrada na run ("sistema carregando... PÁ, no jogo"), me…
 const VIBRATION_MS = 90;
 const VIBRATION_INTENSITY = 0.008;
 const FADE_TO_BLACK_MS = 220;
 const SILENCE_MS = 100;
 
-/**
- * Tela entre o menu e a run: mostra as armas de data/weapons.js como
- * cartas clicáveis e manda pra GameScene já com a escolha
- * (`scene.start('GameScene', { weaponId })`).
- *
- * De propósito NÃO usa o EventBus (é fluxo local de uma cena só, sem
- * ninguém mais precisando escutar) e NÃO reaproveita o _buildCard do
- * LevelUpUI — visualmente parecido, mas são contextos diferentes (cena
- * cheia x overlay que pausa a física no meio da run); extrair um
- * componente de carta compartilhado só vale a pena se um terceiro caso
- * de uso aparecer.
- */
+// Tela entre o menu e a run: mostra as armas de data/weapons.js como
 export default class WeaponSelectScene extends Phaser.Scene {
   constructor() {
     super('WeaponSelectScene');
@@ -48,7 +29,6 @@ export default class WeaponSelectScene extends Phaser.Scene {
     const cx = width / 2;
 
     // chega em preto (ver MainMenuScene._playExitTransition) e clareia —
-    // metade final da transição de saída do menu
     this.cameras.main.fadeIn(140, 0, 0, 0);
 
     this.add
@@ -92,7 +72,6 @@ export default class WeaponSelectScene extends Phaser.Scene {
     this._transitioning = true;
 
     // CLACK + vibração, ao mesmo tempo (senão o shake roda com a tela já
-    // apagando e ninguém sente)
     this.sound.play('sfx_card_select', { volume: 0.6 });
     this.cameras.main.shake(VIBRATION_MS, VIBRATION_INTENSITY);
     if (navigator.vibrate) navigator.vibrate(30); // haptic real em celular

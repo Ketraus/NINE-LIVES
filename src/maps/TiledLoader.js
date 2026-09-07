@@ -1,23 +1,6 @@
-/**
- * Responsabilidade única: pegar o JSON exportado do Tiled (já carregado
- * pelo Phaser.Loader) e transformar em tilemap + layers do Phaser.
- * Não sabe nada sobre spawn de jogador/inimigo, colisão de gameplay etc.
- * Isso é papel do MapManager — se você quer mudar nomes de layer/tileset,
- * mexe nas constantes lá no topo de MapManager.js, não aqui.
- */
+// Responsabilidade única: pegar o JSON exportado do Tiled (já carregado
 export default class TiledLoader {
-  /**
-   * @param {Phaser.Scene} scene
-   * @param {string} mapKey - chave usada no this.load.tilemapTiledJSON
-   * @param {{imageKey:string, nameInTiled:string}[]} tilesetConfigs - um
-   *   item por tileset usado no mapa. imageKey é a chave carregada no
-   *   PreloadScene (this.load.image); nameInTiled precisa bater
-   *   exatamente com Map > Tileset Properties > Name daquele tileset
-   *   no Tiled. Um mapa com tiles de 2+ tilesets diferentes na mesma
-   *   layer precisa de uma entrada aqui pra cada um — ver MapManager.js.
-   * @param {{ground:string, walls:string}} layerNames - nomes das Tile
-   *   Layers no Tiled
-   */
+  // item por tileset usado no mapa. imageKey é a chave carregada no
   static build(scene, mapKey, tilesetConfigs, layerNames) {
     const map = scene.make.tilemap({ key: mapKey });
 
@@ -33,8 +16,6 @@ export default class TiledLoader {
     });
 
     // createLayer aceita um array de tilesets — necessário sempre que a
-    // layer usa tiles vindos de mais de um tileset (o Phaser resolve
-    // sozinho qual tileset cada gid pertence)
     const groundLayer = TiledLoader._createLayer(map, tilesets, layerNames.ground);
     const wallsLayer = TiledLoader._createLayer(map, tilesets, layerNames.walls);
 

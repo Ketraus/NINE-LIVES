@@ -32,19 +32,10 @@ const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogad
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 
 // som ambiente assustador, sorteado, raro — nada de específico o dispara
-// (não é ligado a inimigo/carta nenhum), só reagendado com um intervalo
-// aleatório dentro desta faixa (ver _scheduleAmbientSfx). Numa run de 10
-// min (RUN_WIN_SECONDS acima) uma média de ~3min entre toques garante
-// pelo menos umas 2 aparições, sem virar algo previsível/frequente.
-// this.time.addEvent já respeita sozinho o timeScale=0 da tela de cartas
-// (mesmo mecanismo que pausa as levas de spawn — ver SpawnDirector),
-// então não precisa de pause()/resume() manual como o relógio da run.
 const AMBIENT_SFX_MIN_DELAY_MS = 120000; // 2min
 const AMBIENT_SFX_MAX_DELAY_MS = 240000; // 4min
 
-// resto da transição de entrada (ver WeaponSelectScene._choose pro início:
-// CLACK -> vibração -> preto -> silêncio): tela chega preta, mapa clareia,
-// e só depois o HUD entra por cima — em camadas, não tudo de uma vez.
+// resto da transição de entrada (ver WeaponSelectScene._choose pro iníc…
 const MAP_FADE_IN_MS = 220;
 const HUD_FADE_IN_DELAY_MS = 80;
 const HUD_FADE_IN_MS = 180;
@@ -54,22 +45,17 @@ export default class GameScene extends Phaser.Scene {
     super('GameScene');
   }
 
-  /** @param {{ weaponId?: string }} data - vem da WeaponSelectScene (ou de scene.restart) */
   create(data) {
     // limpa listeners de uma partida anterior (esta scene pode restartar
-    // várias vezes e EventBus é um singleton compartilhado)
     EventBus.removeAllListeners();
 
     // troca pra música da run (no-op se o arquivo ainda não foi
-    // carregado, ver MusicManager); scene.restart() (morte + R) cai aqui
-    // de novo, mas MusicManager.play já ignora se for a mesma faixa
     MusicManager.play(this, 'music_game');
 
     // nasce preta (chegando do silêncio da WeaponSelectScene) e clareia —
-    // "mapa começa a aparecer" (ver constantes acima)
     this.cameras.main.fadeIn(MAP_FADE_IN_MS, 0, 0, 0);
 
-    // guarda pra poder repassar no restart (tecla R) sem perder a arma escolhida
+    // guarda pra poder repassar no restart (tecla R) sem perder a arma esco…
     this.weaponId = data?.weaponId || this.weaponId || null;
 
     this._buildMap();
@@ -85,13 +71,6 @@ export default class GameScene extends Phaser.Scene {
     this._scheduleAmbientSfx();
 
     // EventBus é global e sobrevive ao scene.restart() (morte + R/toque) —
-    // sem isto, cada restart empilha mais um jogo de listeners (LevelUpUI,
-    // HUD, PauseUI, AbilityManager, Player, GameScene) por cima dos da run
-    // anterior, todos ainda vivos e reagindo com estado velho. Era a causa
-    // real do bug "Arsenal Expandido volta pro estado antigo": uma
-    // LevelUpUI fantasma de uma run anterior também recebia 'level-up' e
-    // desenhava sua própria versão (com menos opções) por cima da atual.
-    // Limpa tudo aqui pra cada create() começar com listeners zerados.
     this.events.once('shutdown', () => {
       this.spawnDirector?.stop();
       this._ambientSfxEvent?.remove();
@@ -111,12 +90,7 @@ export default class GameScene extends Phaser.Scene {
     this._updateXpOrbMagnet();
   }
 
-  /**
-   * "Ímã" de XP: todo orb dentro de XP_ORB_MAGNET_RANGE do jogador passa a
-   * voar em direção a ele (em vez de esperar o jogador encostar). Overlap
-   * de coleta continua o mesmo (ver _buildCollisions) — isto só move o
-   * orb pra perto, quem recolhe é o overlap de sempre.
-   */
+  // "Ímã" de XP: todo orb dentro de XP_ORB_MAGNET_RANGE do jogador passa a
   _updateXpOrbMagnet() {
     this.xpOrbGroup.children.each((orb) => {
       const distance = Phaser.Math.Distance.Between(orb.x, orb.y, this.player.x, this.player.y);
@@ -129,13 +103,7 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * Emite o tempo de run decorrido (em segundos inteiros) só quando ele
-   * muda, pra HUD desenhar o contador — sem dar a HUD acesso direto ao
-   * SpawnDirector (ela só escuta EventBus, ver ui/HUD.js). Congela ao
-   * morrer; também congela durante a tela de escolha de carta (ver
-   * SpawnDirector.pause/resume, chamados em 'levelup-opened'/'-closed').
-   */
+  // Emite o tempo de run decorrido (em segundos inteiros) só quando ele
   _updateRunTimer() {
     if (this.isGameOver) return;
     const seconds = Math.floor(this.spawnDirector.getElapsedMs() / 1000);
@@ -148,10 +116,7 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Sobreviveu até RUN_WIN_SECONDS: mesmo "fim de run" da morte (trava
-   * timer/spawn), só que com vitória — HUD mostra a tela de parabéns
-   * (ver 'player-won' em HUD.js) e R/toque leva pra seleção de arma em
-   * vez de reiniciar a mesma run (ver isGameOver+hasWon em _buildInput). */
+  // Sobreviveu até RUN_WIN_SECONDS: mesmo "fim de run" da morte (trava
   _triggerWin() {
     this.isGameOver = true;
     this.hasWon = true;
@@ -159,16 +124,13 @@ export default class GameScene extends Phaser.Scene {
     EventBus.emit('player-won');
   }
 
-  /** Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
-   * scene.restart() abaixo); venceu (10:00, ver _triggerWin) -> volta pra
-   * seleção de arma em vez de reiniciar a mesma run de novo sozinha. */
+  // Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
   _restartOrGoToWeaponSelect() {
     if (this.hasWon) {
       this.scene.start('WeaponSelectScene');
       return;
     }
     // repassa a arma explicitamente: scene.restart() sozinho não
-    // garante que os dados do create() anterior sejam reaproveitados
     this.scene.restart({ weaponId: this.weaponId });
   }
 
@@ -187,7 +149,6 @@ export default class GameScene extends Phaser.Scene {
     this.hasWon = false;
     this.isPaused = false;
     // câmera lenta só-inimigos (evolução "Reflexos de Predador", punhos) —
-    // lida por EnemySpawner.updateAll a cada frame (ver src/systems/SlowmoSystem.js)
     this.slowmoSystem = new SlowmoSystem();
   }
 
@@ -196,24 +157,15 @@ export default class GameScene extends Phaser.Scene {
     this.player = new Player(this, spawn.x, spawn.y, this.runState);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
     // celular: câmera um pouco mais próxima, só estética/sensação de jogo
-    // (não muda hitbox/alcance de nada, é puramente visual)
     if (this.sys.game.device.input.touch) {
       this.cameras.main.setZoom(1.4);
     }
     // startFollow() só define o alvo; o scroll real da câmera (e portanto
-    // cameras.main.worldView) só se atualiza no próximo passo de render.
-    // Sem isso, o primeiro lote de inimigos (spawnado ainda dentro de
-    // create(), antes de qualquer render) calcularia "fora da câmera" com
-    // base numa worldView desatualizada (ainda no canto do mapa), fazendo
-    // inimigos nascerem coladinhos no jogador. centerOn() força o scroll a
-    // já nascer centralizado no jogador, de forma síncrona.
     this.cameras.main.centerOn(spawn.x, spawn.y);
     this.mapManager.addCollider(this.player);
   }
 
-  /** Reagenda a cada disparo (delay sorteado de novo toda vez), mesmo
-   *  espírito do SpawnDirector._scheduleNextBatch — só que sem nenhuma
-   *  lógica de dificuldade, é só o som ambiente tocando de vez em quando. */
+  // Reagenda a cada disparo (delay sorteado de novo toda vez), mesmo
   _scheduleAmbientSfx() {
     const delay = Phaser.Math.Between(AMBIENT_SFX_MIN_DELAY_MS, AMBIENT_SFX_MAX_DELAY_MS);
     this._ambientSfxEvent = this.time.addEvent({
@@ -228,12 +180,8 @@ export default class GameScene extends Phaser.Scene {
   _buildEnemies() {
     this.enemySpawner = new EnemySpawner(this, this.mapManager, this.player, enemiesData, flockingConfigData);
     // Inimigos colidem entre si (mas continuam atravessáveis pelo jogador —
-    // aquilo é overlap, não collider, ver _buildCollisions) pra não ficarem
-    // empilhados uns dentro dos outros; a física arcade já separa sozinha
-    // corpos que se sobrepõem quando existe um collider entre eles.
     this.physics.add.collider(this.enemySpawner.group, this.enemySpawner.group);
     // SpawnDirector cronometra a run e decide quando/quantos inimigos pedir;
-    // EnemySpawner só sabe criar (ver src/roguelike/SpawnDirector.js)
     this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData, spawnCurvesData, sealerScheduleData, eliteScheduleData, bossScheduleData);
     this._lastRunTimeSeconds = -1;
     this.spawnDirector.start();
@@ -250,12 +198,7 @@ export default class GameScene extends Phaser.Scene {
     this.player.setWeaponManager(this.weaponManager);
   }
 
-  /**
-   * AbilityManager escuta 'ability-unlocked' (emitido por RunManager quando
-   * uma carta exclusiva é escolhida) e cuida das habilidades autônomas
-   * (soco em área, drone). Precisa existir antes de qualquer carta poder
-   * ser oferecida, então entra logo após a arma.
-   */
+  // AbilityManager escuta 'ability-unlocked' (emitido por RunManager quan…
   _buildAbilities() {
     this.abilityManager = new AbilityManager(this, this.player, this.enemySpawner.group);
   }
@@ -269,8 +212,6 @@ export default class GameScene extends Phaser.Scene {
     this.hud = new HUD(this);
 
     // HUD nasce invisível e só entra depois que o mapa terminar de
-    // clarear (+ um respiro de HUD_FADE_IN_DELAY_MS) — a sensação é de
-    // "mundo primeiro, interface depois", não tudo pipocando junto.
     this.hud.uiContainer.setAlpha(0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE, () => {
       this.time.delayedCall(HUD_FADE_IN_DELAY_MS, () => {
@@ -279,25 +220,19 @@ export default class GameScene extends Phaser.Scene {
     });
 
     // Player já emitiu 'player-health-changed' no próprio construtor
-    // (_buildPlayer, antes do HUD existir), então o HUD perdia esse
-    // primeiro evento e só mostrava o número de vida depois do primeiro
-    // dano. Reemite aqui, agora que o HUD já está ouvindo, pra HP cheio
-    // aparecer desde o início.
     EventBus.emit('player-health-changed', {
       current: this.player.healthSystem.current,
       max: this.player.healthSystem.maxHp
     });
     this.levelUpUI = new LevelUpUI(this, this.runManager);
     // botão de pausa (PC + celular) + saída de fullscreen (só celular) —
-    // ver src/ui/PauseUI.js
     this.pauseUI = new PauseUI(this);
-    // console de hack (F9) — dá cartas por comando, ver src/systems/DevConsole.js
+    // console de hack (F9) — dá cartas por comando, ver src/systems/DevCons…
     this.devConsole = new DevConsole(this, this.runManager);
   }
 
   _buildCollisions() {
     // inimigo encosta no jogador -> dano de contato (+ contra-ataque de
-    // espinhos, se o hit realmente aconteceu — não durante i-frames)
     this.physics.add.overlap(this.player, this.enemySpawner.group, (player, enemy) => {
       const hit = DamageSystem.applyContactDamage(
         enemy,
@@ -342,8 +277,6 @@ export default class GameScene extends Phaser.Scene {
     });
 
     // menu de pausa (ver src/ui/PauseUI.js) — mesmo tratamento do level-up
-    // acima, só que quem cuida de physics.pause()/timeScale é o próprio
-    // PauseUI (igual LevelUpUI já fazia antes deste botão existir)
     EventBus.on('pause-opened', () => {
       this.isPaused = true;
       this.spawnDirector.pause();
@@ -360,20 +293,14 @@ export default class GameScene extends Phaser.Scene {
     });
 
     // ESC no PC alterna o menu de pausa — o botão (canto superior direito,
-    // ver src/ui/PauseUI.js) já cobre PC e celular, isto é só um atalho a
-    // mais pra quem tem teclado. toggle() já ignora sozinho se a run
-    // acabou ou o level-up está aberto.
     this.input.keyboard.on('keydown-ESC', () => this.pauseUI.toggle());
 
     // celular não tem tecla R — toque na tela reinicia também (funciona
-    // igual no PC com clique, sem prejudicar nada: só reage se já morreu)
     this.input.on('pointerdown', () => {
       if (this.isGameOver) this._restartOrGoToWeaponSelect();
     });
 
     // celular: ataque continua automático, jogador só controla movimento
-    // (ver Player._handleMovement). Só existe em dispositivo com touch —
-    // no PC nada muda, WASD/setas continuam sendo o único input de movimento.
     if (this.sys.game.device.input.touch) {
       this.touchJoystick = new TouchJoystick(this);
     }
@@ -387,13 +314,7 @@ export default class GameScene extends Phaser.Scene {
     this.xpOrbGroup.add(orb);
   }
 
-  /**
-   * "Explosão" de morte do inimigo: um flash branco central + estilhaços
-   * (reaproveitando a textura 'hit_fx', mesma da reação de hit — sem
-   * asset novo) voando pra fora na cor do inimigo, some rápido. Só
-   * visual, não mexe em XP/dano/nada de gameplay — chamado junto com
-   * _spawnXpOrb no listener de 'enemy-died' acima.
-   */
+  // "Explosão" de morte do inimigo: um flash branco central + estilhaços
   _spawnDeathFx(x, y, color) {
     // flash central: "pop" rápido que dá o estalo do impacto final
     const flash = this.add.image(x, y, 'hit_fx').setDepth(21).setScale(0.7).setAlpha(0.95).setTint(0xffffff);

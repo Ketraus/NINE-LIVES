@@ -1,18 +1,11 @@
 import EventBus from '../systems/EventBus.js';
 
-const SHIELD_BAR_COLOR = 0xffd166; // dourado — precisa contrastar com o gradiente ciano->vermelho da vida, um azul parecido com o "saudável" ficava invisível por cima
-const SHIELD_FILL_ALPHA = 0.95; // escudo cobre a barra de vida por cima, então precisa ser bem mais opaco que ela
+const SHIELD_BAR_COLOR = 0xffd166; // dourado — precisa contrastar com o gradiente ciano->vermelho da vida,…
+const SHIELD_FILL_ALPHA = 0.95; // escudo cobre a barra de vida por cima, então precisa ser bem mais opa…
 const HP_BREAK_FLASH_COLOR = 0xffffff;
 const HP_BREAK_FLASH_MS = 220; // pisca branco rápido quando o escudo estoura, some sozinho
 
 // barra de vida "terminal": painel de cantos cortados (mesmo estilo do
-// botão do menu principal, ver MainMenuScene._drawPanel) com uma seta
-// dentro em vez de um retângulo cheio — corpo grosso = vida atual,
-// afinando numa ponta, com uma linha fina de trilho até a borda direita
-// do painel (o "alcance total"). Cor vai de ciano (saudável) a vermelho
-// (crítico) conforme a vida cai. Alphas baixos de propósito — chamava
-// atenção demais na tela cheia de ação. Painel menor que a versão
-// original (pedido: HUD tava ocupando espaço/poluindo demais).
 const HP_PANEL_W = 150;
 const HP_PANEL_H = 26;
 const HP_CHAMFER = 5;
@@ -31,10 +24,7 @@ const HP_ARROW_HEAD_LEN = 8;
 const HP_COLOR_HEALTHY = 0x4fd1ff;
 const HP_COLOR_DANGER = 0xe33e3e;
 
-// barra de xp: mesmo desenho da barra de vida (painel de cantos cortados +
-// seta), só que ainda menor e sem texto de número dentro — o usuário não
-// curtiu o estilo de cápsula hexagonal anterior e pediu pra reaproveitar o
-// visual da vida pro xp também.
+// barra de xp: mesmo desenho da barra de vida (painel de cantos cortado…
 const XP_PANEL_W = HP_PANEL_W;
 const XP_PANEL_H = 16;
 const XP_CHAMFER = 4;
@@ -52,28 +42,18 @@ const XP_TRACK_ALPHA = 0.6;
 const XP_FILL_COLOR = 0x8fa3af;
 const XP_FILL_ALPHA = 0.85;
 
-// tamanho da "achatada" na ponta das setas (vida e xp): sem isso a ponta é
-// um vértice único (triângulo de área zero), que o WebGL antialiasing
-// pisca a cada frame nas bordas — era o bug de "piscadas nas extremidades".
-// Um flat de poucos px é imperceptível no desenho mas resolve o flicker.
+// tamanho da "achatada" na ponta das setas (vida e xp): sem isso a pont…
 const SHARP_TIP_FLAT = 2;
 
 // layout vertical do resto da HUD. Escudo não tem mais linha própria —
-// virou overlay dentro do painel de vida — e o xp agora é um painel bem
-// mais baixo que antes, então a coluna toda ocupa bem menos altura.
 const XP_Y = 16 + HP_PANEL_H + 6;
 
-/**
- * UI puramente reativa: só escuta EventBus e desenha. Não tem
- * nenhuma referência a Player/Enemy/RunState diretamente.
- */
+// UI puramente reativa: só escuta EventBus e desenha. Não tem
 export default class HUD {
-  /** @param {Phaser.Scene} scene */
   constructor(scene) {
     this.scene = scene;
 
-    // Container único pra todo o HUD "fixo na tela" — ver _applyZoomCompensation
-    // logo abaixo pra entender por que ele existe.
+    // Container único pra todo o HUD "fixo na tela" — ver _applyZoomCompens…
     this.uiContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(0);
 
     this._buildHealthBar();
@@ -84,7 +64,6 @@ export default class HUD {
     this._buildWinText();
 
     // gameOverGroup/winGroup são containers à parte (ver _buildGameOverText
-    // / _buildWinText), então recebem a mesma correção separadamente.
     this._applyZoomCompensation(this.uiContainer);
     this._applyZoomCompensation(this.gameOverGroup);
     this._applyZoomCompensation(this.winGroup);
@@ -92,20 +71,7 @@ export default class HUD {
     this._bindEvents();
   }
 
-  /**
-   * BUG (zoom no celular): GameScene dá setZoom(1.4) na câmera em telas
-   * touch (ver GameScene._buildPlayer). setScrollFactor(0) só faz o objeto
-   * ignorar o SCROLL da câmera — o ZOOM continua se aplicando normalmente a
-   * ele, como a qualquer outro objeto renderizado por ela. Resultado: um
-   * ícone desenhado em coordenada de tela (16, 16) deixa de aparecer em
-   * (16, 16) e passa a aparecer deslocado pra fora da área visível,
-   * proporcional à distância dele até o centro da câmera.
-   *
-   * Correção: contra-escalar o container por 1/zoom e reposicioná-lo com
-   * a fórmula inversa da transformação de câmera (em torno do centro dela),
-   * cancelando o efeito do zoom só pra esse container — sem mexer na
-   * câmera nem nos elementos do mundo do jogo.
-   */
+  // BUG (zoom no celular): GameScene dá setZoom(1.4) na câmera em telas
   _applyZoomCompensation(container) {
     const cam = this.scene.cameras.main;
     const zoom = cam.zoom || 1;
@@ -135,7 +101,6 @@ export default class HUD {
     );
 
     // trilho fixo (linha fina até a borda direita, com seta na ponta) —
-    // também estático, fica no mesmo Graphics do painel
     const trackMaxW = HP_PANEL_W - HP_PAD_X * 2;
     HUD._drawArrowShape(
       this.hpPanel,
@@ -149,22 +114,15 @@ export default class HUD {
     );
 
     // seta grossa: vida atual, redesenhada a cada 'player-health-changed'
-    // (ver _drawHpFill/_bindEvents)
     this.hpFill = this.scene.add.graphics().setScrollFactor(0).setDepth(101);
     this._hpOrigin = { x: x + HP_PAD_X, y: y + HP_TRACK_Y };
     this._hpMaxW = trackMaxW;
 
     // overlay do escudo (carta "Escudo Energético"): mesma seta, por cima da
-    // de vida, numa cor diferente — enquanto há escudo ele cobre a vida por
-    // baixo (é o que absorve dano primeiro, ver ShieldSystem.absorb), then
-    // some sozinho quando não há mais a habilidade/escudo. Fica escondido
-    // (width 0) até o primeiro 'player-shield-changed' chegar.
     this.shieldFill = this.scene.add.graphics().setScrollFactor(0).setDepth(102);
     this._hadShield = false; // pra detectar a transição "tinha escudo -> estourou" e disparar o flash
 
     // flash branco rápido sobre o painel inteiro, usado só no momento em
-    // que o escudo estoura (ver _flashShieldBreak) — invisível o resto do
-    // tempo (alpha 0)
     this.hpBreakFlash = this.scene.add
       .graphics()
       .setScrollFactor(0)
@@ -192,7 +150,7 @@ export default class HUD {
     this.uiContainer.add([this.hpPanel, this.hpFill, this.shieldFill, this.hpBreakFlash, this.hpText]);
   }
 
-  /** Redesenha só a seta de vida atual (o painel e o trilho são estáticos). */
+  // Redesenha só a seta de vida atual (o painel e o trilho são estáticos).
   _drawHpFill(ratio) {
     this.hpFill.clear();
     const fillW = this._hpMaxW * ratio;
@@ -209,7 +167,7 @@ export default class HUD {
     );
   }
 
-  /** Redesenha o overlay de escudo por cima da barra de vida. */
+  // Redesenha o overlay de escudo por cima da barra de vida.
   _drawShieldFill(ratio) {
     this.shieldFill.clear();
     if (ratio <= 0) return;
@@ -225,8 +183,7 @@ export default class HUD {
     );
   }
 
-  /** Feedback rápido de "escudo quebrou": pisca branco e some, a barra volta
-   * a mostrar só a cor normal da vida por baixo. */
+  // Feedback rápido de "escudo quebrou": pisca branco e some, a barra vol…
   _flashShieldBreak() {
     this.hpBreakFlash.setAlpha(0.6);
     this.scene.tweens.add({
@@ -242,8 +199,6 @@ export default class HUD {
     const y = XP_Y;
 
     // mesmo desenho da barra de vida (painel de cantos cortados + seta,
-    // ver _buildHealthBar/_drawArrowShape), só que menor — reaproveita os
-    // dois helpers estáticos em vez de ter um estilo próprio.
     this.xpPanel = this.scene.add.graphics().setScrollFactor(0).setDepth(100);
     HUD._drawChamferedRect(
       this.xpPanel,
@@ -275,8 +230,6 @@ export default class HUD {
     this._xpMaxW = trackMaxW;
 
     // nível ao lado do painel (não embaixo, pra não empilhar altura),
-    // centralizado com a altura do painel — antes tava desalinhado, meio
-    // "boiando" acima dele
     this.levelText = this.scene.add
       .text(x + XP_PANEL_W + 8, y + XP_PANEL_H / 2, 'Nível 1', { fontSize: '11px', color: '#cfeaff' })
       .setOrigin(0, 0.5)
@@ -285,7 +238,7 @@ export default class HUD {
     this.uiContainer.add([this.xpPanel, this.xpFill, this.levelText]);
   }
 
-  /** Redesenha só a seta de xp atual (o painel e o trilho são estáticos). */
+  // Redesenha só a seta de xp atual (o painel e o trilho são estáticos).
   _drawXpFill(ratio) {
     this.xpFill.clear();
     HUD._drawArrowShape(
@@ -336,8 +289,7 @@ export default class HUD {
     this.gameOverGroup.add([bg, title, hint]);
   }
 
-  /** Mesmo esquema visual do game over (ver _buildGameOverText), cores de
-   * vitória — mostrada em 'player-won' quando a run chega em 10:00. */
+  // Mesmo esquema visual do game over (ver _buildGameOverText), cores de
   _buildWinText() {
     this.winGroup = this.scene.add.container(0, 0).setDepth(200).setVisible(false);
     const cx = this.scene.scale.width / 2;
@@ -372,7 +324,6 @@ export default class HUD {
     });
 
     // só existe pra quem pegou "Escudo Energético" — o overlay fica com
-    // width 0 (ver _buildHealthBar) até o primeiro evento chegar
     EventBus.on('player-shield-changed', ({ current, max }) => {
       const ratio = max > 0 ? Phaser.Math.Clamp(current / max, 0, 1) : 0;
       this._drawShieldFill(ratio);
@@ -411,23 +362,18 @@ export default class HUD {
       this.killText.setText('Abates: 0');
       this.timeText.setText('00:00');
       // a nova run pode não ter (ou ainda não ter pego) o Escudo Energético
-      // de novo — some com o overlay até o próximo 'player-shield-changed'
       this._drawShieldFill(0);
       this._hadShield = false;
     });
   }
 
-  /** @param {number} totalSeconds @returns {string} "mm:ss" */
   static _formatTime(totalSeconds) {
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
 
-  /** Painel de cantos cortados (mesmo visual das placas do menu principal),
-   * (x, y) é o canto superior esquerdo — diferente de MainMenuScene._drawPanel,
-   * que centraliza em (0,0), porque aqui é mais simples posicionar direto na
-   * tela sem container extra. */
+  // Painel de cantos cortados (mesmo visual das placas do menu principal),
   static _drawChamferedRect(g, x, y, w, h, chamfer, fillColor, fillAlpha, borderColor, borderAlpha = 1) {
     const c = chamfer;
     const points = [
@@ -446,12 +392,7 @@ export default class HUD {
     g.strokePoints(points, true);
   }
 
-  /** Seta: corpo retangular que termina numa pontinha achatada em (x + width)
-   * em vez de um vértice único — um vértice puro vira um triângulo de área
-   * praticamente zero, que o antialiasing do WebGL pisca a cada frame (era
-   * o bug de "piscadas nas extremidades"). Se width for menor que a cabeça
-   * da seta, desenha só um triângulo encolhido (senão a seta "nasceria"
-   * maior que a barra com pouca vida) — mesmo achatamento nesse caso. */
+  // Seta: corpo retangular que termina numa pontinha achatada em (x + wid…
   static _drawArrowShape(g, x, y, width, height, headLen, color, alpha = 1) {
     if (width <= 0) return;
     g.fillStyle(color, alpha);
@@ -486,7 +427,7 @@ export default class HUD {
     );
   }
 
-  /** Ciano (saudável) -> vermelho (crítico), interpolado pela vida restante. */
+  // Ciano (saudável) -> vermelho (crítico), interpolado pela vida restant…
   static _hpColor(ratio) {
     const danger = Phaser.Display.Color.ValueToColor(HP_COLOR_DANGER);
     const healthy = Phaser.Display.Color.ValueToColor(HP_COLOR_HEALTHY);
@@ -496,8 +437,4 @@ export default class HUD {
   }
 
   // Sem destroy() aqui de propósito: nada chamava esse método (ele nunca
-  // rodava) e, se rodasse, `EventBus.removeAllListeners()` apagaria os
-  // listeners de QUALQUER coisa no bus, não só do HUD — um bug esperando
-  // pra acontecer. A limpeza real já acontece uma vez só, no início de
-  // GameScene.create(), antes de tudo se registrar de novo.
 }

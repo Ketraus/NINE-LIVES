@@ -1,9 +1,6 @@
 import MusicManager from '../systems/MusicManager.js';
 
 // paleta "terminal cyberpunk" pedida: fundo do botão quase transparente,
-// borda fina azul/cinza, sem RGB espalhafatoso — a imagem de fundo já
-// carrega a atmosfera sozinha, os botões só precisam ser legíveis por
-// cima dela.
 const PANEL_FILL = 0x061014;
 const PANEL_FILL_ALPHA = 0.55;
 const BORDER_IDLE = 0x3d5a66;
@@ -14,9 +11,6 @@ const PIXEL_FONT = '"Press Start 2P", monospace';
 const CHAMFER = 8; // corte dos cantos, em px — visual de placa tecnológica
 
 // transição de saída (JOGAR -> WeaponSelectScene), "troca de sistema":
-// menu some enquanto glitcha (os dois JUNTOS, não um depois do outro —
-// senão o glitch roda com a tela já apagada e ninguém vê nada) -> tudo
-// preto -> cena nova entra. Soma ~500ms, de propósito nada grande.
 const EXIT_GLITCH_MS = 160; // duração do desaparecer + glitch juntos
 const EXIT_BLACK_MS = 180;
 
@@ -33,8 +27,6 @@ export default class MainMenuScene extends Phaser.Scene {
     MusicManager.play(this, 'music_menu');
 
     // tudo que precisa sumir junto na transição (ver _playExitTransition)
-    // fica numa camada só, assim o fade é um único tween em vez de um por
-    // elemento.
     this.menuLayer = this.add.container(0, 0);
 
     const bg = this._buildBackground(width, height);
@@ -64,19 +56,12 @@ export default class MainMenuScene extends Phaser.Scene {
   _buildBackground(width, height) {
     const bg = this.add.image(width / 2, height / 2, 'menu_bg');
     // cover-fit: preenche o canvas todo sem distorcer, cortando o excesso.
-    // A largura lógica muda em celular (ver gameConfig.js), então não dá
-    // pra fixar uma escala — recalcula toda vez que a cena abre.
     const scale = Math.max(width / bg.width, height / bg.height);
     bg.setScale(scale);
     return bg;
   }
 
-  /**
-   * Botão estilo "placa de terminal": fundo quase transparente, borda
-   * fina, cantos cortados. Ao passar o mouse: borda mais evidente e o
-   * ">" à esquerda aparece piscando. Retorna o container, pra dar pra
-   * reaproveitar caso apareçam mais botões no menu no futuro.
-   */
+  // Botão estilo "placa de terminal": fundo quase transparente, borda
   _buildTerminalButton(x, y, w, h, label, onSelect) {
     const container = this.add.container(x, y);
 
@@ -133,7 +118,7 @@ export default class MainMenuScene extends Phaser.Scene {
     return container;
   }
 
-  /** Desenha o painel com cantos cortados (visual de placa tecnológica). */
+  // Desenha o painel com cantos cortados (visual de placa tecnológica).
   _drawPanel(g, w, h, borderColor) {
     const c = CHAMFER;
     const points = [
@@ -157,10 +142,6 @@ export default class MainMenuScene extends Phaser.Scene {
     this._transitioning = true;
 
     // celular: aproveita esse mesmo toque (gesto do usuário, exigido pela
-    // API de Fullscreen) pra sumir com a barra do navegador. Sem suporte
-    // (ex: iOS Safari não tem essa API pra página comum), só ignora e
-    // segue normal — ver index.html/manifest.json pro caminho que
-    // funciona no iPhone ("Adicionar à Tela de Início").
     if (this.sys.game.device.input.touch && this.scale.fullscreen.available && !this.scale.isFullscreen) {
       try {
         this.scale.startFullscreen();
@@ -169,18 +150,12 @@ export default class MainMenuScene extends Phaser.Scene {
       }
     }
     // esconde o botão HTML de tela cheia (#fullscreen-btn) — só existe no
-    // menu; na run quem controla é o menu pausa (PauseUI.js)
     window.dispatchEvent(new Event('nine-lives:fullscreen-started'));
 
     this._playExitTransition();
   }
 
-  /**
-   * "Troca de sistema": menu some ENQUANTO glitcha (em paralelo — o
-   * glitch precisa da tela ainda visível pra ser sentido) -> tela preta
-   * -> só então troca de cena (WeaponSelectScene entra com fade-in
-   * próprio, ver seu create()).
-   */
+  // "Troca de sistema": menu some ENQUANTO glitcha (em paralelo — o
   _playExitTransition() {
     this.tweens.add({
       targets: this.menuLayer,
@@ -197,7 +172,7 @@ export default class MainMenuScene extends Phaser.Scene {
     });
   }
 
-  /** Jitter horizontal rápido (passos discretos, não tween suave — o "digital" do glitch é justamente não ser liso). */
+  // Jitter horizontal rápido (passos discretos, não tween suave — o "digi…
   _playGlitch(durationMs, onDone) {
     const cam = this.cameras.main;
     const steps = 8;

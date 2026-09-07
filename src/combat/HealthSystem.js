@@ -1,15 +1,5 @@
-/**
- * Componente de vida. Não é uma classe base — é composição:
- * qualquer entidade (Player, Enemy, futuro Boss) instancia um
- * HealthSystem em vez de herdar comportamento de vida.
- */
+// Componente de vida. Não é uma classe base — é composição:
 export default class HealthSystem {
-  /**
-   * @param {number} maxHp
-   * @param {object} [callbacks]
-   * @param {(current:number, max:number) => void} [callbacks.onChange]
-   * @param {() => void} [callbacks.onDeath]
-   */
   constructor(maxHp, callbacks = {}) {
     this.maxHp = maxHp;
     this.current = maxHp;

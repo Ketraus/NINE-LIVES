@@ -135,7 +135,7 @@ export default [
     // (arremesso do machado em andamento durante a fúria).
     "walkAnimRageNoAxe": "minotaur-walk-rage-noaxe",
     "idleTextureRageNoAxe": "minotaur_idle_rage_noaxe",
-    // "Minotauro puto" (ver Enemy.js _triggerRage/_bossCooldown/
+    // "Minotauro bravo" (ver Enemy.js _triggerRage/_bossCooldown/
     // _bossDamage/_bossTelegraph): a partir do rage, SEM habilidade nova
     // nenhuma — só aperta o que já existe, bem forte, pra ele ficar
     // atacando quase sem parar. Cooldowns de Investida/Machado/Corte/

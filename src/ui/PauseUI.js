@@ -4,20 +4,8 @@ const BTN_RADIUS = 16;
 const PANEL_W = 260;
 const PANEL_H = 200;
 
-/**
- * Menu de pausa. Dois pedaços:
- *  - botão (ícone de pausa, canto superior direito) — sempre visível, PC e
- *    celular, clique/toque abre e fecha o menu.
- *  - painel (overlay + "Continuar") — só no celular, quando o jogo está em
- *    fullscreen (ver MainMenuScene, que entra em fullscreen ao começar a
- *    run), ganha um botão extra "Sair da Tela Cheia".
- *
- * Pausa igual ao LevelUpUI (physics.pause + time.timeScale = 0) e avisa
- * GameScene via EventBus ('pause-opened'/'pause-closed') pra ele cuidar de
- * isPaused/spawnDirector — ver GameScene._buildCollisions.
- */
+// Menu de pausa. Dois pedaços:
 export default class PauseUI {
-  /** @param {Phaser.Scene} scene */
   constructor(scene) {
     this.scene = scene;
     this.isOpen = false;
@@ -36,8 +24,6 @@ export default class PauseUI {
   }
 
   // scrollFactor(0) no container não propaga pros filhos, então cada
-  // elemento também precisa do próprio setScrollFactor(0) (senão a área
-  // clicável se desloca conforme a câmera segue o jogador)
   _buildButton() {
     const x = this.scene.scale.width - 40;
     const y = 32;
@@ -93,9 +79,6 @@ export default class PauseUI {
     this.panelContainer.add(this._buildMenuButton(cx, cy - 10, 'Continuar', () => this.close()));
 
     // só existe em dispositivo touch com suporte à Fullscreen API — mesma
-    // checagem usada pra ENTRAR em fullscreen (ver MainMenuScene.create).
-    // Botão único que alterna entrar/sair (ver _toggleFullscreen), o texto
-    // troca conforme o estado atual
     if (this.scene.sys.game.device.input.touch && this.scene.scale.fullscreen.available) {
       this.fullscreenButton = this._buildMenuButton(cx, cy + 55, '', () => this._toggleFullscreen());
       this._refreshFullscreenButton();
@@ -103,7 +86,7 @@ export default class PauseUI {
     }
   }
 
-  /** Botão retangular simples reaproveitado pro painel (Continuar / Entrar-Sair da Tela Cheia). */
+  // Botão retangular simples reaproveitado pro painel (Continuar / Entrar…
   _buildMenuButton(x, y, label, onClick) {
     const group = this.scene.add.container(x, y);
     const bg = this.scene.add
@@ -125,7 +108,7 @@ export default class PauseUI {
     return group;
   }
 
-  /** Alterna tela cheia nos dois sentidos. */
+  // Alterna tela cheia nos dois sentidos.
   _toggleFullscreen() {
     if (this.scene.scale.isFullscreen) {
       this.scene.scale.stopFullscreen();
@@ -136,8 +119,6 @@ export default class PauseUI {
   }
 
   // troca só o texto ("Entrar"/"Sair") conforme o estado atual — chamado
-  // ao abrir o menu (o jogador pode ter saído da tela cheia por fora) e
-  // logo após o clique no botão
   _refreshFullscreenButton() {
     if (!this.fullscreenButton) return;
     const label = this.scene.scale.isFullscreen ? 'Sair da Tela Cheia' : 'Entrar em Tela Cheia';
@@ -150,7 +131,6 @@ export default class PauseUI {
 
   toggle() {
     // evita abrir o menu de pausa por cima da tela de level-up/evolução ou
-    // da tela de game over — cada overlay cuida da sua própria pausa
     if (!this.isOpen && (this.scene.isGameOver || this.scene.levelUpUI?.container.visible)) return;
     this.isOpen ? this.close() : this.open();
   }
@@ -174,11 +154,7 @@ export default class PauseUI {
     EventBus.emit('pause-closed');
   }
 
-  /**
-   * Mesma correção de zoom do HUD (ver HUD._applyZoomCompensation em
-   * src/ui/HUD.js) — botão e painel são fixos na tela e sofreriam o mesmo
-   * deslocamento no celular (zoom 1.4x, ver GameScene._buildPlayer) sem isto.
-   */
+  // Mesma correção de zoom do HUD (ver HUD._applyZoomCompensation em
   _applyZoomCompensation(container) {
     const cam = this.scene.cameras.main;
     const zoom = cam.zoom || 1;

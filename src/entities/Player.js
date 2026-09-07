@@ -4,29 +4,19 @@ import EventBus from '../systems/EventBus.js';
 
 const BASE_SPEED = 160;
 export const BASE_MAX_HP = 100;
-const INVULNERABLE_MS = 350; // i-frames após tomar dano — evita ser "trancado" por vários inimigos ao mesmo tempo
+const INVULNERABLE_MS = 350; // i-frames após tomar dano — evita ser "trancado" por vários inimigos a…
 
-// Desvio (carta "Sexto Sentido", evolução de Reflexo Felino): o jogador não
-// pisca como nos i-frames normais (isso já significa "tomando dano
-// repetido") — fica translúcido de forma mais "sólida" por um instante, pra
-// ler como "o ataque passou direto", não como dano.
+// Desvio (carta "Sexto Sentido", evolução de Reflexo Felino): o jogador…
 const DODGE_ALPHA = 0.25;
 const DODGE_FLASH_MS = 220;
 
-// Visual do escudo (carta "Escudo Energético"): só um círculo azul ao redor
-// do gato, sem enfeite extra — pedido explícito ("só um círculo azul").
+// Visual do escudo (carta "Escudo Energético"): só um círculo azul ao r…
 const SHIELD_COLOR = 0x3aa8ff;
 const SHIELD_RADIUS_PADDING = 8; // um pouco maior que o corpo do jogador, pra "envolver" ele
 const SHIELD_BLINK_INTERVAL_MS = 80; // mesmo intervalo que TornadoAbility usa pro piscar de recarga
 const SHIELD_HIT_FLASH_MS = 90;
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
-  /**
-   * @param {Phaser.Scene} scene
-   * @param {number} x
-   * @param {number} y
-   * @param {import('../roguelike/RunState.js').default} runState
-   */
   constructor(scene, x, y, runState) {
     super(scene, x, y, 'player_idle');
     this.runState = runState;
@@ -36,8 +26,6 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.setCollideWorldBounds(true);
     // raio/offset "base" (sem escala) guardados pra recalcular o body
-    // sempre que o tamanho do personagem mudar (ver applySize) — cartas de
-    // evolução como COLOSSO usam isso pra crescer sem perder a colisão.
     this._baseRadius = this.width / 2 - 2;
     this._baseOffsetX = this.width / 2 - this._baseRadius;
     this._baseOffsetY = this.height / 2 - this._baseRadius;
@@ -57,20 +45,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     });
 
     // aplica de cara qualquer tamanho já ganho antes deste Player existir
-    // (não deveria acontecer hoje — Player só nasce uma vez por run, e
-    // sizeMultiplier começa em 0 — mas deixa o construtor consistente com
-    // applySize() em vez de assumir escala 1 na marra)
     this.applySize(runState.sizeMultiplier);
 
     // DamageSystem.applyContactDamage lê essas duas props: define a
-    // janela de i-frame e onde ela expira. Sem isso o jogador tomaria
-    // dano de cada inimigo encostado, todos no mesmo frame.
     this.invulnerableMs = INVULNERABLE_MS;
     this.invulnerableUntil = 0;
 
     // desvio (carta "Sexto Sentido"): 0 = não está desviando agora. Separado
-    // de invulnerableUntil de propósito — dodge não dá i-frames, é só o
-    // resultado visual de UM ataque que não acertou (ver onDodge/DamageSystem._rollDodge)
     this._dodgeFlashUntil = 0;
 
     this.cursors = scene.input.keyboard.createCursorKeys();
@@ -79,28 +60,18 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.weaponManager = null; // injetado pela GameScene depois de criado
     this.isDead = false;
     // Knockback (ex.: Pisão do Minotauro) — enquanto ativo, sobrescreve o
-    // movimento normal por input (ver applyKnockback/_handleMovement),
-    // mesmo padrão que Enemy.js já usa pro knockback dos inimigos.
     this.knockbackUntil = 0;
     // God Mode (cheat "god" do DevConsole, F9): checado em DamageSystem
-    // .applyContactDamage/applyWeaponHit — nenhum dano passa enquanto true.
     this.godMode = false;
-    this.lastHorizontalDir = 1; // direção horizontal "travada" pra armas tipo katana (1 = direita, -1 = esquerda)
+    this.lastHorizontalDir = 1; // direção horizontal "travada" pra armas tipo katana (1 = direita, -1 =…
 
     // escudo (carta "Escudo Energético"): null até a habilidade ser
-    // desbloqueada. Ouvido aqui (e não no AbilityManager) porque, assim
-    // como a katana lê doubleStrike direto em Weapon.js, o escudo precisa
-    // mexer direto no fluxo de dano do Player (ver DamageSystem._applyShield)
-    // e não só rodar um update() isolado. EventBus.removeAllListeners() no
-    // início de GameScene.create() evita duplicar isto entre restarts.
     this.shieldSystem = null;
     this.shieldFx = null;
     EventBus.on('ability-unlocked', ({ abilityId, def }) => {
       if (abilityId === 'energyShield') this._unlockShield(def);
     });
     // mesmos eventos que já pausam o SpawnDirector (ver GameScene) — o
-    // escudo precisa descontar o mesmo intervalo, senão recarrega (ou até
-    // enche de um pulo) só de o jogador demorar na tela de cartas
     EventBus.on('levelup-opened', () => this.shieldSystem?.pause(this.scene.time.now));
     EventBus.on('levelup-closed', () => this.shieldSystem?.resume(this.scene.time.now));
   }
@@ -114,7 +85,6 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       onHit: () => this._flashShieldHit()
     });
     // sem isto o HUD só fica sabendo que existe escudo no primeiro onChange
-    // (ou seja, no primeiro hit/recarga) — nasce cheio mas "invisível" até lá
     EventBus.emit('player-shield-changed', {
       current: this.shieldSystem.current,
       max: this.shieldSystem.maxShield
@@ -127,7 +97,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       .setDepth(9); // logo abaixo do jogador (depth 10), acima do chão
   }
 
-  /** Flash branco rápido no escudo — mesma linguagem visual que Enemy.playHitReaction usa pro corpo dos inimigos. */
+  // Flash branco rápido no escudo — mesma linguagem visual que Enemy.play…
   _flashShieldHit() {
     if (!this.shieldFx) return;
     this.shieldFx.setFillStyle(0xffffff, 0.45);
@@ -139,20 +109,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     });
   }
 
-  /**
-   * Acompanha o jogador e cuida da recarga + do visual: pisca (liga/
-   * desliga, mesmo estilo do vórtice de TornadoAbility) enquanto está
-   * recarregando, e fica mais apagado conforme o escudo esvazia.
-   */
+  // Acompanha o jogador e cuida da recarga + do visual: pisca (liga/
   _updateShield(time) {
     if (!this.shieldSystem || !this.shieldFx) return;
 
     this.shieldSystem.update(time);
     this.shieldFx.setPosition(this.x, this.y);
     // o círculo é um objeto à parte do sprite do gato (não um filho dele),
-    // então não cresce sozinho com COLOSSO (evolução de vida que aplica
-    // setScale no Player via applySize) — precisa copiar a escala atual
-    // do jogador todo frame, senão fica pequeno demais quando ele cresce
     this.shieldFx.setScale(this.scale);
 
     if (this.shieldSystem.isRegenerating(time)) {
@@ -168,25 +131,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.weaponManager = weaponManager;
   }
 
-  /**
-   * Recalcula escala visual + corpo de colisão a partir de
-   * runState.sizeMultiplier (0 = tamanho normal). Chamado pelo RunManager
-   * sempre que um efeito "sizeMultiplier" é aplicado (hoje só a evolução
-   * COLOSSO usa isto).
-   *
-   * IMPORTANTE: body.setCircle(radius, offsetX, offsetY) espera raio e
-   * offset em pixels "de origem" (SEM escala) — o Arcade Physics aplica a
-   * escala atual do sprite por conta própria a cada frame (ver
-   * Body.updateBounds()/Body.radius nos docs do Phaser: "this is the
-   * unscaled radius... the true radius is equal to halfWidth"). Passar
-   * `_baseRadius * scale` aqui (como era antes) fazia o Phaser escalar de
-   * novo por cima, resultando num raio de colisão MUITO maior que o
-   * sprite visível — daí o jogador "travando" em paredes que ainda não
-   * tinha tocado e tomando dano de inimigos ainda longe. Por isso agora
-   * só passamos os valores base (sem multiplicar por scale): o
-   * setScale(scale) já é suficiente pra crescer a colisão junto com o
-   * sprite.
-   */
+  // Recalcula escala visual + corpo de colisão a partir de
   applySize(sizeMultiplier) {
     const scale = 1 + sizeMultiplier;
     this.setScale(scale);
@@ -209,13 +154,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._updateShield(this.scene.time.now);
   }
 
-  /**
-   * Controla a transparência do sprite: desvio (carta "Sexto Sentido") tem
-   * prioridade — fica num alpha fixo e mais visível que os i-frames, sem
-   * piscar, pra não ser confundido com "tomando dano". Sem desvio ativo,
-   * volta ao piscar normal dos i-frames (liga/desliga a cada 80ms) enquanto
-   * eles durarem.
-   */
+  // Controla a transparência do sprite: desvio (carta "Sexto Sentido") tem
   _updateInvulnerableFlash() {
     const now = this.scene.time.now;
     if (now < this._dodgeFlashUntil) {
@@ -226,21 +165,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.setAlpha(isInvulnerable ? (Math.floor(now / 80) % 2 === 0 ? 0.4 : 1) : 1);
   }
 
-  /**
-   * Chamado por DamageSystem._rollDodge quando o desvio proca — nenhum
-   * dano chegou a ser aplicado. Só marca a janela de transparência; quem
-   * desenha é _updateInvulnerableFlash, todo frame.
-   */
+  // Chamado por DamageSystem._rollDodge quando o desvio proca — nenhum
   onDodge() {
     this._dodgeFlashUntil = this.scene.time.now + DODGE_FLASH_MS;
   }
 
-  /**
-   * Empurra o jogador na direção (dirX, dirY) — vetor já normalizado —
-   * por `durationMs`, ignorando o input normal enquanto durar (ver
-   * _handleMovement). Usado pelo Pisão do Minotauro (ver Enemy.js
-   * _resolveStomp) pra dar o "recuo" de quem ficou muito perto do boss.
-   */
+  // Empurra o jogador na direção (dirX, dirY) — vetor já normalizado —
   applyKnockback(dirX, dirY, force, nowMs, durationMs = 200) {
     if (this.isDead) return;
     this.setVelocity(dirX * force, dirY * force);
@@ -261,8 +191,6 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     );
 
     // celular: soma o vetor do joystick virtual (ver TouchJoystick) ao do
-    // teclado. Sem toque ativo o vetor é (0,0), então isto não muda nada
-    // no PC nem quando o joystick simplesmente não existe (this.scene.touchJoystick undefined).
     const joyVec = this.scene.touchJoystick?.getVector();
     if (joyVec) {
       vec.x += joyVec.x;
@@ -276,9 +204,6 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.lastMoveDir = vec.clone();
     }
     // rastreado separado do lastMoveDir: só muda quando há componente
-    // horizontal de fato, então subir/descer "puro" mantém o último
-    // lado (direita/esquerda) — é o que a katana usa pra nunca atacar
-    // em diagonal/vertical.
     if (vec.x !== 0) {
       this.lastHorizontalDir = Math.sign(vec.x);
     }
@@ -287,11 +212,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._updateAnimation(vec);
   }
 
-  /**
-   * Troca idle<->walk conforme o jogador se move, e espelha o sprite
-   * (flipX) pro lado pra onde ele está indo — a arte original olha pra
-   * direita, então só espelha quando lastHorizontalDir é -1 (esquerda).
-   */
+  // Troca idle<->walk conforme o jogador se move, e espelha o sprite
   _updateAnimation(vec) {
     const isMoving = vec.lengthSq() > 0;
     const anim = isMoving ? 'player-walk' : 'player-idle';
@@ -304,26 +225,17 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  /**
-   * Ataque 100% automático: o jogador só controla o movimento.
-   * WeaponManager.tryAttack() é chamado todo frame, mas só dispara de
-   * fato quando o cooldown da arma atual permite (e, no caso de armas à
-   * distância, quando há um inimigo no alcance).
-   */
+  // Ataque 100% automático: o jogador só controla o movimento.
   _autoAttack() {
     this.weaponManager?.tryAttack(this);
   }
 
-  /** Direção para onde o jogador está "olhando" (último movimento). */
+  // Direção para onde o jogador está "olhando" (último movimento).
   getAimDirection() {
     return this.lastMoveDir || new Phaser.Math.Vector2(0, 1);
   }
 
-  /**
-   * Versão "travada em horizontal" da direção de mira: nunca aponta pra
-   * cima/baixo/diagonal, só (1,0) ou (-1,0). Usada por armas que não
-   * devem atacar em ângulo (ex.: katana).
-   */
+  // Versão "travada em horizontal" da direção de mira: nunca aponta pra
   getHorizontalAimDirection() {
     return new Phaser.Math.Vector2(this.lastHorizontalDir, 0);
   }
