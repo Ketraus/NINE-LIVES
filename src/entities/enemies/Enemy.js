@@ -488,6 +488,26 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.scene.sound.play('sfx_cyberus_wakeup', { volume: 0.5 });
   }
 
+  /** "Minotauro puto" (ver _triggerRage acima): a partir do rage, todo
+   * cooldown de ataque do boss (Investida/Machado/Corte/Pisão) passa por
+   * aqui e sai encurtado por def.rageCooldownMultiplier (ex.: 0.7 = 30%
+   * mais rápido). Fora do rage, devolve o valor puro sem alterar nada. */
+  _bossCooldown(baseMs) {
+    if (this.isEnraged && this.def.rageCooldownMultiplier) {
+      return baseMs * this.def.rageCooldownMultiplier;
+    }
+    return baseMs;
+  }
+
+  /** Mesma ideia acima, mas pro dano dos ataques (def.rageDamageMultiplier)
+   * — "um pouco mais de pressão" nos golpes, não uma habilidade nova. */
+  _bossDamage(baseDamage) {
+    if (this.isEnraged && this.def.rageDamageMultiplier) {
+      return baseDamage * this.def.rageDamageMultiplier;
+    }
+    return baseDamage;
+  }
+
   /**
    * Troca entre a animação de andar e a textura parada (idle) conforme a
    * velocidade atual — só afeta inimigos com "idleTexture" definido em
@@ -1239,9 +1259,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       }
     }
     if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
+    // Sorteio 1/3 cada fora do rage. Em rage, os pesos viram
+    // rageChargeWeight/rageAxeWeight (def.js) — Investida e Machado saem
+    // mais, Corte (o mais "parado") sobra menos, sem entrar habilidade
+    // nova nenhuma (ver _triggerRage).
+    const chargeWeight = this.isEnraged ? this.def.rageChargeWeight ?? 1 / 3 : 1 / 3;
+    const axeWeight = this.isEnraged ? this.def.rageAxeWeight ?? 1 / 3 : 1 / 3;
     const roll = Math.random();
-    if (roll < 1 / 3) this._startCharge(target, nowMs);
-    else if (roll < 2 / 3) this._startAxeThrow(target, nowMs);
+    if (roll < chargeWeight) this._startCharge(target, nowMs);
+    else if (roll < chargeWeight + axeWeight) this._startAxeThrow(target, nowMs);
     else this._startCleave(target, nowMs);
     return true;
   }
@@ -1292,7 +1318,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
       if (dist <= this.def.chargeHitRadius && target.active && !target.healthSystem?.isDead()) {
         this.bossChargeHasHit = true;
-        DamageSystem.applyWeaponHit(target, this.def.chargeDamage, this, nowMs);
+        DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.chargeDamage), this, nowMs);
         this.scene.cameras.main.shake(CHARGE_IMPACT_SHAKE_MS, CHARGE_IMPACT_SHAKE_INTENSITY);
       }
     }
@@ -1326,7 +1352,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.scene.cameras.main.shake(CHARGE_SWING_SHAKE_MS, CHARGE_SWING_SHAKE_INTENSITY);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.chargeSwingRadius && target.active && !target.healthSystem?.isDead()) {
-      DamageSystem.applyWeaponHit(target, this.def.chargeSwingDamage, this, nowMs);
+      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.chargeSwingDamage), this, nowMs);
     }
     this._endCharge(nowMs);
   }
@@ -1352,7 +1378,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this._refreshStatusTint(nowMs); // volta pro tint normal (ou de status, se houver)
       this.vulnerableDamageMultiplier = 1;
       this.bossState = 'chasing';
-      this.bossChargeReadyAt = nowMs + this.def.chargeCooldownMs;
+      this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.chargeCooldownMs);
     }
   }
 
@@ -1473,7 +1499,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius, AXE_TELEGRAPH_COLOR);
     const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
     if (dist <= this.def.axeThrowImpactRadius && target.active && !target.healthSystem?.isDead()) {
-      DamageSystem.applyWeaponHit(target, this.def.axeThrowImpactDamage, this, nowMs);
+      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowImpactDamage), this, nowMs);
     }
     this.axeStuckUntil = nowMs + this.def.axeThrowStuckMs;
   }
@@ -1492,7 +1518,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowExplosionRadius, AXE_EXPLOSION_COLOR);
     const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
     if (dist <= this.def.axeThrowExplosionRadius && target.active && !target.healthSystem?.isDead()) {
-      DamageSystem.applyWeaponHit(target, this.def.axeThrowExplosionDamage, this, nowMs);
+      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowExplosionDamage), this, nowMs);
     }
     this._startAxeRaise(nowMs);
   }
@@ -1544,7 +1570,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       const dist = Phaser.Math.Distance.Between(this.axeSprite.x, this.axeSprite.y, target.x, target.y);
       if (dist <= this.def.axeThrowReturnRadius && target.active && !target.healthSystem?.isDead()) {
         this.axeReturnHasHit = true;
-        DamageSystem.applyWeaponHit(target, this.def.axeThrowReturnDamage, this, nowMs);
+        DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowReturnDamage), this, nowMs);
       }
     }
     if (nowMs >= this.axeReturnEndAt) this._endAxeThrow(nowMs);
@@ -1557,7 +1583,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.axeSprite?.setVisible(false);
     this._setDisarmed(false); // pegou o machado de volta — volta pro sprite com ele
     this.bossState = 'chasing';
-    this.bossChargeReadyAt = nowMs + this.def.axeThrowCooldownMs;
+    this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.axeThrowCooldownMs);
   }
 
   /** Flash curto (círculo que nasce pequeno/opaco e cresce até sumir)
@@ -1657,7 +1683,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       const angleTo = Math.atan2(target.y - this.y, target.x - this.x);
       const angleDiff = Math.abs(Phaser.Math.Angle.Wrap(angleTo - this.cleaveAngle));
       if (dist <= this.def.cleaveRange && angleDiff <= Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg)) {
-        DamageSystem.applyWeaponHit(target, this.def.cleaveDamage, this, nowMs);
+        DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.cleaveDamage), this, nowMs);
       }
     }
     this._startCleaveRecover(nowMs);
@@ -1692,7 +1718,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.setVelocity(0, 0);
     if (nowMs >= this.cleaveRecoverEndAt) {
       this.bossState = 'chasing';
-      this.bossChargeReadyAt = nowMs + this.def.cleaveCooldownMs;
+      this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.cleaveCooldownMs);
     }
   }
 
@@ -1760,14 +1786,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._flashCircle(this.x, this.y, this.def.stompImpactRadius, STOMP_IMPACT_COLOR);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.stompImpactRadius && target.active && !target.healthSystem?.isDead()) {
-      DamageSystem.applyWeaponHit(target, this.def.stompDamage, this, nowMs);
+      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.stompDamage), this, nowMs);
       const dx = (target.x - this.x) || 0.01;
       const dy = (target.y - this.y) || 0;
       const len = Math.hypot(dx, dy) || 1;
       target.applyKnockback?.(dx / len, dy / len, this.def.stompKnockbackForce, nowMs, this.def.stompKnockbackDurationMs);
     }
     this.bossState = 'chasing';
-    this.stompReadyAt = nowMs + this.def.stompCooldownMs;
+    this.stompReadyAt = nowMs + this._bossCooldown(this.def.stompCooldownMs);
   }
 
   /** Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.

@@ -135,6 +135,18 @@ export default [
     // (arremesso do machado em andamento durante a fúria).
     "walkAnimRageNoAxe": "minotaur-walk-rage-noaxe",
     "idleTextureRageNoAxe": "minotaur_idle_rage_noaxe",
+    // "Minotauro puto" (ver Enemy.js _triggerRage/_bossCooldown/
+    // _bossDamage): a partir do rage, SEM habilidade nova nenhuma —
+    // só aperta o que já existe. Cooldowns de Investida/Machado/Corte/
+    // Pisão saem multiplicados por rageCooldownMultiplier (0.7 = 30%
+    // mais rápido). O sorteio 1/3-1/3-1/3 de Investida/Machado/Corte
+    // vira os pesos abaixo (Investida e Machado saem mais, Corte sobra
+    // menos). Todo dano de ataque do boss sai multiplicado por
+    // rageDamageMultiplier (mais pressão, não mais dano absurdo).
+    "rageCooldownMultiplier": 0.7,
+    "rageChargeWeight": 0.4,
+    "rageAxeWeight": 0.4,
+    "rageDamageMultiplier": 1.15,
     "hp": 3000,
     "speed": 65,
     "contactDamage": 40,
