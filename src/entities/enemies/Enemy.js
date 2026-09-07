@@ -185,17 +185,32 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.idleTexture = def.idleTexture || null;
     this.isIdleVisual = false;
     // Versões SEM machado (Machado Arremessado, ver _launchAxe/
-    // _endAxeThrow -> _setDisarmed) — inimigos sem walkAnimNoAxe/
-    // idleTextureNoAxe (todos exceto o Minotauro) simplesmente nunca
-    // ficam "desarmados", então isDisarmed nunca muda.
-    this.walkAnimArmed = this.walkAnim;
-    this.idleTextureArmed = this.idleTexture;
+    // _endAxeThrow -> _setDisarmed) e RAGE (ver _triggerRage, abaixo) —
+    // inimigos sem esses campos em data/enemies.js (todos exceto o
+    // Minotauro) simplesmente nunca mudam, então isDisarmed/isEnraged
+    // nunca saem do valor inicial.
+    this.walkAnimNormal = this.walkAnim;
+    this.idleTextureNormal = this.idleTexture;
     this.walkAnimDisarmed = def.walkAnimNoAxe || this.walkAnim;
     this.idleTextureDisarmed = def.idleTextureNoAxe || this.idleTexture;
+    this.walkAnimRage = def.walkAnimRage || this.walkAnim;
+    this.idleTextureRage = def.idleTextureRage || this.idleTexture;
     this.isDisarmed = false;
+    this.isEnraged = false;
+    this.rageHpThreshold = def.rageHpThreshold || 0;
 
     this.healthSystem = new HealthSystem(def.hp, {
-      onDeath: () => this.die()
+      onDeath: () => this.die(),
+      // Rage (só dispara se def.rageHpThreshold existir, ou seja, só no
+      // Minotauro): assim que a vida cair pra essa fração da vida
+      // TOTAL, entra em fúria de vez (ver _triggerRage). Checa <= pra
+      // não depender de acertar o valor exato — qualquer dano que cruze
+      // o limiar já dispara.
+      onChange: (current, max) => {
+        if (!this.isEnraged && this.rageHpThreshold > 0 && current <= max * this.rageHpThreshold) {
+          this._triggerRage();
+        }
+      }
     });
 
     // até este timestamp (scene.time.now), chase() não sobrescreve a
@@ -421,22 +436,49 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Troca pra versão sem/com machado (ver walkAnimArmed/Disarmed no
-   * constructor) e já força a troca visual imediata — sem isso ele só
-   * trocaria de arte na próxima vez que cruzasse o limiar idle<->andando
-   * em updateAnimState(), o que deixaria o machado "sumindo" com atraso.
-   * Chamado por _launchAxe (arremesso, some o machado) e _endAxeThrow
-   * (pega de volta).
+   * Recalcula qual walkAnim/idleTexture usar AGORA, dado o estado atual
+   * (desarmado durante o arremesso do machado tem prioridade sobre rage,
+   * já que não existe versão "rage sem machado") e já força a troca
+   * visual imediata — sem isso ele só trocaria de arte na próxima vez que
+   * cruzasse o limiar idle<->andando em updateAnimState(), o que deixaria
+   * a troca "atrasada". Chamado por _launchAxe/_endAxeThrow (desarmar/
+   * rearmar) e _triggerRage (entrar em fúria).
    */
-  _setDisarmed(disarmed) {
-    this.isDisarmed = disarmed;
-    this.walkAnim = disarmed ? this.walkAnimDisarmed : this.walkAnimArmed;
-    this.idleTexture = disarmed ? this.idleTextureDisarmed : this.idleTextureArmed;
+  _refreshBossVisual() {
+    if (this.isDisarmed) {
+      this.walkAnim = this.walkAnimDisarmed;
+      this.idleTexture = this.idleTextureDisarmed;
+    } else if (this.isEnraged) {
+      this.walkAnim = this.walkAnimRage;
+      this.idleTexture = this.idleTextureRage;
+    } else {
+      this.walkAnim = this.walkAnimNormal;
+      this.idleTexture = this.idleTextureNormal;
+    }
     if (this.isIdleVisual) {
       if (this.idleTexture) this.setTexture(this.idleTexture);
     } else if (this.walkAnim) {
       this.anims.play(this.walkAnim);
     }
+  }
+
+  /** Troca pra versão sem/com machado — ver _refreshBossVisual. Chamado
+   * por _launchAxe (arremesso, some o machado) e _endAxeThrow (pega de
+   * volta). */
+  _setDisarmed(disarmed) {
+    this.isDisarmed = disarmed;
+    this._refreshBossVisual();
+  }
+
+  /** Entra em fúria pro resto da luta (ver rageHpThreshold em
+   * data/enemies.js e o onChange do HealthSystem no constructor) — troca
+   * de sprite (com ou sem cravo de aviso na tela, deixei só um shake +
+   * som curto pra marcar o momento) e nunca mais volta ao normal. */
+  _triggerRage() {
+    this.isEnraged = true;
+    this._refreshBossVisual();
+    this.scene.cameras.main.shake(250, 0.015);
+    this.scene.sound.play('sfx_cyberus_wakeup', { volume: 0.5 });
   }
 
   /**

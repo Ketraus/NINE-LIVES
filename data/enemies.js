@@ -124,6 +124,12 @@ export default [
     // habilidade Machado Arremessado, enquanto o machado está fora da mão
     "walkAnimNoAxe": "minotaur-walk-noaxe",
     "idleTextureNoAxe": "minotaur_idle_noaxe",
+    // Rage (ver Enemy.js _triggerRage/_refreshBossVisual): a partir do
+    // momento em que a vida cair pra esta fração da vida total (0.45 =
+    // 45%), troca pra sprite rage e fica assim pro resto da luta.
+    "rageHpThreshold": 0.45,
+    "walkAnimRage": "minotaur-walk-rage",
+    "idleTextureRage": "minotaur_idle_rage",
     "hp": 3000,
     "speed": 65,
     "contactDamage": 40,

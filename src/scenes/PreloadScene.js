@@ -48,6 +48,17 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Versão RAGE (ver Enemy.js _triggerRage/_refreshBossVisual): entra
+    // sozinha quando ele cai pra def.rageHpThreshold da vida total (ver
+    // data/enemies.js "minotaur") e fica pro resto da luta. Só existe COM
+    // machado (não tem "rage desarmado") — enquanto arremessando o
+    // machado, o desarmado normal continua tendo prioridade (ver
+    // _refreshBossVisual).
+    this.load.image('minotaur_idle_rage', 'assets/sprites/minotaur_idle_rage.png');
+    this.load.spritesheet('minotaur_walk_rage', 'assets/sprites/minotaur_walk_rage.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
@@ -220,6 +231,13 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'minotaur-walk-noaxe',
       frames: this.anims.generateFrameNumbers('minotaur_walk_noaxe', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    // versão rage (ver minotaur_walk_rage acima e Enemy.js _triggerRage)
+    this.anims.create({
+      key: 'minotaur-walk-rage',
+      frames: this.anims.generateFrameNumbers('minotaur_walk_rage', { start: 0, end: 5 }),
       frameRate: 6,
       repeat: -1
     });
