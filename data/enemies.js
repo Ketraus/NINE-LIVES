@@ -121,7 +121,7 @@ export default [
     "idleTexture": "minotaur_idle",
     "hp": 3000,
     "speed": 65,
-    "contactDamage": 0,
+    "contactDamage": 40,
     "contactCooldownMs": 800,
     "xpReward": 500,
     // sem tint (sprite real, não mais o placeholder cinza) — branco = cor

@@ -28,11 +28,11 @@ export default class PreloadScene extends Phaser.Scene {
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     // quando ele não tá se movendo (ver Enemy.js updateAnimState)
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
-    // Minotauro (boss): 4 frames de 32x32, spritesheet real substituindo o
-    // placeholder tintado (ver data/enemies.js "minotaur" -> sprite/color,
-    // e Enemy.js constructor -> def.walkAnim)
-    // grade 2x2 de quadros 64x64 (NÃO uma faixa 32xN) — Phaser lê em ordem
-    // de leitura (esquerda->direita, cima->baixo), então frames 0,1,2,3
+    // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
+    // (ver data/enemies.js "minotaur" -> sprite/color, e Enemy.js
+    // constructor -> def.walkAnim)
+    // grade 3x2 de quadros 64x64 (NÃO uma faixa 64xN) — Phaser lê em ordem
+    // de leitura (esquerda->direita, cima->baixo), então frames 0..5
     // já saem na ordem certa da grade
     this.load.spritesheet('minotaur_walk', 'assets/sprites/minotaur_walk.png', {
       frameWidth: 64,
@@ -202,7 +202,7 @@ export default class PreloadScene extends Phaser.Scene {
     // animação de andar do Minotauro (ver Enemy.js constructor -> def.walkAnim)
     this.anims.create({
       key: 'minotaur-walk',
-      frames: this.anims.generateFrameNumbers('minotaur_walk', { start: 0, end: 3 }),
+      frames: this.anims.generateFrameNumbers('minotaur_walk', { start: 0, end: 5 }),
       frameRate: 6,
       repeat: -1
     });
