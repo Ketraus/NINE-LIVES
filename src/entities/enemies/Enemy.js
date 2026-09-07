@@ -508,6 +508,18 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     return baseDamage;
   }
 
+  /** Mesma ideia, mas pro tempo que ele fica PARADO preparando um golpe
+   * (telegraph/pausa antes do ataque sair de verdade — ver _startCharge/
+   * _startAxeThrow/_startCleave/_startCleavePause/_startStomp). Em rage
+   * ele avisa mais rápido (def.rageTelegraphMultiplier), não some com o
+   * aviso — só aperta o tempo de reação. */
+  _bossTelegraph(baseMs) {
+    if (this.isEnraged && this.def.rageTelegraphMultiplier) {
+      return baseMs * this.def.rageTelegraphMultiplier;
+    }
+    return baseMs;
+  }
+
   /**
    * Troca entre a animação de andar e a textura parada (idle) conforme a
    * velocidade atual — só afeta inimigos com "idleTexture" definido em
@@ -1286,7 +1298,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     // telegraph + pequena pausa contam juntos aqui: a linha fica visível
     // o tempo todo, incluindo a pausa "segurando o fôlego" antes de sair
-    this.bossChargeTelegraphUntil = nowMs + this.def.chargeTelegraphMs + this.def.chargePauseMs;
+    this.bossChargeTelegraphUntil = nowMs + this._bossTelegraph(this.def.chargeTelegraphMs + this.def.chargePauseMs);
     this.scene.sound.play('sfx_elite_lock', { volume: 0.6 });
   }
 
@@ -1423,7 +1435,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.axeTargetX = target.x;
     this.axeTargetY = target.y;
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
-    this.axeTelegraphUntil = nowMs + this.def.axeThrowTelegraphMs;
+    this.axeTelegraphUntil = nowMs + this._bossTelegraph(this.def.axeThrowTelegraphMs);
     this.scene.sound.play('sfx_elite_lock', { volume: 0.6 });
   }
 
@@ -1618,14 +1630,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.cleaveAngle = Math.atan2(dy, dx);
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     this.cleaveTelegraphStartMs = nowMs;
-    this.cleaveTelegraphEndAt = nowMs + this.def.cleaveTelegraphMs;
+    this.cleaveTelegraphDurationMs = this._bossTelegraph(this.def.cleaveTelegraphMs);
+    this.cleaveTelegraphEndAt = nowMs + this.cleaveTelegraphDurationMs;
     this.cleaveWhistle = this.scene.sound.add('sfx_elite_warning', { loop: true });
     this.cleaveWhistle.play({ volume: CLEAVE_WHISTLE_VOLUME_START, rate: CLEAVE_WHISTLE_RATE_START });
   }
 
   _updateCleaveTelegraph(nowMs) {
     this.setVelocity(0, 0);
-    const progress = Math.min((nowMs - this.cleaveTelegraphStartMs) / this.def.cleaveTelegraphMs, 1);
+    const progress = Math.min((nowMs - this.cleaveTelegraphStartMs) / this.cleaveTelegraphDurationMs, 1);
     if (this.cleaveWhistle) {
       this.cleaveWhistle.setVolume(Phaser.Math.Linear(CLEAVE_WHISTLE_VOLUME_START, CLEAVE_WHISTLE_VOLUME_END, progress));
       this.cleaveWhistle.setRate(Phaser.Math.Linear(CLEAVE_WHISTLE_RATE_START, CLEAVE_WHISTLE_RATE_END, progress));
@@ -1657,7 +1670,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _startCleavePause(nowMs) {
     this.bossState = 'cleave_pause';
     this._stopCleaveWhistle();
-    this.cleavePauseEndAt = nowMs + this.def.cleavePauseMs;
+    this.cleavePauseEndAt = nowMs + this._bossTelegraph(this.def.cleavePauseMs);
   }
 
   _updateCleavePause(target, nowMs) {
@@ -1743,7 +1756,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bossState = 'stomp_raise';
     this.setVelocity(0, 0);
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
-    this.stompRaiseUntil = nowMs + this.def.stompRaiseMs + this.def.stompPauseMs;
+    this.stompRaiseDurationMs = this._bossTelegraph(this.def.stompRaiseMs + this.def.stompPauseMs);
+    this.stompRaiseUntil = nowMs + this.stompRaiseDurationMs;
     this.scene.sound.play('sfx_elite_lock', { volume: 0.5 });
   }
 
@@ -1761,7 +1775,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const g = this.bossTelegraphGraphics;
     g.clear();
     const progress = Phaser.Math.Clamp(
-      1 - (this.stompRaiseUntil - nowMs) / (this.def.stompRaiseMs + this.def.stompPauseMs), 0, 1
+      1 - (this.stompRaiseUntil - nowMs) / this.stompRaiseDurationMs, 0, 1
     );
     const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
     const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.1, MISSILE_BLINK_ALPHA_MAX + 0.1, blinkT);
