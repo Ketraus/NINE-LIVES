@@ -195,6 +195,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.idleTextureDisarmed = def.idleTextureNoAxe || this.idleTexture;
     this.walkAnimRage = def.walkAnimRage || this.walkAnim;
     this.idleTextureRage = def.idleTextureRage || this.idleTexture;
+    // Rage + desarmado ao mesmo tempo (ver _refreshBossVisual) — cai pra
+    // versão rage normal se não houver arte específica definida.
+    this.walkAnimRageDisarmed = def.walkAnimRageNoAxe || this.walkAnimRage;
+    this.idleTextureRageDisarmed = def.idleTextureRageNoAxe || this.idleTextureRage;
     this.isDisarmed = false;
     this.isEnraged = false;
     this.rageHpThreshold = def.rageHpThreshold || 0;
@@ -437,15 +441,18 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   /**
    * Recalcula qual walkAnim/idleTexture usar AGORA, dado o estado atual
-   * (desarmado durante o arremesso do machado tem prioridade sobre rage,
-   * já que não existe versão "rage sem machado") e já força a troca
+   * (desarmado + em rage ao mesmo tempo usa a arte "rage sem machado";
+   * ver walkAnimRageDisarmed/idleTextureRageDisarmed) e já força a troca
    * visual imediata — sem isso ele só trocaria de arte na próxima vez que
    * cruzasse o limiar idle<->andando em updateAnimState(), o que deixaria
    * a troca "atrasada". Chamado por _launchAxe/_endAxeThrow (desarmar/
    * rearmar) e _triggerRage (entrar em fúria).
    */
   _refreshBossVisual() {
-    if (this.isDisarmed) {
+    if (this.isDisarmed && this.isEnraged) {
+      this.walkAnim = this.walkAnimRageDisarmed;
+      this.idleTexture = this.idleTextureRageDisarmed;
+    } else if (this.isDisarmed) {
       this.walkAnim = this.walkAnimDisarmed;
       this.idleTexture = this.idleTextureDisarmed;
     } else if (this.isEnraged) {

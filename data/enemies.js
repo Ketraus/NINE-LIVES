@@ -130,6 +130,11 @@ export default [
     "rageHpThreshold": 0.45,
     "walkAnimRage": "minotaur-walk-rage",
     "idleTextureRage": "minotaur_idle_rage",
+    // Rage + sem machado (ver Enemy.js _refreshBossVisual): usada quando
+    // ele já está em rage E nesse momento também está desarmado
+    // (arremesso do machado em andamento durante a fúria).
+    "walkAnimRageNoAxe": "minotaur-walk-rage-noaxe",
+    "idleTextureRageNoAxe": "minotaur_idle_rage_noaxe",
     "hp": 3000,
     "speed": 65,
     "contactDamage": 40,

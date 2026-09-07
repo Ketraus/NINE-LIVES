@@ -59,6 +59,14 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Versão RAGE SEM MACHADO: usada quando ele já está em fúria (rage)
+    // e nesse momento também está desarmado (arremesso do machado em
+    // andamento) — ver Enemy.js _refreshBossVisual.
+    this.load.image('minotaur_idle_rage_noaxe', 'assets/sprites/minotaur_idle_rage_noaxe.png');
+    this.load.spritesheet('minotaur_walk_rage_noaxe', 'assets/sprites/minotaur_walk_rage_noaxe.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
@@ -231,6 +239,14 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'minotaur-walk-noaxe',
       frames: this.anims.generateFrameNumbers('minotaur_walk_noaxe', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    // versão rage sem machado (ver minotaur_walk_rage_noaxe acima e
+    // Enemy.js _refreshBossVisual)
+    this.anims.create({
+      key: 'minotaur-walk-rage-noaxe',
+      frames: this.anims.generateFrameNumbers('minotaur_walk_rage_noaxe', { start: 0, end: 5 }),
       frameRate: 6,
       repeat: -1
     });
