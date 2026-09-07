@@ -38,6 +38,16 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Versões SEM machado (ver Enemy.js _launchAxe/_endAxeThrow -> _setDisarmed):
+    // usadas só enquanto o machado está fora da mão dele, durante a
+    // habilidade Machado Arremessado (do momento que sai voando até
+    // voltar/ser pego de novo). Mesmo tamanho de frame/grade da versão
+    // com machado.
+    this.load.image('minotaur_idle_noaxe', 'assets/sprites/minotaur_idle_noaxe.png');
+    this.load.spritesheet('minotaur_walk_noaxe', 'assets/sprites/minotaur_walk_noaxe.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
@@ -203,6 +213,13 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'minotaur-walk',
       frames: this.anims.generateFrameNumbers('minotaur_walk', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    // versão sem machado (ver minotaur_walk_noaxe acima e Enemy.js _setDisarmed)
+    this.anims.create({
+      key: 'minotaur-walk-noaxe',
+      frames: this.anims.generateFrameNumbers('minotaur_walk_noaxe', { start: 0, end: 5 }),
       frameRate: 6,
       repeat: -1
     });

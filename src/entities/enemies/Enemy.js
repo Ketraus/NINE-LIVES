@@ -184,6 +184,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.walkAnim = def.walkAnim || null;
     this.idleTexture = def.idleTexture || null;
     this.isIdleVisual = false;
+    // Versões SEM machado (Machado Arremessado, ver _launchAxe/
+    // _endAxeThrow -> _setDisarmed) — inimigos sem walkAnimNoAxe/
+    // idleTextureNoAxe (todos exceto o Minotauro) simplesmente nunca
+    // ficam "desarmados", então isDisarmed nunca muda.
+    this.walkAnimArmed = this.walkAnim;
+    this.idleTextureArmed = this.idleTexture;
+    this.walkAnimDisarmed = def.walkAnimNoAxe || this.walkAnim;
+    this.idleTextureDisarmed = def.idleTextureNoAxe || this.idleTexture;
+    this.isDisarmed = false;
 
     this.healthSystem = new HealthSystem(def.hp, {
       onDeath: () => this.die()
@@ -409,6 +418,25 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const vx = this.body.velocity.x;
     if (vx > 5) this.setFlipX(true);
     else if (vx < -5) this.setFlipX(false);
+  }
+
+  /**
+   * Troca pra versão sem/com machado (ver walkAnimArmed/Disarmed no
+   * constructor) e já força a troca visual imediata — sem isso ele só
+   * trocaria de arte na próxima vez que cruzasse o limiar idle<->andando
+   * em updateAnimState(), o que deixaria o machado "sumindo" com atraso.
+   * Chamado por _launchAxe (arremesso, some o machado) e _endAxeThrow
+   * (pega de volta).
+   */
+  _setDisarmed(disarmed) {
+    this.isDisarmed = disarmed;
+    this.walkAnim = disarmed ? this.walkAnimDisarmed : this.walkAnimArmed;
+    this.idleTexture = disarmed ? this.idleTextureDisarmed : this.idleTextureArmed;
+    if (this.isIdleVisual) {
+      if (this.idleTexture) this.setTexture(this.idleTexture);
+    } else if (this.walkAnim) {
+      this.anims.play(this.walkAnim);
+    }
   }
 
   /**
@@ -1136,10 +1164,16 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.bossState === 'charge_swing_telegraph') { this._updateChargeSwingTelegraph(target, nowMs); return true; }
     if (this.bossState === 'charge_vulnerable') { this._updateChargeVulnerable(nowMs); return true; }
     if (this.bossState === 'axe_telegraph') { this._updateAxeTelegraph(nowMs); return true; }
-    if (this.bossState === 'axe_outbound') { this._updateAxeOutbound(target, nowMs); return true; }
-    if (this.bossState === 'axe_stuck') { this._updateAxeStuck(target, nowMs); return true; }
-    if (this.bossState === 'axe_raise') { this._updateAxeRaise(nowMs); return true; }
-    if (this.bossState === 'axe_return') { this._updateAxeReturn(target, nowMs); return true; }
+    // A partir daqui (machado já fora da mão, ver _launchAxe/_setDisarmed)
+    // ele NÃO fica mais parado — devolve false pra chase() cair no
+    // flocking normal logo abaixo e continuar perseguindo/andando de
+    // verdade (por isso o sprite sem machado tem versão "walk"), enquanto
+    // o próprio machado (posição/dano/explosão/retorno) segue seu estado
+    // à parte, independente de onde o Minotauro estiver agora.
+    if (this.bossState === 'axe_outbound') { this._updateAxeOutbound(target, nowMs); return false; }
+    if (this.bossState === 'axe_stuck') { this._updateAxeStuck(target, nowMs); return false; }
+    if (this.bossState === 'axe_raise') { this._updateAxeRaise(nowMs); return false; }
+    if (this.bossState === 'axe_return') { this._updateAxeReturn(target, nowMs); return false; }
     if (this.bossState === 'cleave_telegraph') { this._updateCleaveTelegraph(nowMs); return true; }
     if (this.bossState === 'cleave_pause') { this._updateCleavePause(target, nowMs); return true; }
     if (this.bossState === 'cleave_recover') { this._updateCleaveRecover(nowMs); return true; }
@@ -1362,12 +1396,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.axeSprite = this.scene.add.text(this.x, this.y, '🪓', { fontSize: '28px' }).setOrigin(0.5).setDepth(15);
     }
     this.axeSprite.setPosition(this.x, this.y).setRotation(0).setVisible(true);
+    this._setDisarmed(true); // machado saiu da mão — troca pra sprite sem ele
     this.scene.cameras.main.shake(AXE_THROW_SHAKE_MS, AXE_THROW_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_elite_punch', { volume: 0.6 });
   }
 
   _updateAxeOutbound(target, nowMs) {
-    this.setVelocity(0, 0);
     const progress = Math.min((nowMs - this.axeFlightStartMs) / this.def.axeThrowFlightMs, 1);
     this.axeSprite.x = Phaser.Math.Linear(this.axeOriginX, this.axeTargetX, progress);
     this.axeSprite.y = Phaser.Math.Linear(this.axeOriginY, this.axeTargetY, progress);
@@ -1396,7 +1430,6 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateAxeStuck(target, nowMs) {
-    this.setVelocity(0, 0);
     if (nowMs >= this.axeStuckUntil) this._explodeAxe(target, nowMs);
   }
 
@@ -1433,17 +1466,16 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateAxeRaise(nowMs) {
-    this.setVelocity(0, 0);
     if (nowMs >= this.axeRaiseUntil) this._startAxePullback(nowMs);
   }
 
   /**
    * Passos 10-11: puxa o machado de volta do ponto cravado até a posição
-   * ATUAL do Minotauro (ele fica parado a habilidade inteira, então é a
-   * mesma de sempre), girando de novo, com verificação de acerto único
-   * (axeReturnHasHit) — mesma técnica de bossChargeHasHit na Investida,
-   * senão causaria dano a cada frame com o jogador em cima da linha de
-   * volta.
+   * ATUAL do Minotauro (ele já voltou a andar normalmente desde que o
+   * machado saiu da mão, ver _updateBossAbility -> return false), girando
+   * de novo, com verificação de acerto único (axeReturnHasHit) — mesma
+   * técnica de bossChargeHasHit na Investida, senão causaria dano a cada
+   * frame com o jogador em cima da linha de volta.
    */
   _startAxePullback(nowMs) {
     this.bossState = 'axe_return';
@@ -1455,7 +1487,6 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateAxeReturn(target, nowMs) {
-    this.setVelocity(0, 0);
     const progress = Math.min((nowMs - this.axeReturnStartMs) / this.def.axeThrowReturnFlightMs, 1);
     this.axeSprite.x = Phaser.Math.Linear(this.axeReturnFromX, this.x, progress);
     this.axeSprite.y = Phaser.Math.Linear(this.axeReturnFromY, this.y, progress);
@@ -1475,6 +1506,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
    * (Investida OU Machado de novo, sorteado igual de novo). */
   _endAxeThrow(nowMs) {
     this.axeSprite?.setVisible(false);
+    this._setDisarmed(false); // pegou o machado de volta — volta pro sprite com ele
     this.bossState = 'chasing';
     this.bossChargeReadyAt = nowMs + this.def.axeThrowCooldownMs;
   }
@@ -1725,6 +1757,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.bossState && this.bossState !== 'chasing') {
       this.bossTelegraphGraphics?.clear();
       this.axeSprite?.setVisible(false);
+      this._setDisarmed(false); // interrompeu no meio do arremesso — não pode fugir sem o machado
       this._stopCleaveWhistle();
       this.bossState = 'chasing';
     }

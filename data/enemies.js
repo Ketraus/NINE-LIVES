@@ -119,6 +119,11 @@ export default [
     // Enemy.js updateAnimState) — "animação besta" pedida pelo usuário,
     // é só uma troca de imagem, não uma spritesheet
     "idleTexture": "minotaur_idle",
+    // versões sem machado (ver PreloadScene.js minotaur_*_noaxe e Enemy.js
+    // _launchAxe/_endAxeThrow -> _setDisarmed): usadas só durante a
+    // habilidade Machado Arremessado, enquanto o machado está fora da mão
+    "walkAnimNoAxe": "minotaur-walk-noaxe",
+    "idleTextureNoAxe": "minotaur_idle_noaxe",
     "hp": 3000,
     "speed": 65,
     "contactDamage": 40,
