@@ -46,6 +46,7 @@ const CHARGE_SWING_SHAKE_INTENSITY = 0.02;
 
 // Machado Arremessado (2ª habilidade do Minotauro, sorteada 50/50 com a
 const AXE_SPIN_DEG_PER_MS = 0.9;
+const AXE_SPRITE_SCALE = 2.2; // arte ocupa só um canto do canvas 64x64 — aumenta o tamanho visual do machado arremessado
 const AXE_THROW_SHAKE_MS = 90;
 const AXE_THROW_SHAKE_INTENSITY = 0.004;
 const AXE_IMPACT_SHAKE_MS = 160;
@@ -1003,6 +1004,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   // Passo 4: fim do preparo — o machado sai de verdade do Minotauro até o
+  // ponto travado, girando. Sprite trocada por textura normal/rage (ver
+  // axeSprite acima) conforme isEnraged, a cada arremesso.
   _launchAxe(nowMs) {
     this.bossState = 'axe_outbound';
     this.bossTelegraphGraphics.clear();
@@ -1010,8 +1013,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.axeOriginY = this.y;
     this.axeFlightStartMs = nowMs;
     this.axeFlightEndAt = nowMs + this.def.axeThrowFlightMs;
+    const axeTexture = this.isEnraged ? 'minotaur_axe_thrown_rage' : 'minotaur_axe_thrown';
     if (!this.axeSprite) {
-      this.axeSprite = this.scene.add.text(this.x, this.y, '🪓', { fontSize: '28px' }).setOrigin(0.5).setDepth(15);
+      this.axeSprite = this.scene.add.image(this.x, this.y, axeTexture).setOrigin(0.5).setDepth(15).setScale(AXE_SPRITE_SCALE);
+    } else {
+      this.axeSprite.setTexture(axeTexture);
     }
     this.axeSprite.setPosition(this.x, this.y).setRotation(0).setVisible(true);
     this._setDisarmed(true); // machado saiu da mão — troca pra sprite sem ele

@@ -46,6 +46,9 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // sprite do machado arremessado (normal e rage) — ver Enemy.js _launchAxe
+    this.load.image('minotaur_axe_thrown', 'assets/sprites/minotaur_axe_thrown.png');
+    this.load.image('minotaur_axe_thrown_rage', 'assets/sprites/minotaur_axe_thrown_rage.png');
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
