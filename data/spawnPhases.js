@@ -17,3 +17,4 @@ export default [
   { t: 360000, weights: { grunt: 20, cyber_hound: 35, cyber_brute: 30, exploder: 15 } }, // 6:00
   { t: 420000, weights: { grunt: 15, cyber_hound: 30, cyber_brute: 25, exploder: 15} } // 7:00 — elite entra
 ];
+

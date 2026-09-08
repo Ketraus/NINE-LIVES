@@ -157,7 +157,7 @@ export default [
     "rageDamageMultiplier": 1.15,
     "hp": 3000,
     "speed": 65,
-    "contactDamage": 40,
+    "contactDamage": 0,
     "contactCooldownMs": 800,
     "xpReward": 500,
     // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
