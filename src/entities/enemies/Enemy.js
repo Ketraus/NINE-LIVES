@@ -1386,7 +1386,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _resolveStomp(target, nowMs) {
     this.bossTelegraphGraphics.clear();
     this.scene.cameras.main.shake(STOMP_SHAKE_MS, STOMP_SHAKE_INTENSITY);
-    this.scene.sound.play('sfx_elite_punch', { volume: 0.7 });
+    this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.7 });
     this._flashCircle(this.x, this.y, this.def.stompImpactRadius, STOMP_IMPACT_COLOR);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.stompImpactRadius && target.active && !target.healthSystem?.isDead()) {

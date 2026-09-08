@@ -145,6 +145,10 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_axe_beep', 'assets/sfx/axe_beep.mp3');
     this.load.audio('sfx_axe_explosion', 'assets/sfx/axe_explosion.mp3');
 
+    // Pisão do Minotauro (4ª habilidade, ver Enemy.js _resolveStomp) —
+    // toca no instante em que ele pisa e empurra o jogador pra longe
+    this.load.audio('sfx_minotaur_stomp', 'assets/sfx/minotaur_stomp.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');
