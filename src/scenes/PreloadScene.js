@@ -155,6 +155,16 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_minotaur_hit2', 'assets/sfx/minotaur_hit2.mp3');
     this.load.audio('sfx_minotaur_hit3', 'assets/sfx/minotaur_hit3.mp3');
 
+    // Investida do Minotauro (ver Enemy.js _startCharge/_launchCharge/
+    // _startSwing/_endCharge): ruge (charge) -> investe com um impacto de
+    // largada (charge_impact) + passos correndo (footsteps, em loop) ->
+    // pára e golpeia (swing_attack) -> ofegante na janela vulnerável (breath)
+    this.load.audio('sfx_minotaur_charge', 'assets/sfx/minotaur_charge.mp3');
+    this.load.audio('sfx_minotaur_charge_impact', 'assets/sfx/minotaur_charge_impact.mp3');
+    this.load.audio('sfx_minotaur_footsteps', 'assets/sfx/minotaur_footsteps.mp3');
+    this.load.audio('sfx_minotaur_swing_attack', 'assets/sfx/minotaur_swing_attack.mp3');
+    this.load.audio('sfx_minotaur_breath', 'assets/sfx/minotaur_breath.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');

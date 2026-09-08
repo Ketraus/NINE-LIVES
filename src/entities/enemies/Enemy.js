@@ -43,6 +43,9 @@ const CHARGE_VULNERABLE_TINT = 0xffaaaa;
 const CHARGE_SWING_COLOR = 0xff8800;
 const CHARGE_SWING_SHAKE_MS = 280;
 const CHARGE_SWING_SHAKE_INTENSITY = 0.02;
+// passos tocam em loop durante o dash (curto e rápido — chargeDurationMs)
+// acelerados pra soarem como uma corrida forte, não uma caminhada
+const CHARGE_FOOTSTEPS_RATE = 1.6;
 
 // Machado Arremessado (2ª habilidade do Minotauro, sorteada 50/50 com a
 const AXE_SPIN_DEG_PER_MS = 0.9;
@@ -203,6 +206,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.bossSwingUntil = 0;
       this.bossVulnerableUntil = 0;
       this.bossTelegraphGraphics = null;
+      // Investida: passos em loop durante o dash — ver _launchCharge/
+      // _stopChargeFootsteps
+      this.chargeFootsteps = null;
       // Machado Arremessado: ver _startAxeThrow e afins. axeSprite é o
       this.axeSprite = null;
       this.axeTargetX = 0;
@@ -872,7 +878,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     // telegraph + pequena pausa contam juntos aqui: a linha fica visível
     this.bossChargeTelegraphUntil = nowMs + this._bossTelegraph(this.def.chargeTelegraphMs + this.def.chargePauseMs);
-    this.scene.sound.play('sfx_elite_lock', { volume: 0.6 });
+    this.scene.sound.play('sfx_minotaur_charge', { volume: 0.75 });
   }
 
   _updateChargeTelegraph(nowMs) {
@@ -889,7 +895,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bossChargeDashUntil = nowMs + this.def.chargeDurationMs;
     this.setVelocity(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
     this.scene.cameras.main.shake(CHARGE_LAUNCH_SHAKE_MS, CHARGE_LAUNCH_SHAKE_INTENSITY);
-    this.scene.sound.play('sfx_elite_punch', { volume: 0.8 });
+    this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
+    // passos em loop acompanhando o dash — acelerados (CHARGE_FOOTSTEPS_RATE)
+    // pra soarem como a corrida rápida que é, mesmo sendo bem curta
+    this._stopChargeFootsteps();
+    this.chargeFootsteps = this.scene.sound.add('sfx_minotaur_footsteps', { loop: true });
+    this.chargeFootsteps.play({ volume: 0.55, rate: CHARGE_FOOTSTEPS_RATE });
   }
 
   // Mantém a velocidade reta em linha (chase() normal não roda neste
@@ -911,7 +922,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bossState = 'charge_swing_telegraph';
     this.setVelocity(0, 0);
     this.bossSwingUntil = nowMs + this.def.chargeSwingTelegraphMs;
-    this.scene.sound.play('sfx_cyberus_slash', { volume: 0.8 });
+    this._stopChargeFootsteps(); // parou de correr, para os passos
+    this.scene.sound.play('sfx_minotaur_swing_attack', { volume: 0.8 });
   }
 
   _updateChargeSwingTelegraph(target, nowMs) {
@@ -940,6 +952,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._currentStatusTint = CHARGE_VULNERABLE_TINT;
     this.vulnerableDamageMultiplier = this.def.chargeVulnerableDamageMultiplier;
     this.bossVulnerableUntil = nowMs + this.def.chargeVulnerableMs;
+    this.scene.sound.play('sfx_minotaur_breath', { volume: 0.7 }); // ofegante, "cansei" — janela vulnerável
   }
 
   _updateChargeVulnerable(nowMs) {
@@ -1350,6 +1363,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.cleaveWhistle = null;
   }
 
+  // Para os passos da Investida (mesmo padrão do _stopCleaveWhistle) —
+  // chamado quando o dash termina e também na limpeza de die()/_leave()
+  _stopChargeFootsteps() {
+    if (!this.chargeFootsteps) return;
+    this.chargeFootsteps.stop();
+    this.chargeFootsteps.destroy();
+    this.chargeFootsteps = null;
+  }
+
   // Passo 1: jogador detectado muito perto (ver _updateBossAbility) —
   _startStomp(nowMs) {
     this.bossState = 'stomp_raise';
@@ -1460,6 +1482,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bossTelegraphGraphics?.destroy();
     this.axeSprite?.destroy();
     this._stopCleaveWhistle();
+    this._stopChargeFootsteps();
     this.destroy();
   }
 
@@ -1478,6 +1501,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.axeSprite?.destroy();
     // Boss: o apito do Corte Destrutivo também precisa ser parado na mão
     this._stopCleaveWhistle();
+    // Boss: os passos em loop da Investida também, senão ficam tocando
+    this._stopChargeFootsteps();
     // Elite: som de morte próprio em vez de nenhum som (os inimigos
     if (this.def.elite) this.scene.sound.play('sfx_elite_death', { volume: 0.6 });
     // `color` vai junto só pra quem quiser desenhar algo na cor do
