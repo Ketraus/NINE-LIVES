@@ -51,8 +51,18 @@ const AXE_THROW_SHAKE_MS = 90;
 const AXE_THROW_SHAKE_INTENSITY = 0.004;
 const AXE_IMPACT_SHAKE_MS = 160;
 const AXE_IMPACT_SHAKE_INTENSITY = 0.01;
-const AXE_EXPLOSION_SHAKE_MS = 240;
-const AXE_EXPLOSION_SHAKE_INTENSITY = 0.016;
+// explosão bem mais dramática — o jogador teve charging + beep inteiros
+// pra ver que vinha, então o pay-off precisa ser grande (ver _explodeAxe)
+const AXE_EXPLOSION_SHAKE_MS = 420;
+const AXE_EXPLOSION_SHAKE_INTENSITY = 0.03;
+const AXE_EXPLOSION_FLASH_MS = 180;
+const AXE_EXPLOSION_SHARD_COUNT = 18;
+// aviso do machado cravado (pisca branco + pulsa de tamanho) enquanto
+// carrega — fica mais rápido/urgente assim que o beep final começa
+const AXE_STUCK_PULSE_PERIOD_MS = 340;
+const AXE_STUCK_PULSE_PERIOD_URGENT_MS = 130;
+const AXE_STUCK_PULSE_SCALE = 0.16;
+const AXE_STUCK_PULSE_SCALE_URGENT = 0.3;
 // amarelo (impacto) e laranja-avermelhado (explosão) — bem diferentes do
 const AXE_TELEGRAPH_COLOR = 0xffcc00;
 const AXE_EXPLOSION_COLOR = 0xff4400;
@@ -1019,7 +1029,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     } else {
       this.axeSprite.setTexture(axeTexture);
     }
-    this.axeSprite.setPosition(this.x, this.y).setRotation(0).setVisible(true);
+    this.axeSprite.setPosition(this.x, this.y).setRotation(0).setScale(AXE_SPRITE_SCALE).clearTint().setVisible(true);
     this._setDisarmed(true); // machado saiu da mão — troca pra sprite sem ele
     this.scene.cameras.main.shake(AXE_THROW_SHAKE_MS, AXE_THROW_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_axe_throw', { volume: 0.7 });
@@ -1054,6 +1064,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateAxeStuck(target, nowMs) {
+    this._updateAxeStuckWarningFx(nowMs);
     if (!this.axeBeepPlayed && nowMs >= this.axeChargeEndAt) {
       // carga terminou: apita e só explode quando o beep também acabar
       this.axeBeepPlayed = true;
@@ -1062,16 +1073,111 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.axeBeepPlayed && nowMs >= this.axeStuckUntil) this._explodeAxe(target, nowMs);
   }
 
+  // Machado cravado pisca branco (setTintFill) e pulsa de tamanho igual a
+  // um aviso de "vai explodir" — fica mais rápido/exagerado assim que o
+  // beep final começa (axeBeepPlayed), pra ficar óbvio que a explosão tá
+  // prestes a acontecer de verdade.
+  _updateAxeStuckWarningFx(nowMs) {
+    const urgent = this.axeBeepPlayed;
+    const periodMs = urgent ? AXE_STUCK_PULSE_PERIOD_URGENT_MS : AXE_STUCK_PULSE_PERIOD_MS;
+    const pulseAmount = urgent ? AXE_STUCK_PULSE_SCALE_URGENT : AXE_STUCK_PULSE_SCALE;
+    const t = (Math.sin((nowMs / periodMs) * Math.PI * 2) + 1) / 2; // 0..1
+    this.axeSprite.setScale(AXE_SPRITE_SCALE * (1 + pulseAmount * t));
+    if (t > 0.5) this.axeSprite.setTintFill(0xffffff);
+    else this.axeSprite.clearTint();
+  }
+
   // Passo 8: 💥 explosão de verdade — raio maior e mais dano que o
   _explodeAxe(target, nowMs) {
+    this.axeSprite.setScale(AXE_SPRITE_SCALE).clearTint(); // corta o pisca-pisca de aviso
     this.scene.cameras.main.shake(AXE_EXPLOSION_SHAKE_MS, AXE_EXPLOSION_SHAKE_INTENSITY);
+    this.scene.cameras.main.flash(AXE_EXPLOSION_FLASH_MS, 255, 150, 40);
     this.scene.sound.play('sfx_axe_explosion', { volume: 0.7 });
-    this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowExplosionRadius, AXE_EXPLOSION_COLOR);
+    this._showAxeExplosionFx(this.axeTargetX, this.axeTargetY, this.def.axeThrowExplosionRadius);
     const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
     if (dist <= this.def.axeThrowExplosionRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowExplosionDamage), this, nowMs);
     }
     this._startAxeRaise(nowMs);
+  }
+
+  // Feedback BEM mais forte que o _flashCircle simples usado no resto do
+  // jogo: núcleo branco-quente (ADD) + anel de fogo até o raio real de
+  // dano + anel de fumaça escura passando do raio + estilhaços voando
+  // radialmente, além do camera.flash/shake maiores lá em _explodeAxe.
+  // Justificativa: agora o jogador viu o charging + beep inteiros antes
+  // de explodir, então o pay-off visual precisa condizer com a espera.
+  _showAxeExplosionFx(x, y, radius) {
+    const core = this.scene.add
+      .circle(x, y, radius * 0.5, 0xffffff, 0.9)
+      .setDepth(21)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(0.25);
+    this.scene.tweens.add({
+      targets: core,
+      scale: 1,
+      alpha: 0,
+      duration: 180,
+      ease: 'Cubic.easeOut',
+      onComplete: () => core.destroy()
+    });
+
+    const fireRing = this.scene.add
+      .circle(x, y, radius, AXE_EXPLOSION_COLOR, 0.55)
+      .setDepth(20)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(0.15);
+    this.scene.tweens.add({
+      targets: fireRing,
+      scale: 1,
+      alpha: 0,
+      duration: 380,
+      ease: 'Cubic.easeOut',
+      onComplete: () => fireRing.destroy()
+    });
+
+    const smokeRing = this.scene.add
+      .circle(x, y, radius * 1.4, 0x331100, 0.4)
+      .setDepth(19)
+      .setScale(0.2);
+    this.scene.tweens.add({
+      targets: smokeRing,
+      scale: 1,
+      alpha: 0,
+      duration: 620,
+      ease: 'Cubic.easeOut',
+      onComplete: () => smokeRing.destroy()
+    });
+
+    this._spawnAxeExplosionShards(x, y, radius);
+  }
+
+  // Estilhaços voando radialmente pra fora (mesma técnica do Terremoto, ver
+  // SlamAbility._spawnShockwaveShards), mas mais deles porque a área agora
+  // é bem maior.
+  _spawnAxeExplosionShards(x, y, radius) {
+    for (let i = 0; i < AXE_EXPLOSION_SHARD_COUNT; i++) {
+      const angle = (Math.PI * 2 * i) / AXE_EXPLOSION_SHARD_COUNT + Phaser.Math.FloatBetween(-0.15, 0.15);
+      const dist = radius * Phaser.Math.FloatBetween(0.7, 1.15);
+      const tint = i % 2 === 0 ? AXE_EXPLOSION_COLOR : 0xffdd66;
+      const shard = this.scene.add
+        .image(x, y, 'hit_fx')
+        .setDepth(20)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(tint)
+        .setScale(Phaser.Math.FloatBetween(0.4, 0.7))
+        .setRotation(angle);
+      this.scene.tweens.add({
+        targets: shard,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        scale: 0.1,
+        duration: Phaser.Math.Between(320, 480),
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy()
+      });
+    }
   }
 
   // Passo 9: Minotauro "levanta a mão" — um pulo curto de escala nele

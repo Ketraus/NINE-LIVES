@@ -214,7 +214,10 @@ export default [
     "axeThrowImpactDamage": 35,
     "axeThrowImpactRadius": 70,
     "axeThrowExplosionDamage": 60,
-    "axeThrowExplosionRadius": 110,
+    // área da explosão bem maior que antes (110 → 190) — pedido explícito
+    // pra acertar mais área, já que agora dá tempo de sobra (charging +
+    // beep) pra ler que a explosão vem aí
+    "axeThrowExplosionRadius": 190,
     // levantar a mão + puxar o machado de volta ficaram um pouco mais
     // lentos que antes (350/450) pra dar uma respirada depois da explosão
     // (som mais longo agora) antes de voltar a perseguir
