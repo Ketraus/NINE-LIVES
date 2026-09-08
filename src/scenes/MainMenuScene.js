@@ -44,9 +44,9 @@ export default class MainMenuScene extends Phaser.Scene {
       this._start()
     );
 
-    const settingsButton = this._buildTerminalButton(width / 2, height * 0.6 + 56, 220, 40, 'AJUSTES', () => {
+    const settingsButton = this._buildTerminalButton(width / 2, height * 0.6 + 56, 220, 40, 'SETTINGS', () => {
       this.sound.play('sfx_ui_click', { volume: 0.6 });
-      this.scene.start('SettingsScene');
+      this.scene.start('SettingsScene', { returnTo: 'MainMenuScene' });
     });
 
     this.menuLayer.add([bg, title, button, settingsButton]);

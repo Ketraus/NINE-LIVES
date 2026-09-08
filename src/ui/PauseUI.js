@@ -2,7 +2,7 @@ import EventBus from '../systems/EventBus.js';
 
 const BTN_RADIUS = 16;
 const PANEL_W = 260;
-const PANEL_H = 200;
+const PANEL_H = 260;
 
 // Menu de pausa. Dois pedaços:
 export default class PauseUI {
@@ -43,6 +43,7 @@ export default class PauseUI {
     bg.on('pointerout', () => bg.setFillStyle(0x000000, 0.5));
     bg.on('pointerdown', () => this.toggle());
 
+    this.toggleBg = bg; // guardado pra desabilitar clique enquanto a Settings overlay está aberta (ver _openSettings)
     this.buttonContainer.add([bg, bar1, bar2]);
   }
 
@@ -76,7 +77,9 @@ export default class PauseUI {
 
     this.panelContainer.add([overlay, panelBg, title]);
 
-    this.panelContainer.add(this._buildMenuButton(cx, cy - 10, 'Continuar', () => this.close()));
+    this.panelContainer.add(this._buildMenuButton(cx, cy - 55, 'Continuar', () => this.close()));
+
+    this.panelContainer.add(this._buildMenuButton(cx, cy, 'Settings', () => this._openSettings()));
 
     // só existe em dispositivo touch com suporte à Fullscreen API — mesma
     if (this.scene.sys.game.device.input.touch && this.scene.scale.fullscreen.available) {
@@ -84,6 +87,19 @@ export default class PauseUI {
       this._refreshFullscreenButton();
       this.panelContainer.add(this.fullscreenButton);
     }
+  }
+
+  // Abre a SettingsScene por cima do jogo (que continua pausado por
+  // baixo, ver init(overlay:true) na própria SettingsScene). Desabilita
+  // o botão de pausa (canto superior) enquanto ela estiver aberta, senão
+  // um clique ali passaria por baixo da tela de Settings sem querer.
+  _openSettings() {
+    this.toggleBg.disableInteractive();
+    EventBus.once('settings-closed', () => this.toggleBg.setInteractive({ useHandCursor: true }));
+    this.scene.scene.launch('SettingsScene', { overlay: true });
+    // sem isto, GameScene desenha por cima dela (vem depois na lista de
+    // cenas do gameConfig) e a tela abre "escondida" atrás do jogo
+    this.scene.scene.bringToTop('SettingsScene');
   }
 
   // Botão retangular simples reaproveitado pro painel (Continuar / Entrar…
@@ -165,6 +181,9 @@ export default class PauseUI {
   }
 
   destroy() {
+    // se o GameScene foi desligado (morte/restart) com a Settings overlay
+    // ainda aberta por cima, fecha ela junto pra não sobrar rodando
+    if (this.scene.scene.isActive('SettingsScene')) this.scene.scene.stop('SettingsScene');
     this.buttonContainer?.destroy();
     this.panelContainer?.destroy();
   }

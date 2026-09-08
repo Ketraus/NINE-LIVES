@@ -1,5 +1,6 @@
 import MusicManager from '../systems/MusicManager.js';
 import SettingsManager from '../systems/SettingsManager.js';
+import EventBus from '../systems/EventBus.js';
 
 // mesma paleta "terminal cyberpunk" do MainMenuScene — ver comentários lá
 const PANEL_FILL = 0x061014;
@@ -23,6 +24,16 @@ export default class SettingsScene extends Phaser.Scene {
     super('SettingsScene');
   }
 
+  // `returnTo`: cena pra onde o botão VOLTAR vai (usado quando a tela é
+  // aberta a partir do menu principal). `overlay`: true quando é aberta
+  // por cima do pause do GameScene (ver PauseUI._openSettings) — nesse
+  // caso VOLTAR só fecha esta cena (this.scene.stop()) em vez de trocar
+  // de cena, deixando o jogo pausado por baixo do jeito que estava.
+  init(data) {
+    this.returnTo = data?.returnTo || 'MainMenuScene';
+    this.overlay = !!data?.overlay;
+  }
+
   create() {
     const { width, height } = this.scale;
 
@@ -32,7 +43,7 @@ export default class SettingsScene extends Phaser.Scene {
     this.add.rectangle(width / 2, height / 2, width, height, 0x05080a, 0.55); // escurece pra sliders ficarem legíveis
 
     this.add
-      .text(width / 2, height * 0.16, 'AJUSTES', {
+      .text(width / 2, height * 0.16, 'SETTINGS', {
         fontFamily: PIXEL_FONT,
         fontSize: '22px',
         color: '#cfefff'
@@ -149,7 +160,12 @@ export default class SettingsScene extends Phaser.Scene {
     });
     hitArea.on('pointerdown', () => {
       this.sound.play('sfx_ui_click', { volume: 0.6 });
-      this.scene.start('MainMenuScene');
+      EventBus.emit('settings-closed');
+      if (this.overlay) {
+        this.scene.stop();
+      } else {
+        this.scene.start(this.returnTo);
+      }
     });
 
     container.add([panel, caret, text, hitArea]);
