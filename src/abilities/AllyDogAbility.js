@@ -120,7 +120,7 @@ export default class AllyDogAbility {
 
   // Cria o projétil visual (bolinha) que sai do cachorro e viaja em linha
   _launchGrenade(scene, targetX, targetY, time) {
-    scene.sound.play('sfx_cyberus_click', { volume: 0.6 });
+    scene.sound.play('sfx_cyberus_click', { volume: 0.6, player: true });
 
     const startX = this.dog.x;
     const startY = this.dog.y;
@@ -160,7 +160,7 @@ export default class AllyDogAbility {
 
   // Cria a poça de chamas persistente no ponto de detonação — chamado só
   _explodeGrenade(scene, x, y, time) {
-    scene.sound.play('sfx_cyberus_explosion', { volume: 0.6 });
+    scene.sound.play('sfx_cyberus_explosion', { volume: 0.6, player: true });
 
     const fx = this._createFlameFx(scene, x, y);
     this.flameZones.push({ x, y, spawnMs: time, lastTickMs: 0, fx });
@@ -175,7 +175,7 @@ export default class AllyDogAbility {
     this.lastSwordMs = time;
     this._markAttacked(target, time);
     this.dog.playAttackPulse();
-    scene.sound.play('sfx_cyberus_slash', { volume: 0.6 });
+    scene.sound.play('sfx_cyberus_slash', { volume: 0.6, player: true });
     this._swingSword(scene, target, enemyGroup);
   }
 
@@ -241,7 +241,7 @@ export default class AllyDogAbility {
 
   // Dispara o feixe de verdade: calcula o segmento (cachorro -> muito além
   _fireCannon(scene, target, enemyGroup, time) {
-    scene.sound.play('sfx_cyberus_cannon', { volume: 0.6 });
+    scene.sound.play('sfx_cyberus_cannon', { volume: 0.6, player: true });
 
     const aim = new Phaser.Math.Vector2(target.x - this.dog.x, target.y - this.dog.y).normalize();
     const startX = this.dog.x;

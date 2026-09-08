@@ -1,6 +1,7 @@
 import BootScene from '../scenes/BootScene.js';
 import PreloadScene from '../scenes/PreloadScene.js';
 import MainMenuScene from '../scenes/MainMenuScene.js';
+import SettingsScene from '../scenes/SettingsScene.js';
 import WeaponSelectScene from '../scenes/WeaponSelectScene.js';
 import GameScene from '../scenes/GameScene.js';
 
@@ -18,7 +19,8 @@ if (isTouch) {
 
 export const gameConfig = {
   type: Phaser.AUTO,
-  parent: 'game-container',
+  parent
+  : 'game-container',
   width,
   height: BASE_HEIGHT,
   backgroundColor: '#111318',
@@ -34,5 +36,5 @@ export const gameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH
   },
-  scene: [BootScene, PreloadScene, MainMenuScene, WeaponSelectScene, GameScene]
+  scene: [BootScene, PreloadScene, MainMenuScene, SettingsScene, WeaponSelectScene, GameScene]
 };

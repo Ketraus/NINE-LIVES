@@ -124,7 +124,7 @@ export default class DroneAbility {
   }
 
   _fire(scene, target) {
-    scene.sound.play('sfx_drone_shot', { volume: 0.5 });
+    scene.sound.play('sfx_drone_shot', { volume: 0.5, player: true });
 
     const dir = new Phaser.Math.Vector2(target.x - this.sprite.x, target.y - this.sprite.y).normalize();
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;

@@ -1,3 +1,5 @@
+import SettingsManager from './SettingsManager.js';
+
 // Volume da música de fundo (0 a 1) e duração do fade ao trocar de faix…
 const MUSIC_VOLUME = 0.4;
 const FADE_MS = 600;
@@ -45,7 +47,7 @@ class MusicManager {
 
     const sound = scene.sound.add(key, { loop: true, volume: 0 });
     sound.play();
-    scene.tweens.add({ targets: sound, volume: MUSIC_VOLUME, duration: FADE_MS });
+    scene.tweens.add({ targets: sound, volume: MUSIC_VOLUME * SettingsManager.getMusic(), duration: FADE_MS });
 
     this.currentKey = key;
     this.currentSound = sound;
@@ -75,7 +77,7 @@ class MusicManager {
 
     const overlay = scene.sound.add('music_card_select', { loop: true, volume: 0 });
     overlay.play();
-    scene.tweens.add({ targets: overlay, volume: CARD_MUSIC_VOLUME, duration: FADE_MS });
+    scene.tweens.add({ targets: overlay, volume: CARD_MUSIC_VOLUME * SettingsManager.getMusic(), duration: FADE_MS });
     this.duckedSound = overlay;
   }
 
@@ -93,7 +95,7 @@ class MusicManager {
     });
 
     if (this.currentSound) {
-      scene.tweens.add({ targets: this.currentSound, volume: MUSIC_VOLUME, duration: FADE_MS });
+      scene.tweens.add({ targets: this.currentSound, volume: MUSIC_VOLUME * SettingsManager.getMusic(), duration: FADE_MS });
     }
   }
 
@@ -110,7 +112,18 @@ class MusicManager {
     if (!this._bossDucked) return;
     this._bossDucked = false;
     if (!this.currentSound) return;
-    scene.tweens.add({ targets: this.currentSound, volume: MUSIC_VOLUME, duration: durationMs });
+    scene.tweens.add({ targets: this.currentSound, volume: MUSIC_VOLUME * SettingsManager.getMusic(), duration: durationMs });
+  }
+
+  // Chamado pela SettingsScene ao arrastar o slider de música — ajusta na
+  // hora a faixa que estiver tocando de verdade (a ducked, se a tela de
+  // cartas estiver aberta; senão a principal), sem esperar o próximo fade.
+  applyLiveMusicVolume() {
+    if (this.duckedSound) {
+      this.duckedSound.volume = CARD_MUSIC_VOLUME * SettingsManager.getMusic();
+    } else if (this.currentSound) {
+      this.currentSound.volume = MUSIC_VOLUME * SettingsManager.getMusic();
+    }
   }
 }
 

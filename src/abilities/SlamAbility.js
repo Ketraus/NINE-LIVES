@@ -46,7 +46,7 @@ export default class SlamAbility {
   }
 
   _slam(player, enemyGroup, scene) {
-    scene.sound.play('sfx_slam_impact', { volume: 0.5 });
+    scene.sound.play('sfx_slam_impact', { volume: 0.5, player: true });
 
     const radius = this.def.radius * this.radiusMultiplier;
 

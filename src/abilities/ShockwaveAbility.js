@@ -109,7 +109,7 @@ export default class ShockwaveAbility {
 
   // Uma única onda de choque, nascendo em (x, y) e viajando na direção
   _spawnWave(scene, x, y, dir) {
-    scene.sound.play('sfx_shockwave', { volume: 0.5 });
+    scene.sound.play('sfx_shockwave', { volume: 0.5, player: true });
 
     const wave = this.group.create(x, y, 'hit_fx');
     wave.setDepth(16);

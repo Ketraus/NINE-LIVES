@@ -44,7 +44,12 @@ export default class MainMenuScene extends Phaser.Scene {
       this._start()
     );
 
-    this.menuLayer.add([bg, title, button]);
+    const settingsButton = this._buildTerminalButton(width / 2, height * 0.6 + 56, 220, 40, 'AJUSTES', () => {
+      this.sound.play('sfx_ui_click', { volume: 0.6 });
+      this.scene.start('SettingsScene');
+    });
+
+    this.menuLayer.add([bg, title, button, settingsButton]);
 
     this.input.keyboard.once('keydown-SPACE', () => {
       if (this._transitioning) return;

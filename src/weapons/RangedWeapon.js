@@ -33,7 +33,7 @@ export default class RangedWeapon {
 
     this._ensureBulletGroup(scene, player, enemyGroup);
     // toca uma vez por disparo, mesmo na Fragmentação (leque de várias
-    scene.sound.play(statMods.fragmentation ? 'sfx_shotgun' : 'sfx_pistol', { volume: 0.6 });
+    scene.sound.play(statMods.fragmentation ? 'sfx_shotgun' : 'sfx_pistol', { volume: 0.6, player: true });
 
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();
