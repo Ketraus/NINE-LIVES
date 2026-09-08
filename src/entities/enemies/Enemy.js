@@ -1022,7 +1022,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.axeSprite.setPosition(this.x, this.y).setRotation(0).setVisible(true);
     this._setDisarmed(true); // machado saiu da mão — troca pra sprite sem ele
     this.scene.cameras.main.shake(AXE_THROW_SHAKE_MS, AXE_THROW_SHAKE_INTENSITY);
-    this.scene.sound.play('sfx_elite_punch', { volume: 0.6 });
+    this.scene.sound.play('sfx_axe_throw', { volume: 0.7 });
   }
 
   _updateAxeOutbound(target, nowMs) {
@@ -1038,23 +1038,34 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bossState = 'axe_stuck';
     this.axeSprite.setPosition(this.axeTargetX, this.axeTargetY).setRotation(0);
     this.scene.cameras.main.shake(AXE_IMPACT_SHAKE_MS, AXE_IMPACT_SHAKE_INTENSITY);
-    this.scene.sound.play('sfx_elite_punch', { volume: 0.7 });
+    // terra + impacto tocam juntos no instante em que crava (impacto mais alto que a terra)
+    this.scene.sound.play('sfx_axe_dirt', { volume: 0.5 });
+    this.scene.sound.play('sfx_axe_impact', { volume: 0.85 });
     this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius, AXE_TELEGRAPH_COLOR);
     const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
     if (dist <= this.def.axeThrowImpactRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowImpactDamage), this, nowMs);
     }
-    this.axeStuckUntil = nowMs + this.def.axeThrowStuckMs;
+    // machado cravado começa a "carregar" pra explosão — a duração dessa
+    // carga segue exatamente a duração real do som (ver _playTimedSfx),
+    // então se o mp3 mudar o tempo do ataque acompanha automaticamente
+    this.axeChargeEndAt = nowMs + this._playTimedSfx('sfx_axe_charging', 0.55);
+    this.axeBeepPlayed = false;
   }
 
   _updateAxeStuck(target, nowMs) {
-    if (nowMs >= this.axeStuckUntil) this._explodeAxe(target, nowMs);
+    if (!this.axeBeepPlayed && nowMs >= this.axeChargeEndAt) {
+      // carga terminou: apita e só explode quando o beep também acabar
+      this.axeBeepPlayed = true;
+      this.axeStuckUntil = nowMs + this._playTimedSfx('sfx_axe_beep', 0.7);
+    }
+    if (this.axeBeepPlayed && nowMs >= this.axeStuckUntil) this._explodeAxe(target, nowMs);
   }
 
   // Passo 8: 💥 explosão de verdade — raio maior e mais dano que o
   _explodeAxe(target, nowMs) {
     this.scene.cameras.main.shake(AXE_EXPLOSION_SHAKE_MS, AXE_EXPLOSION_SHAKE_INTENSITY);
-    this.scene.sound.play('sfx_elite_explosion', { volume: 0.6 });
+    this.scene.sound.play('sfx_axe_explosion', { volume: 0.7 });
     this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowExplosionRadius, AXE_EXPLOSION_COLOR);
     const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
     if (dist <= this.def.axeThrowExplosionRadius && target.active && !target.healthSystem?.isDead()) {

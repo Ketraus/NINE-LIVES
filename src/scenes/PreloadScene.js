@@ -135,6 +135,16 @@ export default class PreloadScene extends Phaser.Scene {
     // corte de espada da 2ª cabeça do Cyberus (ver AllyDogAbility._updateSw…
     this.load.audio('sfx_cyberus_slash', 'assets/sfx/cyberus_slash.mp3');
 
+    // sequência da habilidade Machado Arremessado do Minotauro (ver Enemy.js
+    // _launchAxe/_stickAxe/_updateAxeStuck/_explodeAxe): joga -> (terra +
+    // impacto, ao cravar) -> carrega -> apita -> explode
+    this.load.audio('sfx_axe_throw', 'assets/sfx/axe_throw.mp3');
+    this.load.audio('sfx_axe_dirt', 'assets/sfx/axe_dirt.mp3');
+    this.load.audio('sfx_axe_impact', 'assets/sfx/axe_impact.mp3');
+    this.load.audio('sfx_axe_charging', 'assets/sfx/axe_charging.mp3');
+    this.load.audio('sfx_axe_beep', 'assets/sfx/axe_beep.mp3');
+    this.load.audio('sfx_axe_explosion', 'assets/sfx/axe_explosion.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');

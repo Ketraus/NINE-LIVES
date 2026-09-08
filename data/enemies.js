@@ -198,22 +198,28 @@ export default [
     // sempre que o cooldown libera — ver Enemy._updateBossAbility): para,
     // prepara por axeThrowTelegraphMs, arremessa até a posição do jogador
     // travada nesse instante (axeThrowFlightMs de voo girando), CRAVA no
-    // chão e causa axeThrowImpactDamage na hora (raio
-    // axeThrowImpactRadius), espera axeThrowStuckMs, EXPLODE causando
-    // axeThrowExplosionDamage (raio axeThrowExplosionRadius), levanta a
-    // mão por axeThrowRaiseMs e puxa o machado de volta
-    // (axeThrowReturnFlightMs de voo), causando axeThrowReturnDamage em
-    // quem tocar nele na volta (raio axeThrowReturnRadius). Ataque à
-    // distância "de leitura", mais lento que a Investida de propósito.
+    // chão e causa axeThrowImpactDamage na hora (raio axeThrowImpactRadius,
+    // com os sons de terra+impacto). A partir daí o machado "carrega" pra
+    // explodir e o tempo dessa carga NÃO é mais um número fixo aqui — segue
+    // a duração real de assets/sfx/axe_charging.mp3, seguido do apito
+    // (axe_beep.mp3); só quando o apito também termina é que EXPLODE de
+    // verdade, causando axeThrowExplosionDamage (raio
+    // axeThrowExplosionRadius). Depois disso levanta a mão por
+    // axeThrowRaiseMs e puxa o machado de volta (axeThrowReturnFlightMs de
+    // voo), causando axeThrowReturnDamage em quem tocar nele na volta (raio
+    // axeThrowReturnRadius). Ataque à distância "de leitura", mais lento
+    // que a Investida de propósito.
     "axeThrowTelegraphMs": 700,
     "axeThrowFlightMs": 500,
     "axeThrowImpactDamage": 35,
     "axeThrowImpactRadius": 70,
-    "axeThrowStuckMs": 2000,
     "axeThrowExplosionDamage": 60,
     "axeThrowExplosionRadius": 110,
-    "axeThrowRaiseMs": 350,
-    "axeThrowReturnFlightMs": 450,
+    // levantar a mão + puxar o machado de volta ficaram um pouco mais
+    // lentos que antes (350/450) pra dar uma respirada depois da explosão
+    // (som mais longo agora) antes de voltar a perseguir
+    "axeThrowRaiseMs": 450,
+    "axeThrowReturnFlightMs": 650,
     "axeThrowReturnDamage": 35,
     "axeThrowReturnRadius": 60,
     "axeThrowCooldownMs": 6000,
