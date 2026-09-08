@@ -1,5 +1,9 @@
 // Funções utilitárias de dano. Ficam centralizadas aqui em vez de
 export default class DamageSystem {
+  // 3 variações de grito de dor do Minotauro (ver _hitSfxKey) — sorteadas
+  // a cada golpe pra não ficar repetitivo
+  static MINOTAUR_HIT_SFX_KEYS = ['sfx_minotaur_hit1', 'sfx_minotaur_hit2', 'sfx_minotaur_hit3'];
+
   // Dano de contato com cooldown por-alvo (evita tirar vida todo frame
   static applyContactDamage(attacker, target, damage, cooldownMs, nowMs) {
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
@@ -36,11 +40,21 @@ export default class DamageSystem {
     target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0));
     target.playHitReaction?.();
     // som de impacto genérico — toca sempre que um golpe de arma/ataque
-    targetScene?.sound?.play(target.def?.elite ? 'sfx_elite_hit' : 'sfx_hit', { volume: 0.5 });
+    targetScene?.sound?.play(this._hitSfxKey(target), { volume: 0.5 });
     this._applyLifesteal(source, damage);
     this._applyParalyze(target, source, nowMs);
     this._applyBleed(target, source, damage, nowMs);
     return true;
+  }
+
+  // Escolhe o som de "hit" certo pro alvo: Minotauro sorteia entre as 3
+  // variações de dor dele, Elite tem o som próprio, o resto usa o genérico
+  static _hitSfxKey(target) {
+    if (target.def?.boss) {
+      const keys = this.MINOTAUR_HIT_SFX_KEYS;
+      return keys[Math.floor(Math.random() * keys.length)];
+    }
+    return target.def?.elite ? 'sfx_elite_hit' : 'sfx_hit';
   }
 
   // Cura `source` em uma fração do dano que ele acabou de causar, se ele

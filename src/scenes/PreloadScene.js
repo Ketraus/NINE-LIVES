@@ -149,6 +149,12 @@ export default class PreloadScene extends Phaser.Scene {
     // toca no instante em que ele pisa e empurra o jogador pra longe
     this.load.audio('sfx_minotaur_stomp', 'assets/sfx/minotaur_stomp.mp3');
 
+    // sons de dor do Minotauro ao levar dano (3 variações aleatórias, ver
+    // DamageSystem._hitSfxKey)
+    this.load.audio('sfx_minotaur_hit1', 'assets/sfx/minotaur_hit1.mp3');
+    this.load.audio('sfx_minotaur_hit2', 'assets/sfx/minotaur_hit2.mp3');
+    this.load.audio('sfx_minotaur_hit3', 'assets/sfx/minotaur_hit3.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');
