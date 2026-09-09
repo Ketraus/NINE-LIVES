@@ -72,14 +72,14 @@ const AXE_EXPLOSION_COLOR = 0xff4400;
 
 // Corte Destrutivo (3ª habilidade do Minotauro, sorteada 1/3 com a
 const CLEAVE_COLOR = 0xff1133;
-const CLEAVE_WHISTLE_VOLUME_START = 0.05;
-const CLEAVE_WHISTLE_VOLUME_END = 0.8;
-const CLEAVE_WHISTLE_RATE_START = 0.7;
-const CLEAVE_WHISTLE_RATE_END = 1.8;
 const CLEAVE_TELEGRAPH_ALPHA_START = 0.22;
 const CLEAVE_TELEGRAPH_ALPHA_END = 0.6;
-const CLEAVE_SHAKE_MS = 150;
-const CLEAVE_SHAKE_INTENSITY = 0.008;
+// golpe mais destrutivo do Minotauro (cleaveDamage é o maior de todos) —
+// feedback tem que ser o mais forte do kit dele também (ver _executeCleave)
+const CLEAVE_SHAKE_MS = 480;
+const CLEAVE_SHAKE_INTENSITY = 0.036;
+const CLEAVE_FLASH_MS = 200;
+const CLEAVE_SHARD_COUNT = 20;
 
 // Pisão (4ª habilidade do Minotauro, "SAI DE PERTO" — ver
 const STOMP_TELEGRAPH_COLOR = 0xffffff;
@@ -213,8 +213,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.axeSprite = null;
       this.axeTargetX = 0;
       this.axeTargetY = 0;
-      // Corte Destrutivo: ver _startCleave e afins. cleaveWhistle é a
-      this.cleaveWhistle = null;
+      // Corte Destrutivo: ver _startCleave e afins.
       this.cleaveAngle = 0;
       // multiplicador de dano recebido durante a janela vulnerável (ver
       this.vulnerableDamageMultiplier = 1;
@@ -1267,17 +1266,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.cleaveTelegraphStartMs = nowMs;
     this.cleaveTelegraphDurationMs = this._bossTelegraph(this.def.cleaveTelegraphMs);
     this.cleaveTelegraphEndAt = nowMs + this.cleaveTelegraphDurationMs;
-    this.cleaveWhistle = this.scene.sound.add('sfx_elite_warning', { loop: true });
-    this.cleaveWhistle.play({ volume: CLEAVE_WHISTLE_VOLUME_START, rate: CLEAVE_WHISTLE_RATE_START });
+    this.scene.sound.play('sfx_minotaur_cleave_roar', { volume: 0.85 }); // grito de abertura do golpe mais forte dele
   }
 
   _updateCleaveTelegraph(nowMs) {
     this.setVelocity(0, 0);
     const progress = Math.min((nowMs - this.cleaveTelegraphStartMs) / this.cleaveTelegraphDurationMs, 1);
-    if (this.cleaveWhistle) {
-      this.cleaveWhistle.setVolume(Phaser.Math.Linear(CLEAVE_WHISTLE_VOLUME_START, CLEAVE_WHISTLE_VOLUME_END, progress));
-      this.cleaveWhistle.setRate(Phaser.Math.Linear(CLEAVE_WHISTLE_RATE_START, CLEAVE_WHISTLE_RATE_END, progress));
-    }
     this._drawCleaveTelegraph(progress);
     if (nowMs >= this.cleaveTelegraphEndAt) this._startCleavePause(nowMs);
   }
@@ -1296,10 +1290,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     g.strokePath();
   }
 
-  // Passo 5: apito já mudo, cone parado no máximo, pequena pausa final
+  // Passo 5: cone parado no máximo, pequena pausa final antes do golpe sair
   _startCleavePause(nowMs) {
     this.bossState = 'cleave_pause';
-    this._stopCleaveWhistle();
     this.cleavePauseEndAt = nowMs + this._bossTelegraph(this.def.cleavePauseMs);
   }
 
@@ -1312,9 +1305,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Passos 6-9: CORTE de verdade — dano altíssimo em todo mundo dentro do
   _executeCleave(target, nowMs) {
     this.bossTelegraphGraphics.clear();
-    this.scene.sound.play('sfx_cyberus_slash', { volume: 0.9 });
+    // whoosh do machado cortando o ar + impacto pesado juntos — é o golpe
+    // mais forte do Minotauro, o feedback tem que condizer
+    this.scene.sound.play('sfx_minotaur_axe_whoosh', { volume: 0.8 });
+    this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
     this.scene.cameras.main.shake(CLEAVE_SHAKE_MS, CLEAVE_SHAKE_INTENSITY);
-    this._flashCleaveCone();
+    this.scene.cameras.main.flash(CLEAVE_FLASH_MS, 255, 30, 30);
+    this._showCleaveExecuteFx();
     if (target.active && !target.healthSystem?.isDead()) {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
       const angleTo = Math.atan2(target.y - this.y, target.x - this.x);
@@ -1326,20 +1323,87 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._startCleaveRecover(nowMs);
   }
 
-  // Flash do cone (mesma técnica do _flashCircle, mas com o formato de
-  _flashCleaveCone() {
+  // Feedback do golpe mais destrutivo do Minotauro: clarão branco-quente
+  // preenchendo o cone inteiro (ADD) + rastro vermelho-sangue mais lento
+  // por baixo + 2 riscos brancos tipo "rasgo" cruzando o cone + estilhaços
+  // voando espalhados dentro do ângulo do corte. Bem mais chamativo que o
+  // flash simples de antes (ver _executeAxe/_showAxeExplosionFx pro
+  // mesmo espírito aplicado à explosão do machado).
+  _showCleaveExecuteFx() {
     const half = Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg);
-    const g = this.scene.add.graphics().setDepth(14);
-    g.fillStyle(0xffffff, 0.85);
-    g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
-    g.fillPath();
+
+    const flash = this.scene.add.graphics().setDepth(21).setBlendMode(Phaser.BlendModes.ADD);
+    flash.fillStyle(0xffffff, 0.95);
+    flash.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    flash.fillPath();
     this.scene.tweens.add({
-      targets: g,
+      targets: flash,
       alpha: 0,
-      duration: 180,
-      onComplete: () => g.destroy()
+      duration: 170,
+      ease: 'Cubic.easeOut',
+      onComplete: () => flash.destroy()
     });
+
+    const afterglow = this.scene.add.graphics().setDepth(19);
+    afterglow.fillStyle(CLEAVE_COLOR, 0.5);
+    afterglow.slice(this.x, this.y, this.def.cleaveRange * 1.05, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    afterglow.fillPath();
+    this.scene.tweens.add({
+      targets: afterglow,
+      alpha: 0,
+      duration: 540,
+      ease: 'Cubic.easeOut',
+      onComplete: () => afterglow.destroy()
+    });
+
+    for (let i = 0; i < 2; i++) {
+      const angle = this.cleaveAngle + Phaser.Math.FloatBetween(-half * 0.6, half * 0.6);
+      const line = this.scene.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
+      line.lineStyle(6, 0xffffff, 0.9);
+      line.beginPath();
+      line.moveTo(this.x, this.y);
+      line.lineTo(this.x + Math.cos(angle) * this.def.cleaveRange, this.y + Math.sin(angle) * this.def.cleaveRange);
+      line.strokePath();
+      this.scene.tweens.add({
+        targets: line,
+        alpha: 0,
+        duration: 220,
+        delay: i * 40,
+        ease: 'Cubic.easeOut',
+        onComplete: () => line.destroy()
+      });
+    }
+
+    this._spawnCleaveShards(half);
   }
+
+  // Estilhaços dentro do ângulo do corte (mesma técnica das outras
+  // habilidades, ver _spawnAxeExplosionShards)
+  _spawnCleaveShards(half) {
+    for (let i = 0; i < CLEAVE_SHARD_COUNT; i++) {
+      const angle = this.cleaveAngle + Phaser.Math.FloatBetween(-half, half);
+      const dist = this.def.cleaveRange * Phaser.Math.FloatBetween(0.55, 1.05);
+      const tint = i % 2 === 0 ? CLEAVE_COLOR : 0xffffff;
+      const shard = this.scene.add
+        .image(this.x, this.y, 'hit_fx')
+        .setDepth(20)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(tint)
+        .setScale(Phaser.Math.FloatBetween(0.4, 0.75))
+        .setRotation(angle);
+      this.scene.tweens.add({
+        targets: shard,
+        x: this.x + Math.cos(angle) * dist,
+        y: this.y + Math.sin(angle) * dist,
+        alpha: 0,
+        scale: 0.1,
+        duration: Phaser.Math.Between(280, 420),
+        ease: 'Cubic.easeOut',
+        onComplete: () => shard.destroy()
+      });
+    }
+  }
+
 
   // Passo 10: pequena recuperação parado (def.cleaveRecoverMs) antes de
   _startCleaveRecover(nowMs) {
@@ -1355,16 +1419,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  // Para o apito (fade curto em vez de corte seco) e limpa a referência
-  _stopCleaveWhistle() {
-    if (!this.cleaveWhistle) return;
-    this.cleaveWhistle.stop();
-    this.cleaveWhistle.destroy();
-    this.cleaveWhistle = null;
-  }
-
-  // Para os passos da Investida (mesmo padrão do _stopCleaveWhistle) —
-  // chamado quando o dash termina e também na limpeza de die()/_leave()
+  // Para os passos da Investida (mesmo padrão de limpeza) — chamado quando
+  // o dash termina e também na limpeza de die()/_leave()
   _stopChargeFootsteps() {
     if (!this.chargeFootsteps) return;
     this.chargeFootsteps.stop();
@@ -1445,7 +1501,6 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.bossTelegraphGraphics?.clear();
       this.axeSprite?.setVisible(false);
       this._setDisarmed(false); // interrompeu no meio do arremesso — não pode fugir sem o machado
-      this._stopCleaveWhistle();
       this.bossState = 'chasing';
     }
 
@@ -1481,7 +1536,6 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
     this.bossTelegraphGraphics?.destroy();
     this.axeSprite?.destroy();
-    this._stopCleaveWhistle();
     this._stopChargeFootsteps();
     this.destroy();
   }
@@ -1499,8 +1553,6 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bossTelegraphGraphics?.destroy();
     // Boss: o ícone do Machado Arremessado (voando ou já cravado) também
     this.axeSprite?.destroy();
-    // Boss: o apito do Corte Destrutivo também precisa ser parado na mão
-    this._stopCleaveWhistle();
     // Boss: os passos em loop da Investida também, senão ficam tocando
     this._stopChargeFootsteps();
     // Elite: som de morte próprio em vez de nenhum som (os inimigos

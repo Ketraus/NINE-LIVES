@@ -165,6 +165,14 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.audio('sfx_minotaur_swing_attack', 'assets/sfx/minotaur_swing_attack.mp3');
     this.load.audio('sfx_minotaur_breath', 'assets/sfx/minotaur_breath.mp3');
 
+    // Corte Destrutivo (3ª habilidade, ataque mais forte do Minotauro —
+    // ver Enemy.js _startCleave/_executeCleave): ruge (cleave_roar) no
+    // início do aviso, depois golpeia de verdade com o whoosh do machado
+    // no ar junto do impacto pesado (tocam ao mesmo tempo)
+    this.load.audio('sfx_minotaur_cleave_roar', 'assets/sfx/minotaur_cleave_roar.mp3');
+    this.load.audio('sfx_minotaur_axe_whoosh', 'assets/sfx/minotaur_axe_whoosh.mp3');
+    this.load.audio('sfx_minotaur_heavy_axe_impact', 'assets/sfx/minotaur_heavy_axe_impact.mp3');
+
     // cartas de arte real da tela de escolha de arma (ver WeaponSelectScene)
     this.load.image('card_fists', 'assets/ui/card_fists.png');
     this.load.image('card_katana', 'assets/ui/card_katana.png');
