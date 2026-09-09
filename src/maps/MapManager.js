@@ -6,7 +6,8 @@ const MAP_KEY = 'map';
 // Um item por tileset usado no mapa. imageKey precisa ter sido carregado
 const TILESETS = [
   { imageKey: 'tileset', nameInTiled: 'tileset' },
-  { imageKey: 'darbluegrass', nameInTiled: 'darbluegrass' }
+  { imageKey: 'darbluegrass', nameInTiled: 'darbluegrass' },
+  { imageKey: 'dirt', nameInTiled: 'dirt'},
 ];
 
 const LAYER_NAMES = { ground: 'Ground', walls: 'Walls' };
