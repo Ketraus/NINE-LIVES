@@ -188,7 +188,7 @@ export default class PreloadScene extends Phaser.Scene {
     // mapa feito no Tiled (tileset embutido no JSON)
     this.load.image('tileset', 'assets/maps/tileset.png');
     this.load.tilemapTiledJSON('map', 'assets/maps/map.json');
-
+    this.load.image('darbluegrass', 'assets/maps/darbluegrass.png');
     // dados de balanceamento (data/*.json) são importados via ES Modules
   }
 

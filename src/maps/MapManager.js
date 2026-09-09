@@ -4,7 +4,10 @@ import TiledLoader from './TiledLoader.js';
 const MAP_KEY = 'map';
 
 // Um item por tileset usado no mapa. imageKey precisa ter sido carregado
-const TILESETS = [{ imageKey: 'tileset', nameInTiled: 'tileset' }];
+const TILESETS = [
+  { imageKey: 'tileset', nameInTiled: 'tileset' },
+  { imageKey: 'darbluegrass', nameInTiled: 'darbluegrass' }
+];
 
 const LAYER_NAMES = { ground: 'Ground', walls: 'Walls' };
 const OBJECT_LAYER_NAME = 'Objects';
