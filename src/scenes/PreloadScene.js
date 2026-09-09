@@ -59,6 +59,10 @@ export default class PreloadScene extends Phaser.Scene {
     // trilha da tela de cartas (level-up/evolução) — mais baixa e suave,
     this.load.audio('music_card_select', 'assets/music/card_select_theme.mp3');
 
+    // tema do Minotauro (Boss) — ver MusicManager.playBoss/stopBoss e
+    // SpawnDirector._triggerBossEntrance/_checkBossMusicRestore
+    this.load.audio('music_minotaur', 'assets/music/minotaur_theme.mp3');
+
     // som de clique da UI (botões do menu etc.)
     this.load.audio('sfx_ui_click', 'assets/sfx/ui_click.mp3');
 

@@ -251,16 +251,20 @@ export default class SpawnDirector {
     this.scene.time.delayedCall(BOSS_HITSTOP_MS, () => {
       this.scene.physics.world.resume();
       this.enemySpawner.spawnByDefId('minotaur', 1);
-      // música NÃO volta aqui — fica parada (silêncio) durante toda a
+      // tema do Minotauro sobe com fade in aqui — a música de jogo já
+      // estava em silêncio (duckForBoss) desde a tensão de entrada
+      MusicManager.playBoss(this.scene);
     });
   }
 
-  // Música (ducked em _startBossTensionBuildup) só volta quando o
+  // Tema do Boss (subiu em _triggerBossEntrance) só dá fade out quando o
+  // Minotauro morre/some — e a música de jogo só volta DEPOIS que o tema
+  // dele terminar de sumir (ver MusicManager.stopBoss), nunca as duas juntas
   _checkBossMusicRestore() {
     if (!this.bossHasSpawned || this._bossMusicRestoreDone) return;
     if (this.enemySpawner.hasActiveBoss()) return; // ainda vivo
     this._bossMusicRestoreDone = true;
-    MusicManager.restoreFromBoss(this.scene);
+    MusicManager.stopBoss(this.scene);
   }
 
   _currentIntervalMs() {
