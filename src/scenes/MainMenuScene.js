@@ -62,13 +62,13 @@ export default class MainMenuScene extends Phaser.Scene {
 
   // Efeitos "retrô" do menu inteiro: ondulação horizontal (sinal CRT
   // instável) + ghosting sutil nas áreas claras (persistência de fósforo)
-  // + scanlines finíssimas por cima de tudo.
+  // + scanlines finíssimas + flicker irregular de brilho.
   // Intensidade/velocidade ficam só aqui — únicos números pra mexer depois.
   _setupRetroFx() {
     if (this.renderer.type !== Phaser.WEBGL) return; // efeitos exigem WebGL
 
     const cam = this.cameras.main;
-    cam.setPostPipeline(['CrtWave', 'GhostTrail', 'Scanlines']);
+    cam.setPostPipeline(['CrtWave', 'GhostTrail', 'Scanlines', 'Flicker']);
 
     this._crtWaveFx = cam.getPostPipeline('CrtWave');
     this._crtWaveFx.setAmplitude(0.0012).setFrequency(9).setSpeed(0.9);
@@ -78,6 +78,9 @@ export default class MainMenuScene extends Phaser.Scene {
 
     this._scanlinesFx = cam.getPostPipeline('Scanlines');
     this._scanlinesFx.setLineHeight(2).setDarkAmount(0.12);
+
+    this._flickerFx = cam.getPostPipeline('Flicker');
+    this._flickerFx.setRate(4).setAmount(0.05);
 
     this.events.once('shutdown', () => cam.resetPostPipeline());
   }

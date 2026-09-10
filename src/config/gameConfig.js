@@ -7,6 +7,7 @@ import GameScene from '../scenes/GameScene.js';
 import CrtWavePipeline from '../fx/CrtWavePipeline.js';
 import GhostTrailPipeline from '../fx/GhostTrailPipeline.js';
 import ScanlinesPipeline from '../fx/ScanlinesPipeline.js';
+import FlickerPipeline from '../fx/FlickerPipeline.js';
 
 const BASE_WIDTH = 704;
 const BASE_HEIGHT = 512; // altura de referência: HUD e telas de carta são pensados pra caber nela
@@ -29,7 +30,12 @@ export const gameConfig = {
   backgroundColor: '#111318',
   pixelArt: true,
   // registra os pipelines custom (efeitos "retrô" do menu — ver src/fx/)
-  pipeline: { CrtWave: CrtWavePipeline, GhostTrail: GhostTrailPipeline, Scanlines: ScanlinesPipeline },
+  pipeline: {
+    CrtWave: CrtWavePipeline,
+    GhostTrail: GhostTrailPipeline,
+    Scanlines: ScanlinesPipeline,
+    Flicker: FlickerPipeline
+  },
   physics: {
     default: 'arcade',
     arcade: {
