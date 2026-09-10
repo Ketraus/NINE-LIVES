@@ -7,7 +7,7 @@ const MAP_KEY = 'map';
 const TILESETS = [
   { imageKey: 'tileset', nameInTiled: 'tileset' },
   { imageKey: 'darbluegrass', nameInTiled: 'darbluegrass' },
-  { imageKey: 'dirt', nameInTiled: 'dirt'},
+  { imageKey: 'deathterrain', nameInTiled: 'deathterrain'},
 ];
 
 const LAYER_NAMES = { ground: 'Ground', walls: 'Walls' };
