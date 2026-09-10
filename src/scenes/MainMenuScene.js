@@ -62,8 +62,8 @@ export default class MainMenuScene extends Phaser.Scene {
 
   // Efeitos "retrô" do menu inteiro: bloom/bleeding sutil nas áreas claras
   // + ondulação horizontal (sinal CRT instável) + ghosting sutil nas áreas
-  // claras (persistência de fósforo) + scanlines finíssimas + flicker
-  // irregular de brilho.
+  // claras (persistência de fósforo) + scanlines finíssimas + aberração
+  // cromática radial bem sutil + flicker irregular de brilho.
   // Intensidade/velocidade ficam só aqui — únicos números pra mexer depois.
   _setupRetroFx() {
     if (this.renderer.type !== Phaser.WEBGL) return; // efeitos exigem WebGL
@@ -71,10 +71,15 @@ export default class MainMenuScene extends Phaser.Scene {
     const cam = this.cameras.main;
     // Bloom primeiro: espalha luz a partir da imagem "limpa", antes dos
     // outros efeitos distorcerem/escurecerem a imagem em cima disso.
-    cam.setPostPipeline(['Bloom', 'CrtWave', 'GhostTrail', 'Scanlines', 'Flicker']);
+    // Aberração cromática por último (antes do flicker): separa as cores
+    // do resultado já composto, como uma lente/CRT olhando pra tela toda.
+    cam.setPostPipeline(['Bloom', 'CrtWave', 'GhostTrail', 'Scanlines', 'ChromaticAberration', 'Flicker']);
 
     this._bloomFx = cam.getPostPipeline('Bloom');
     this._bloomFx.setThreshold(0.72).setRadius(1.6).setIntensity(0.18);
+
+    this._chromaticAberrationFx = cam.getPostPipeline('ChromaticAberration');
+    this._chromaticAberrationFx.setMaxShift(1.5);
 
     this._crtWaveFx = cam.getPostPipeline('CrtWave');
     this._crtWaveFx.setAmplitude(0.0012).setFrequency(9).setSpeed(0.9);
