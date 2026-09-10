@@ -73,6 +73,28 @@ export default class SettingsScene extends Phaser.Scene {
     });
 
     this._buildBackButton(width / 2, startY + spacing * 4 + 10);
+
+    this._setupRetroFx();
+  }
+
+  // Mesmo pipeline CRT do menu principal (Bloom + CrtWave + GhostTrail +
+  // Scanlines + ChromaticAberration + Flicker), reaplicado aqui porque
+  // cada cena/câmera do Phaser precisa do seu próprio setPostPipeline —
+  // ver MainMenuScene._setupRetroFx pros comentários de cada efeito.
+  _setupRetroFx() {
+    if (this.renderer.type !== Phaser.WEBGL) return; // efeitos exigem WebGL
+
+    const cam = this.cameras.main;
+    cam.setPostPipeline(['Bloom', 'CrtWave', 'GhostTrail', 'Scanlines', 'ChromaticAberration', 'Flicker']);
+
+    cam.getPostPipeline('Bloom').setThreshold(0.72).setRadius(1.6).setIntensity(0.18);
+    cam.getPostPipeline('ChromaticAberration').setMaxShift(1.5);
+    cam.getPostPipeline('CrtWave').setAmplitude(0.0012).setFrequency(9).setSpeed(0.9);
+    cam.getPostPipeline('GhostTrail').setDecay(0.55).setThreshold(0.6);
+    cam.getPostPipeline('Scanlines').setLineHeight(2).setDarkAmount(0.12);
+    cam.getPostPipeline('Flicker').setRate(4).setAmount(0.05);
+
+    this.events.once('shutdown', () => cam.resetPostPipeline());
   }
 
   // Slider: trilha + preenchimento + alça arrastável, com clique na trilha
@@ -104,11 +126,29 @@ export default class SettingsScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true, draggable: true });
     this.input.setDraggable(handle);
 
-    const applyFromX = (localX) => {
+    // feedback de toque na alça: cresce um pouco no hover, um "punch" maior
+    // ao começar a arrastar — só escala (sem redesenhar a alça em si).
+    let hovering = false;
+    let dragging = false;
+    const setHandleScale = (target, duration = 120) => {
+      this.tweens.add({ targets: handle, scale: target, duration, ease: 'Quad.easeOut' });
+    };
+
+    const applyFromX = (localX, { animate = false } = {}) => {
       const clamped = Phaser.Math.Clamp(localX, trackLeft, trackLeft + TRACK_WIDTH);
       const value = (clamped - trackLeft) / TRACK_WIDTH;
-      handle.x = clamped;
-      fill.width = TRACK_WIDTH * value;
+      const newWidth = TRACK_WIDTH * value;
+
+      if (animate) {
+        // clique na trilha: desliza suave até o ponto tocado em vez de
+        // pular instantâneo — arraste continua instantâneo (responsivo).
+        this.tweens.add({ targets: handle, x: clamped, duration: 110, ease: 'Quad.easeOut' });
+        this.tweens.add({ targets: fill, width: newWidth, duration: 110, ease: 'Quad.easeOut' });
+      } else {
+        handle.x = clamped;
+        fill.width = newWidth;
+      }
+
       percentText.setText(`${Math.round(value * 100)}%`);
       onChange(value);
       return value;
@@ -116,11 +156,29 @@ export default class SettingsScene extends Phaser.Scene {
 
     handle.on('drag', (pointer, dragX) => applyFromX(dragX));
 
+    handle.on('pointerover', () => {
+      hovering = true;
+      setHandleScale(1.15);
+      this.sound.play('sfx_hover', { volume: 0.4 });
+    });
+    handle.on('pointerout', () => {
+      hovering = false;
+      if (!dragging) setHandleScale(1);
+    });
+    handle.on('dragstart', () => {
+      dragging = true;
+      setHandleScale(1.3, 90);
+    });
+    handle.on('dragend', () => {
+      dragging = false;
+      setHandleScale(hovering ? 1.15 : 1);
+    });
+
     // clicar/arrastar na trilha em si também move a alça pro ponto tocado
     const trackHit = this.add
       .rectangle(trackLeft + TRACK_WIDTH / 2, 6, TRACK_WIDTH, HANDLE_HEIGHT, 0xffffff, 0)
       .setInteractive({ useHandCursor: true });
-    trackHit.on('pointerdown', (pointer) => applyFromX(pointer.x - x));
+    trackHit.on('pointerdown', (pointer) => applyFromX(pointer.x - x, { animate: true }));
 
     container.add([labelText, track, fill, trackHit, handle, percentText]);
     return container;
@@ -145,11 +203,21 @@ export default class SettingsScene extends Phaser.Scene {
 
     const hitArea = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
 
+    let blinkTween = null;
+
     hitArea.on('pointerover', () => {
       panel.clear();
       this._drawPanel(panel, w, h, BORDER_HOVER);
       text.setColor(TEXT_HOVER);
       caret.setVisible(true);
+      caret.setAlpha(1);
+      blinkTween = this.tweens.add({
+        targets: caret,
+        alpha: { from: 1, to: 0.15 },
+        duration: 260,
+        yoyo: true,
+        repeat: -1
+      });
       this.sound.play('sfx_hover', { volume: 0.5 });
     });
     hitArea.on('pointerout', () => {
@@ -157,6 +225,11 @@ export default class SettingsScene extends Phaser.Scene {
       this._drawPanel(panel, w, h, BORDER_IDLE);
       text.setColor(TEXT_IDLE);
       caret.setVisible(false);
+      if (blinkTween) {
+        blinkTween.stop();
+        caret.setAlpha(1);
+        blinkTween = null;
+      }
     });
     hitArea.on('pointerdown', () => {
       this.sound.play('sfx_ui_click', { volume: 0.6 });
