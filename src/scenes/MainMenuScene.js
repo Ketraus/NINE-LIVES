@@ -51,11 +51,26 @@ export default class MainMenuScene extends Phaser.Scene {
 
     this.menuLayer.add([bg, title, button, settingsButton]);
 
+    this._setupCrtWave();
+
     this.input.keyboard.once('keydown-SPACE', () => {
       if (this._transitioning) return;
       this.sound.play('sfx_ui_click', { volume: 0.6 });
       this._start();
     });
+  }
+
+  // Ondulação horizontal sutil no menu inteiro (sinal CRT instável).
+  // Intensidade/velocidade ficam aqui — únicos números pra mexer depois.
+  _setupCrtWave() {
+    if (this.renderer.type !== Phaser.WEBGL) return; // efeito exige WebGL
+
+    const cam = this.cameras.main;
+    cam.setPostPipeline('CrtWave');
+    this._crtWaveFx = cam.getPostPipeline('CrtWave');
+    this._crtWaveFx.setAmplitude(0.0025).setFrequency(12).setSpeed(1.4);
+
+    this.events.once('shutdown', () => cam.resetPostPipeline());
   }
 
   _buildBackground(width, height) {

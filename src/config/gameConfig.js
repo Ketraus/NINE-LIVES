@@ -4,6 +4,7 @@ import MainMenuScene from '../scenes/MainMenuScene.js';
 import SettingsScene from '../scenes/SettingsScene.js';
 import WeaponSelectScene from '../scenes/WeaponSelectScene.js';
 import GameScene from '../scenes/GameScene.js';
+import CrtWavePipeline from '../fx/CrtWavePipeline.js';
 
 const BASE_WIDTH = 704;
 const BASE_HEIGHT = 512; // altura de referência: HUD e telas de carta são pensados pra caber nela
@@ -25,6 +26,8 @@ export const gameConfig = {
   height: BASE_HEIGHT,
   backgroundColor: '#111318',
   pixelArt: true,
+  // registra o pipeline custom (efeito de ondulação CRT do menu)
+  pipeline: { CrtWave: CrtWavePipeline },
   physics: {
     default: 'arcade',
     arcade: {
