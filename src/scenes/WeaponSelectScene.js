@@ -62,6 +62,7 @@ export default class WeaponSelectScene extends Phaser.Scene {
     // junto quando uma carta é escolhida, pra focar só na carta ativa.
     this.decorLayer = this.add.container(0, 0);
     this._buildDecor(cx, width, height);
+    this.decorLayer.add(this._buildBackButton(68, 30));
 
     const totalW = weaponsData.length * (CARD_DISPLAY_W + FRAME_PAD * 2) + (weaponsData.length - 1) * GAP;
     const startX = cx - totalW / 2 + (CARD_DISPLAY_W + FRAME_PAD * 2) / 2;
@@ -80,8 +81,9 @@ export default class WeaponSelectScene extends Phaser.Scene {
   }
 
   // Cabeçalho "de sistema": título + linha de status com um LED piscando
-  // + uma régua fina separando do resto, e dois textos bem discretos nos
-  // cantos superiores — só textura de HUD, sem informação nova nenhuma.
+  // + uma régua fina separando do resto, e um texto discreto no canto
+  // superior direito — o canto esquerdo agora é o botão VOLTAR (ver
+  // _buildBackButton), no lugar do texto decorativo que tinha ali antes.
   _buildDecor(cx, width, height) {
     const title = this.add
       .text(cx, 70, 'ESCOLHA SUA CARTA', {
@@ -113,15 +115,74 @@ export default class WeaponSelectScene extends Phaser.Scene {
     rule.lineStyle(1, BORDER_IDLE, 0.6);
     rule.lineBetween(cx - 220, 124, cx + 220, 124);
 
-    const cornerTopLeft = this.add
-      .text(20, 18, 'UNIT_SELECT//', { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_DIM })
-      .setOrigin(0, 0);
-
     const cornerTopRight = this.add
       .text(width - 20, 18, 'REV_1.0', { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_DIM })
       .setOrigin(1, 0);
 
-    this.decorLayer.add([title, statusDot, statusText, rule, cornerTopLeft, cornerTopRight]);
+    this.decorLayer.add([title, statusDot, statusText, rule, cornerTopRight]);
+  }
+
+  // Botão VOLTAR — mesmo componente visual dos outros botões do jogo
+  // (painel com cantos cortados + `>` piscando no hover), só que compacto
+  // pra caber no canto sem disputar espaço com o título/cartas.
+  _buildBackButton(x, y) {
+    const w = 96;
+    const h = 26;
+    const container = this.add.container(x, y);
+
+    const panel = this.add.graphics();
+    this._drawPanel(panel, w, h, BORDER_IDLE);
+
+    const caret = this.add
+      .text(-w / 2 + 8, 0, '>', { fontFamily: PIXEL_FONT, fontSize: '9px', color: TEXT_HOVER })
+      .setOrigin(0, 0.5)
+      .setVisible(false);
+
+    const text = this.add
+      .text(4, 0, 'VOLTAR', { fontFamily: PIXEL_FONT, fontSize: '9px', color: TEXT_IDLE })
+      .setOrigin(0.5);
+
+    const hitArea = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+
+    let blinkTween = null;
+    const setHover = (hovering) => {
+      panel.clear();
+      this._drawPanel(panel, w, h, hovering ? BORDER_HOVER : BORDER_IDLE);
+      text.setColor(hovering ? TEXT_HOVER : TEXT_IDLE);
+      caret.setVisible(hovering);
+
+      if (hovering) {
+        blinkTween = this.tweens.add({
+          targets: caret,
+          alpha: { from: 1, to: 0.15 },
+          duration: 260,
+          yoyo: true,
+          repeat: -1
+        });
+      } else if (blinkTween) {
+        blinkTween.stop();
+        caret.setAlpha(1);
+        blinkTween = null;
+      }
+    };
+
+    hitArea.on('pointerover', () => {
+      if (this._transitioning) return;
+      setHover(true);
+      this.sound.play('sfx_hover', { volume: 0.5 });
+    });
+    hitArea.on('pointerout', () => setHover(false));
+    hitArea.on('pointerdown', () => {
+      if (this._transitioning) return; // trava clique duplo/em conjunto com uma carta
+      this._transitioning = true;
+      this.sound.play('sfx_ui_click', { volume: 0.6 });
+      this.cardGroups.forEach((g) => g.hitArea.disableInteractive());
+      this.scene.start('MainMenuScene');
+    });
+
+    container.add([panel, caret, text, hitArea]);
+    this._backButtonHitArea = hitArea;
+    return container;
   }
 
   // Uma carta = moldura (painel com cantos cortados, igual ao resto do
@@ -284,6 +345,7 @@ export default class WeaponSelectScene extends Phaser.Scene {
       g.hitArea.disableInteractive();
       this.tweens.add({ targets: g, alpha: 0, scale: 0.92, duration: OTHER_CARDS_FADE_MS });
     });
+    this._backButtonHitArea.disableInteractive();
     this.tweens.add({ targets: this.decorLayer, alpha: 0, duration: OTHER_CARDS_FADE_MS });
     this.tweens.add({ targets: chosenGroup, scaleX: 1.06, scaleY: 1.06, duration: OTHER_CARDS_FADE_MS, yoyo: true });
 
