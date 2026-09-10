@@ -51,7 +51,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
     this.menuLayer.add([bg, title, button, settingsButton]);
 
-    this._setupCrtWave();
+    this._setupRetroFx();
 
     this.input.keyboard.once('keydown-SPACE', () => {
       if (this._transitioning) return;
@@ -60,15 +60,20 @@ export default class MainMenuScene extends Phaser.Scene {
     });
   }
 
-  // Ondulação horizontal sutil no menu inteiro (sinal CRT instável).
-  // Intensidade/velocidade ficam aqui — únicos números pra mexer depois.
-  _setupCrtWave() {
-    if (this.renderer.type !== Phaser.WEBGL) return; // efeito exige WebGL
+  // Efeitos "retrô" do menu inteiro: ondulação horizontal (sinal CRT
+  // instável) + ghosting sutil nas áreas claras (persistência de fósforo).
+  // Intensidade/velocidade ficam só aqui — únicos números pra mexer depois.
+  _setupRetroFx() {
+    if (this.renderer.type !== Phaser.WEBGL) return; // efeitos exigem WebGL
 
     const cam = this.cameras.main;
-    cam.setPostPipeline('CrtWave');
+    cam.setPostPipeline(['CrtWave', 'GhostTrail']);
+
     this._crtWaveFx = cam.getPostPipeline('CrtWave');
-    this._crtWaveFx.setAmplitude(0.0025).setFrequency(12).setSpeed(1.4);
+    this._crtWaveFx.setAmplitude(0.0012).setFrequency(9).setSpeed(0.9);
+
+    this._ghostTrailFx = cam.getPostPipeline('GhostTrail');
+    this._ghostTrailFx.setDecay(0.55).setThreshold(0.6);
 
     this.events.once('shutdown', () => cam.resetPostPipeline());
   }

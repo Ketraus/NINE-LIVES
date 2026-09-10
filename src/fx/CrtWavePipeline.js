@@ -30,9 +30,10 @@ export default class CrtWavePipeline extends Phaser.Renderer.WebGL.Pipelines.Pos
     // defaults sutis — ajustar aqui (ou via setters) até ficar bonito,
     // não "defeituoso". amplitude em UV (0..1), frequency = nº de ondas
     // na altura da tela, speed = velocidade da ondulação.
-    this.amplitude = 0.0025;
-    this.frequency = 12;
-    this.speed = 1.4;
+    // (reduzido — "intenso demais" no primeiro teste)
+    this.amplitude = 0.0012;
+    this.frequency = 9;
+    this.speed = 0.9;
   }
 
   onPreRender() {
