@@ -1,5 +1,3 @@
-import EventBus from '../systems/EventBus.js';
-
 const BTN_RADIUS = 16;
 const PANEL_W = 260;
 const PANEL_H = 260;
