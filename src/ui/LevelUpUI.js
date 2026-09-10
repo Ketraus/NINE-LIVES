@@ -1,7 +1,11 @@
 import EventBus from '../systems/EventBus.js';
 
-const CARD_W = 160;
-const CARD_H = 200;
+// cartas bem maiores que antes (pedido explícito) — ainda a mesma
+// proporção 0.605 da arte real (~330x545px), só numa escala maior;
+// 170x281 com 3 cartas por linha + Restock ainda cabe nos 704px de
+// largura do canvas (ver BASE_WIDTH em config/gameConfig.js) com folga
+const CARD_W = 170;
+const CARD_H = 281;
 const GAP = 20;
 const ROW_GAP = 24;
 // Máximo de cartas por linha antes de quebrar pra próxima — com
@@ -235,12 +239,18 @@ export default class LevelUpUI {
 
   // Carta única de evolução: maior, com brilho dourado, sem "rivais" ao l…
   _buildEvolutionCard(x, y, evolution) {
-    const w = CARD_W * 1.3;
-    const h = CARD_H * 1.15;
+    // mesmo fator nos dois eixos (em vez dos antigos 1.3/1.15) pra manter
+    // a proporção 0.6 da arte real — carta de evolução só fica maior,
+    // sem distorcer
+    const EVOLUTION_SCALE = 1.2;
+    const w = CARD_W * EVOLUTION_SCALE;
+    const h = CARD_H * EVOLUTION_SCALE;
     const group = this.scene.add.container(x, y);
 
     // mesma arte da carta base (ver data/cardArt.js) — a evolução usa o
-    const artKey = `card_${evolution.id}`;
+    // artId quando existe (evolução com nome/arte por arma, ver
+    // RunManager._resolveEvolutionName), senão cai no próprio id
+    const artKey = `card_${evolution.artId ?? evolution.id}`;
     if (this.scene.textures.exists(artKey)) {
       const glow = this.scene.add.rectangle(0, 0, w + 18, h + 18, 0xffd166, 0.22).setScrollFactor(0);
       const art = this.scene.add

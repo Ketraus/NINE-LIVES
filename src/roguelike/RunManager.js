@@ -146,7 +146,11 @@ export default class RunManager {
   _resolveEvolutionName(evolution) {
     if (!evolution.namesByWeapon) return evolution;
     const name = evolution.namesByWeapon[this.runState.weaponId] ?? evolution.name;
-    return { ...evolution, name };
+    // mesmo id pras 3 armas, mas cada uma tem PNG próprio (ver
+    // data/cardArt.js) — artId aponta pro arquivo certo sem mexer no id
+    // real da carta (que continua sendo o que RunState.applyUpgrade grava)
+    const artId = `${evolution.id}_${this.runState.weaponId}`;
+    return { ...evolution, name, artId };
   }
 
   // Aplica os efeitos de uma carta normal OU de uma evolução (que tem

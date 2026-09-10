@@ -10,5 +10,16 @@
 export default [
   'dmg_up', 'speed_up', 'hp_up', 'cooldown_down', 'range_up', 'thorns_up', 'armor_up',
   'arsenal_expandido', 'lifesteal_up', 'dog_purify',
-  'fists_slam', 'fists_shockwave', 'katana_double', 'pistol_drone', 'pistol_fragmentation'
+  'fists_slam', 'fists_shockwave', 'katana_double', 'katana_shuriken', 'pistol_drone', 'pistol_fragmentation',
+
+  // evoluções com arte pronta. `dmg_up_evo_overcharge` é usada por 3 armas
+  // com nomes diferentes (ver namesByWeapon em data/upgrades.js) — como o
+  // id da carta é o mesmo pras 3, a arte não pode viver em
+  // dmg_up_evo_overcharge.png sozinha; RunManager._resolveEvolutionName
+  // monta um `artId` só pra esse caso (dmg_up_evo_overcharge_<arma>), então
+  // os 3 PNGs abaixo usam esse artId como nome de arquivo em vez do id da
+  // carta (ver LevelUpUI._buildEvolutionCard).
+  'armor_up_evo_shield', 'thorns_up_evo_sobrecarga', 'range_up_evo_katana_stray',
+  'speed_up_evo_tornado', 'range_up_evo_hunter_instinct',
+  'dmg_up_evo_overcharge_fists', 'dmg_up_evo_overcharge_katana', 'dmg_up_evo_overcharge_pistol'
 ];
