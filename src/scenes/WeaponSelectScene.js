@@ -76,7 +76,7 @@ export default class WeaponSelectScene extends Phaser.Scene {
     });
 
     this._playEntryAnimation();
-    this._setupCrtTest();
+    this._setupRetroFx();
   }
 
   // Cabeçalho "de sistema": título + linha de status com um LED piscando
@@ -139,6 +139,13 @@ export default class WeaponSelectScene extends Phaser.Scene {
 
     const textureKey = CARD_TEXTURE_BY_WEAPON[weapon.id];
     const art = this.add.image(0, 0, textureKey).setDisplaySize(CARD_DISPLAY_W, CARD_DISPLAY_H);
+    // setDisplaySize já deixa art.scale numa fração bem menor que 1 (a
+    // textura nasce em 331x459, bem maior que a carta exibida) — o hover
+    // precisa multiplicar A PARTIR dessa escala base, nunca setar um
+    // valor absoluto tipo 1 ou 1.04, senão a arte pula pro tamanho quase
+    // real da textura (isso causava o bug do "carta gigante que não volta").
+    const artBaseScaleX = art.scaleX;
+    const artBaseScaleY = art.scaleY;
 
     const caret = this.add
       .text(0, -frameH / 2 - 34, '>', { fontFamily: PIXEL_FONT, fontSize: '12px', color: TEXT_HOVER })
@@ -182,7 +189,13 @@ export default class WeaponSelectScene extends Phaser.Scene {
       this._drawPanel(panel, frameW, frameH, hovering ? BORDER_HOVER : BORDER_IDLE);
       nameText.setColor(hovering ? TEXT_HOVER : TEXT_IDLE);
       caret.setVisible(hovering);
-      this.tweens.add({ targets: art, scale: hovering ? 1.04 : 1, duration: 120, ease: 'Quad.easeOut' });
+      this.tweens.add({
+        targets: art,
+        scaleX: hovering ? artBaseScaleX * 1.04 : artBaseScaleX,
+        scaleY: hovering ? artBaseScaleY * 1.04 : artBaseScaleY,
+        duration: 120,
+        ease: 'Quad.easeOut'
+      });
 
       if (hovering) {
         blinkTween = this.tweens.add({
@@ -236,16 +249,24 @@ export default class WeaponSelectScene extends Phaser.Scene {
     });
   }
 
-  // CRT usado com cautela aqui: só Scanlines, bem mais fraco que no menu,
-  // pra testar isoladamente antes de decidir se a tela toda precisa do
-  // pacote completo (Bloom/CrtWave/GhostTrail/ChromaticAberration/Flicker)
-  // como no menu e no Settings.
-  _setupCrtTest() {
+  // Mesmo pipeline CRT do menu/settings (Bloom + CrtWave + GhostTrail +
+  // Scanlines + ChromaticAberration + Flicker), com os mesmos valores —
+  // já testamos cada um isolado antes de chegar aqui, então não inventei
+  // números novos. GhostTrail e ChromaticAberration são os que mais
+  // arriscam borrar os textos pequenos (CLASS_0X, stats) — os valores
+  // usados já são os mais discretos que aprovamos no menu/settings.
+  _setupRetroFx() {
     if (this.renderer.type !== Phaser.WEBGL) return;
 
     const cam = this.cameras.main;
-    cam.setPostPipeline(['Scanlines']);
-    cam.getPostPipeline('Scanlines').setLineHeight(2).setDarkAmount(0.08);
+    cam.setPostPipeline(['Bloom', 'CrtWave', 'GhostTrail', 'Scanlines', 'ChromaticAberration', 'Flicker']);
+
+    cam.getPostPipeline('Bloom').setThreshold(0.72).setRadius(1.6).setIntensity(0.18);
+    cam.getPostPipeline('ChromaticAberration').setMaxShift(1.5);
+    cam.getPostPipeline('CrtWave').setAmplitude(0.0012).setFrequency(9).setSpeed(0.9);
+    cam.getPostPipeline('GhostTrail').setDecay(0.55).setThreshold(0.6);
+    cam.getPostPipeline('Scanlines').setLineHeight(2).setDarkAmount(0.12);
+    cam.getPostPipeline('Flicker').setRate(4).setAmount(0.05);
 
     this.events.once('shutdown', () => cam.resetPostPipeline());
   }
