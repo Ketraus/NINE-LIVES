@@ -245,12 +245,12 @@ export default class LevelUpUI {
       const setHoverFx = this._addHoverFx(group, cardW, cardH, accentColor);
 
       art.on('pointerover', () => {
-        art.setDisplaySize(cardW * 1.05, cardH * 1.05);
+        this._springHover(group, true);
         setHoverFx(true);
         this.scene.sound.play('sfx_hover', { volume: 0.5 });
       });
       art.on('pointerout', () => {
-        art.setDisplaySize(cardW, cardH);
+        this._springHover(group, false);
         setHoverFx(false);
       });
       art.on('pointerdown', () => this._choose(upgrade));
@@ -300,18 +300,58 @@ export default class LevelUpUI {
 
     bg.on('pointerover', () => {
       bg.setStrokeStyle(2, 0xffffff);
-      group.setScale(1.05); // mesmo efeito de "expandir" que a seleção de arma já tinha (WeaponSele…
+      this._springHover(group, true); // mola/boing (ver _springHover) no lugar do scale seco de antes
       setHoverFx(true);
       this.scene.sound.play('sfx_hover', { volume: 0.5 });
     });
     bg.on('pointerout', () => {
       bg.setStrokeStyle(2, accentColor);
-      group.setScale(1);
+      this._springHover(group, false);
       setHoverFx(false);
     });
     bg.on('pointerdown', () => this._choose(upgrade));
 
     return group;
+  }
+
+  // Efeito de mola (squash/stretch com overshoot) ao entrar/sair do hover.
+  // Rápido e sutil: um esticão inicial em direções opostas nos dois eixos
+  // (a carta "reage" ao toque), seguido de um acomodar com Back.easeOut
+  // (passa um pouquinho do tamanho final e volta) — física, não um scale
+  // instantâneo/seco. Saída é mais direta, sem mola, pra não enrolar
+  // quando o mouse passa rápido pra próxima carta.
+  _springHover(group, entering) {
+    this.scene.tweens.killTweensOf(group);
+
+    if (!entering) {
+      this.scene.tweens.add({
+        targets: group,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 120,
+        ease: 'Sine.easeOut'
+      });
+      return;
+    }
+
+    const TARGET = 1.05;
+    this.scene.tweens.add({
+      targets: group,
+      scaleX: TARGET * 0.94, // esticão rápido: aperta na horizontal...
+      scaleY: TARGET * 1.08, // ...e estica na vertical, como um "boing" de impacto
+      duration: 70,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.scene.tweens.add({
+          targets: group,
+          scaleX: TARGET,
+          scaleY: TARGET,
+          duration: 150,
+          ease: 'Back.easeOut',
+          easeParams: [2.4] // overshoot pequeno, some rápido — sutil, não exagerado
+        });
+      }
+    });
   }
 
   // Glow por raridade (comum=branco, rara=azul, épica=roxo — mesmas cores
@@ -330,16 +370,16 @@ export default class LevelUpUI {
     const glowContainer = this.scene.add.container(0, 0).setScrollFactor(0).setVisible(false);
 
     // véu aditivo do tamanho EXATO da carta — clareia ela por dentro,
-    // nunca maior que isso
-    const wash = this.scene.add.rectangle(0, 0, w, h, color, 0.16).setBlendMode(Phaser.BlendModes.ADD);
+    // nunca maior que isso (bem suave, só um "aquecimento" de tom)
+    const wash = this.scene.add.rectangle(0, 0, w, h, color, 0.07).setBlendMode(Phaser.BlendModes.ADD);
     glowContainer.add(wash);
 
     // anéis colados/PRA DENTRO da borda (pad 0 ou negativo) — acende bem
     // na linha da carta, sem sobrar nem 1px pro lado de fora
     [
-      { pad: 0, strokeW: 3, alpha: 1 },
-      { pad: -6, strokeW: 2, alpha: 0.5 },
-      { pad: -12, strokeW: 2, alpha: 0.24 }
+      { pad: 0, strokeW: 3, alpha: 0.65 },
+      { pad: -6, strokeW: 2, alpha: 0.3 },
+      { pad: -12, strokeW: 2, alpha: 0.12 }
     ].forEach(({ pad, strokeW, alpha }) => {
       const ring = this.scene.add.rectangle(0, 0, w + pad * 2, h + pad * 2).setStrokeStyle(strokeW, color, alpha);
       glowContainer.add(ring);
@@ -370,7 +410,7 @@ export default class LevelUpUI {
       caret.setVisible(active);
       if (!active) return;
 
-      glowContainer.setAlpha(0.75);
+      glowContainer.setAlpha(0.65);
       caret.setAlpha(1);
       caret.y = caretBaseY;
 
@@ -378,7 +418,7 @@ export default class LevelUpUI {
       tweens.push(
         this.scene.tweens.add({
           targets: glowContainer,
-          alpha: { from: 0.6, to: 1 },
+          alpha: { from: 0.55, to: 0.85 },
           duration: 620,
           yoyo: true,
           repeat: -1,
