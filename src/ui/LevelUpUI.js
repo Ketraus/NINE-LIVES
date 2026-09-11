@@ -1,9 +1,11 @@
 import EventBus from '../systems/EventBus.js';
 
-// cartas bem maiores que antes (pedido explícito) — ainda a mesma
-// proporção 0.605 da arte real (~330x545px), só numa escala maior;
-// 170x281 com 3 cartas por linha + Restock ainda cabe nos 704px de
-// largura do canvas (ver BASE_WIDTH em config/gameConfig.js) com folga
+// Tamanho "ideal" das cartas — usado como base pro layout, mas o layout
+// real (ver _computeLayout) ENCOLHE isso automaticamente quando não cabe
+// na tela (ex.: com "Arsenal Expandido" empilhado + Restock, o level-up
+// pode ter que mostrar 6 cartas em 2 linhas, o que não cabe nos 512px de
+// altura do canvas em tamanho cheio — por isso nunca usar CARD_W/CARD_H
+// direto pra montar a tela, sempre passar pelas dimensões calculadas)
 const CARD_W = 170;
 const CARD_H = 281;
 const GAP = 20;
@@ -14,6 +16,26 @@ const CARDS_PER_ROW = 3;
 // Carta "Restock" (evolução ARSENAL OVERRIDE): fica ao lado do baralho…
 const RESTOCK_W = 96;
 const RESTOCK_GAP = 22;
+
+// Margens de segurança do layout (ver _computeLayout) — nunca deixa o
+// baralho encostar na borda do canvas, nem embaixo do título.
+const LAYOUT_MARGIN_X = 24;
+const LAYOUT_MARGIN_TOP = 56;
+const LAYOUT_MARGIN_BOTTOM = 20;
+// não deixa o encolhimento automático virar sopa de letrinhas ilegível
+const MIN_LAYOUT_SCALE = 0.55;
+
+// Visual "placa de terminal" (mesma paleta do MainMenuScene) usado no
+// botão de Restock, pra ele parecer parte do mesmo jogo em vez de um
+// retângulo qualquer.
+const PIXEL_FONT = '"Press Start 2P", monospace';
+const PANEL_FILL = 0x061014;
+const PANEL_FILL_ALPHA = 0.55;
+const BORDER_IDLE = 0x3d5a66;
+const BORDER_HOVER = 0x8fd6ff;
+const TEXT_IDLE = '#8fb3bf';
+const TEXT_HOVER = '#e8f6ff';
+const CHAMFER = 8;
 
 // Visual da raridade (ver campo independente `rarity` em data/upgrades.…
 const RARITY_COLORS = { common: 0xe6e6e6, rare: 0x4fd1ff, epic: 0xb26bff };
@@ -77,22 +99,28 @@ export default class LevelUpUI {
   show(options) {
     this._openOverlay();
 
-    const screenCx = this.scene.scale.width / 2;
-    const cy = this.scene.scale.height / 2;
     const hasRestock = !!this.runManager.runState.hasRestock;
-    // com Restock ativo, o baralho normal é deslocado pra esquerda pra
-    const cx = hasRestock ? screenCx - (RESTOCK_W + RESTOCK_GAP) / 2 : screenCx;
 
     // quebra as opções em linhas de até CARDS_PER_ROW cartas, pra não
     const rows = [];
     for (let i = 0; i < options.length; i += CARDS_PER_ROW) {
       rows.push(options.slice(i, i + CARDS_PER_ROW));
     }
-    const totalH = rows.length * CARD_H + (rows.length - 1) * ROW_GAP;
-    const startY = cy - totalH / 2 + CARD_H / 2;
+
+    // dimensões desta tela em particular — encolhem sozinhas se o baralho
+    // (rows x cards, + Restock) não couber no canvas em tamanho cheio
+    const { cardW, cardH, gap, rowGap, restockW, restockGap } = this._computeLayout(rows, hasRestock);
+
+    const screenCx = this.scene.scale.width / 2;
+    const cy = this.scene.scale.height / 2;
+    // com Restock ativo, o baralho normal é deslocado pra esquerda pra
+    const cx = hasRestock ? screenCx - (restockW + restockGap) / 2 : screenCx;
+
+    const totalH = rows.length * cardH + (rows.length - 1) * rowGap;
+    const startY = cy - totalH / 2 + cardH / 2;
 
     const title = this.scene.add
-      .text(screenCx, startY - CARD_H / 2 - 30, 'SUBIU DE NÍVEL — escolha um upgrade', {
+      .text(screenCx, startY - cardH / 2 - 22, 'SUBIU DE NÍVEL — escolha um upgrade', {
         fontSize: '16px',
         color: '#ffffff'
       })
@@ -101,22 +129,55 @@ export default class LevelUpUI {
     this.container.add(title);
 
     rows.forEach((row, rowIndex) => {
-      const rowY = startY + rowIndex * (CARD_H + ROW_GAP);
-      const totalW = row.length * CARD_W + (row.length - 1) * GAP;
-      const startX = cx - totalW / 2 + CARD_W / 2;
+      const rowY = startY + rowIndex * (cardH + rowGap);
+      const totalW = row.length * cardW + (row.length - 1) * gap;
+      const startX = cx - totalW / 2 + cardW / 2;
       row.forEach((upgrade, i) => {
-        const x = startX + i * (CARD_W + GAP);
-        this.container.add(this._buildCard(x, rowY, upgrade));
+        const x = startX + i * (cardW + gap);
+        const card = this._buildCard(x, rowY, upgrade, cardW, cardH);
+        this.container.add(card);
+        this._animateCardIn(card, rowIndex * row.length + i);
       });
     });
 
     if (hasRestock) {
-      const fullRowW = CARDS_PER_ROW * CARD_W + (CARDS_PER_ROW - 1) * GAP;
-      const restockX = cx + fullRowW / 2 + RESTOCK_GAP + RESTOCK_W / 2;
-      this.container.add(this._buildRestockCard(restockX, cy, totalH));
+      const fullRowW = CARDS_PER_ROW * cardW + (CARDS_PER_ROW - 1) * gap;
+      const restockX = cx + fullRowW / 2 + restockGap + restockW / 2;
+      this.container.add(this._buildRestockCard(restockX, cy, totalH, restockW));
     }
 
     this.container.setVisible(true);
+  }
+
+  // Calcula o tamanho REAL das cartas nesta tela: começa do tamanho
+  // "ideal" (CARD_W/CARD_H) e encolhe tudo proporcionalmente (cartas,
+  // gaps e o bloco do Restock) só o suficiente pra caber na largura e
+  // na altura disponíveis do canvas — é isso que evita cartas cortadas/
+  // fora da tela quando o baralho cresce (Arsenal Expandido soma opções,
+  // e com 2+ linhas as cartas em tamanho cheio não cabem na altura).
+  _computeLayout(rows, hasRestock) {
+    const screenW = this.scene.scale.width;
+    const screenH = this.scene.scale.height;
+
+    const maxCardsInRow = rows.reduce((max, row) => Math.max(max, row.length), 1);
+    const restockBlock = hasRestock ? RESTOCK_GAP + RESTOCK_W : 0;
+    const naturalW = maxCardsInRow * CARD_W + (maxCardsInRow - 1) * GAP + restockBlock;
+    const naturalH = rows.length * CARD_H + Math.max(0, rows.length - 1) * ROW_GAP;
+
+    const availableW = screenW - LAYOUT_MARGIN_X * 2;
+    const availableH = screenH - LAYOUT_MARGIN_TOP - LAYOUT_MARGIN_BOTTOM;
+
+    const scale = Math.max(MIN_LAYOUT_SCALE, Math.min(1, availableW / naturalW, availableH / naturalH));
+
+    return {
+      scale,
+      cardW: CARD_W * scale,
+      cardH: CARD_H * scale,
+      gap: GAP * scale,
+      rowGap: ROW_GAP * scale,
+      restockW: RESTOCK_W * scale,
+      restockGap: RESTOCK_GAP * scale
+    };
   }
 
   // Tela dedicada de evolução: uma carta só, sem escolha entre opções — s…
@@ -158,23 +219,29 @@ export default class LevelUpUI {
     this.container.add(overlay);
   }
 
-  _buildCard(x, y, upgrade) {
+  _buildCard(x, y, upgrade, cardW = CARD_W, cardH = CARD_H) {
     const group = this.scene.add.container(x, y);
+    const setHoverFx = this._addHoverFx(group, cardW, cardH);
+    const ratio = cardW / CARD_W; // reduz fontes/paddings junto do encolhimento automático
 
     // com arte própria (ver data/cardArt.js), a imagem VIRA a carta inteira
     const artKey = `card_${upgrade.id}`;
     if (this.scene.textures.exists(artKey)) {
       const art = this.scene.add
         .image(0, 0, artKey)
-        .setDisplaySize(CARD_W, CARD_H)
+        .setDisplaySize(cardW, cardH)
         .setScrollFactor(0)
         .setInteractive({ useHandCursor: true });
 
       art.on('pointerover', () => {
-        art.setDisplaySize(CARD_W * 1.05, CARD_H * 1.05);
+        art.setDisplaySize(cardW * 1.05, cardH * 1.05);
+        setHoverFx(true);
         this.scene.sound.play('sfx_hover', { volume: 0.5 });
       });
-      art.on('pointerout', () => art.setDisplaySize(CARD_W, CARD_H));
+      art.on('pointerout', () => {
+        art.setDisplaySize(cardW, cardH);
+        setHoverFx(false);
+      });
       art.on('pointerdown', () => this._choose(upgrade));
 
       group.add(art);
@@ -187,25 +254,25 @@ export default class LevelUpUI {
     const accentHex = `#${accentColor.toString(16).padStart(6, '0')}`;
 
     const bg = this.scene.add
-      .rectangle(0, 0, CARD_W, CARD_H, 0x22252e, 0.95)
+      .rectangle(0, 0, cardW, cardH, 0x22252e, 0.95)
       .setStrokeStyle(2, accentColor)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
 
     const name = this.scene.add
-      .text(0, -CARD_H / 2 + 30, upgrade.name, {
-        fontSize: '16px',
+      .text(0, -cardH / 2 + 30 * ratio, upgrade.name, {
+        fontSize: `${Math.round(16 * ratio)}px`,
         color: accentHex
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
     const desc = this.scene.add
-      .text(0, 8, upgrade.description, {
-        fontSize: '13px',
+      .text(0, 8 * ratio, upgrade.description, {
+        fontSize: `${Math.round(13 * ratio)}px`,
         color: '#ffffff',
         align: 'center',
-        wordWrap: { width: CARD_W - 24 }
+        wordWrap: { width: cardW - 24 * ratio }
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
@@ -216,7 +283,7 @@ export default class LevelUpUI {
       ? `${RARITY_ICONS[rarity]} ${rarityLabel} · EXCLUSIVA`
       : `${RARITY_ICONS[rarity]} ${rarityLabel}`;
     const tag = this.scene.add
-      .text(0, -CARD_H / 2 + 12, tagText, { fontSize: '10px', color: accentHex })
+      .text(0, -cardH / 2 + 12 * ratio, tagText, { fontSize: `${Math.round(10 * ratio)}px`, color: accentHex })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
@@ -225,16 +292,122 @@ export default class LevelUpUI {
     bg.on('pointerover', () => {
       bg.setStrokeStyle(2, 0xffffff);
       group.setScale(1.05); // mesmo efeito de "expandir" que a seleção de arma já tinha (WeaponSele…
+      setHoverFx(true);
       this.scene.sound.play('sfx_hover', { volume: 0.5 });
     });
     bg.on('pointerout', () => {
       bg.setStrokeStyle(2, accentColor);
       group.setScale(1);
+      setHoverFx(false);
     });
     bg.on('pointerdown', () => this._choose(upgrade));
 
     group.add(children);
     return group;
+  }
+
+  // Glow discreto (mesma cor do hover do menu principal) + cursor de
+  // terminal "v" (">" rotacionado, apontando pra baixo, PRA carta) piscando
+  // centralizado acima dela — ligados juntos no pointerover/pointerout de
+  // quem chamar. Retorna a função pra ativar/desativar os dois de uma vez.
+  //
+  // O glow é feito só de contornos (sem preenchimento) coladinhos na borda
+  // da carta — não é um retângulo de luz atrás que clareia o fundo (grama
+  // do menu), é a PRÓPRIA carta que parece acender por dentro/na borda,
+  // como uma peça selecionada. Some pulsando bem devagar (respiro), pra não
+  // ficar estático/placeholder.
+  _addHoverFx(group, w, h) {
+    const glowContainer = this.scene.add.container(0, 0).setScrollFactor(0).setVisible(false);
+    // anéis concêntricos coladinhos na borda (cresce pra fora, nunca "vaza"
+    // luz por baixo da carta) — mais opaco perto da borda, dissolvendo.
+    [
+      { pad: 2, strokeW: 2, alpha: 1 },
+      { pad: 6, strokeW: 2, alpha: 0.5 },
+      { pad: 11, strokeW: 3, alpha: 0.22 }
+    ].forEach(({ pad, strokeW, alpha }) => {
+      const ring = this.scene.add
+        .rectangle(0, 0, w + pad * 2, h + pad * 2)
+        .setStrokeStyle(strokeW, 0x8fd6ff, alpha);
+      glowContainer.add(ring);
+    });
+    group.addAt(glowContainer, 0);
+
+    // ">" deitado de lado vira uma seta pra baixo — aponta reto pra carta,
+    // não solta no vazio.
+    const caret = this.scene.add
+      .text(0, -h / 2 - 16, '>', {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: '14px',
+        color: '#e8f6ff'
+      })
+      .setOrigin(0.5)
+      .setRotation(Math.PI / 2)
+      .setScrollFactor(0)
+      .setVisible(false);
+    group.add(caret);
+
+    const caretBaseY = caret.y;
+    let tweens = [];
+    return (active) => {
+      tweens.forEach((t) => t.stop());
+      tweens = [];
+      glowContainer.setVisible(active);
+      caret.setVisible(active);
+      if (!active) return;
+
+      glowContainer.setAlpha(0.75);
+      caret.setAlpha(1);
+      caret.y = caretBaseY;
+
+      // respiro do glow (não é um blink duro, é uma pulsação de "coisa viva")
+      tweens.push(
+        this.scene.tweens.add({
+          targets: glowContainer,
+          alpha: { from: 0.6, to: 1 },
+          duration: 620,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        })
+      );
+      // cursor de terminal: pisca...
+      tweens.push(
+        this.scene.tweens.add({
+          targets: caret,
+          alpha: { from: 1, to: 0.1 },
+          duration: 260,
+          yoyo: true,
+          repeat: -1
+        })
+      );
+      // ...e baila bem de leve pra baixo/cima, empurrando o olhar pra carta.
+      tweens.push(
+        this.scene.tweens.add({
+          targets: caret,
+          y: caretBaseY + 5,
+          duration: 420,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        })
+      );
+    };
+  }
+
+  // Entrada suave das cartas ao abrir o level-up: sobem um pouco enquanto
+  // aparecem, com um pequeno atraso escalonado por carta (esquerda->direita).
+  _animateCardIn(group, index) {
+    const targetY = group.y;
+    group.y = targetY + 18;
+    group.setAlpha(0);
+    this.scene.tweens.add({
+      targets: group,
+      y: targetY,
+      alpha: 1,
+      duration: 260,
+      delay: index * 40,
+      ease: 'Cubic.easeOut'
+    });
   }
 
   // Carta única de evolução: maior, com brilho dourado, sem "rivais" ao l…
@@ -316,56 +489,137 @@ export default class LevelUpUI {
   }
 
   // Carta especial da evolução ARSENAL OVERRIDE: fica plantada ao lado do
-  _buildRestockCard(x, y, h) {
+  // baralho. Agora usa a MESMA linguagem visual do menu principal (placa
+  // de terminal com cantos cortados) em vez de um retângulo genérico —
+  // ícone de "recarregar" desenhado (não emoji), girando bem devagar
+  // sozinho, e acelera + acende no hover, com o mesmo glow/caret das
+  // cartas normais avisando que é clicável.
+  _buildRestockCard(x, y, h, w = RESTOCK_W) {
     const group = this.scene.add.container(x, y);
-    // 1 uso por level-up (ver this._restockUsed) — esgotada, a carta fica
     const used = this._restockUsed;
-    const accent = used ? 0x555f66 : 0x4fd1ff;
 
-    const bg = this.scene.add
-      .rectangle(0, 0, RESTOCK_W, h, 0x102a2e, used ? 0.6 : 0.95)
-      .setStrokeStyle(2, accent)
-      .setScrollFactor(0);
+    const idleBorder = used ? 0x3a444b : BORDER_IDLE;
+    const idleTextColor = used ? '#5c666c' : TEXT_IDLE;
+    const iconColor = used ? 0x5c666c : 0x8fd6ff;
 
-    const icon = this.scene.add
-      .text(0, -h / 2 + 34, '🔄', { fontSize: '26px' })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setAlpha(used ? 0.5 : 1);
+    const panel = this.scene.add.graphics().setScrollFactor(0);
+    this._drawChamferPanel(panel, w, h, idleBorder);
+
+    const iconRadius = Math.min(w, h) * 0.15;
+    const icon = this.scene.add.graphics().setScrollFactor(0);
+    icon.setPosition(0, -h / 2 + iconRadius + 22);
+    this._drawRefreshIcon(icon, iconRadius, iconColor);
 
     const name = this.scene.add
-      .text(0, 0, 'RESTOCK', {
-        fontSize: '14px',
-        color: used ? '#8a949b' : '#4fd1ff',
-        fontStyle: 'bold',
+      .text(0, 4, 'RESTOCK', {
+        fontFamily: PIXEL_FONT,
+        fontSize: '9px',
+        color: idleTextColor,
         align: 'center',
-        wordWrap: { width: RESTOCK_W - 16 }
+        wordWrap: { width: w - 14 }
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
     const desc = this.scene.add
-      .text(0, h / 2 - 30, used ? 'Já usada\nneste level' : 'Rolar\nde novo', {
-        fontSize: '11px',
-        color: used ? '#8a949b' : '#bfe9f5',
-        align: 'center'
+      .text(0, h / 2 - 28, used ? 'JÁ USADA\nNESTE LEVEL' : 'ROLAR\nDE NOVO', {
+        fontFamily: PIXEL_FONT,
+        fontSize: '7px',
+        color: idleTextColor,
+        align: 'center',
+        lineSpacing: 5
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
-    group.add([bg, icon, name, desc]);
+    // mesmo glow em anel + cursor ">" das cartas normais — reaproveitado
+    // aqui pra deixar claro que o Restock é uma opção selecionável igual
+    const setHoverFx = used ? null : this._addHoverFx(group, w, h);
+
+    group.add([panel, icon, name, desc]);
+
+    // respiro sozinho, bem devagar — só enquanto disponível, pra não
+    // parecer um botão morto/estático (mesmo parado, ele "existe")
+    const idleSpin = used
+      ? null
+      : this.scene.tweens.add({ targets: icon, rotation: Math.PI * 2, duration: 7000, repeat: -1 });
 
     if (!used) {
-      bg.setInteractive({ useHandCursor: true });
-      bg.on('pointerover', () => {
-        bg.setStrokeStyle(2, 0xffffff);
+      const hit = this.scene.add
+        .rectangle(0, 0, w, h, 0xffffff, 0)
+        .setScrollFactor(0)
+        .setInteractive({ useHandCursor: true });
+      group.add(hit);
+
+      hit.on('pointerover', () => {
+        panel.clear();
+        this._drawChamferPanel(panel, w, h, BORDER_HOVER);
+        name.setColor(TEXT_HOVER);
+        desc.setColor(TEXT_HOVER);
+        setHoverFx(true);
+        if (idleSpin) idleSpin.timeScale = 3.4; // acelera igual um HD "acordando"
         this.scene.sound.play('sfx_hover', { volume: 0.5 });
       });
-      bg.on('pointerout', () => bg.setStrokeStyle(2, 0x4fd1ff));
-      bg.on('pointerdown', () => this._restock());
+      hit.on('pointerout', () => {
+        panel.clear();
+        this._drawChamferPanel(panel, w, h, idleBorder);
+        name.setColor(idleTextColor);
+        desc.setColor(idleTextColor);
+        setHoverFx(false);
+        if (idleSpin) idleSpin.timeScale = 1;
+      });
+      hit.on('pointerdown', () => this._restock());
     }
 
     return group;
+  }
+
+  // Painel "placa de terminal" com cantos cortados — mesmo desenho do
+  // MainMenuScene._drawPanel, reaproveitado aqui pro Restock ter a
+  // mesma identidade visual do resto do jogo em vez de um placeholder.
+  _drawChamferPanel(g, w, h, borderColor) {
+    const c = Math.min(CHAMFER, w / 2, h / 2);
+    const points = [
+      { x: -w / 2 + c, y: -h / 2 },
+      { x: w / 2 - c, y: -h / 2 },
+      { x: w / 2, y: -h / 2 + c },
+      { x: w / 2, y: h / 2 - c },
+      { x: w / 2 - c, y: h / 2 },
+      { x: -w / 2 + c, y: h / 2 },
+      { x: -w / 2, y: h / 2 - c },
+      { x: -w / 2, y: -h / 2 + c }
+    ];
+    g.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
+    g.fillPoints(points, true);
+    g.lineStyle(2, borderColor, 1);
+    g.strokePoints(points, true);
+  }
+
+  // Ícone de "recarregar" desenhado na mão (arco + ponta de seta) em vez
+  // de emoji — combina com o resto da UI e pode ser recolorido/girado.
+  _drawRefreshIcon(g, radius, color) {
+    g.clear();
+    g.lineStyle(Math.max(2, radius * 0.22), color, 1);
+    const start = Phaser.Math.DegToRad(-50);
+    const end = Phaser.Math.DegToRad(230);
+    g.beginPath();
+    g.arc(0, 0, radius, start, end, false);
+    g.strokePath();
+
+    const tipX = Math.cos(start) * radius;
+    const tipY = Math.sin(start) * radius;
+    const headSize = radius * 0.55;
+    const a1 = start + 2.5;
+    const a2 = start - 1.1;
+    g.fillStyle(color, 1);
+    g.fillTriangle(
+      tipX,
+      tipY,
+      tipX + Math.cos(a1) * headSize,
+      tipY + Math.sin(a1) * headSize,
+      tipX + Math.cos(a2) * headSize,
+      tipY + Math.sin(a2) * headSize
+    );
   }
 
   // Reamostra as opções do level-up atual e redesenha a tela (mantém
