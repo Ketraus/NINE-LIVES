@@ -221,8 +221,14 @@ export default class LevelUpUI {
 
   _buildCard(x, y, upgrade, cardW = CARD_W, cardH = CARD_H) {
     const group = this.scene.add.container(x, y);
-    const setHoverFx = this._addHoverFx(group, cardW, cardH);
     const ratio = cardW / CARD_W; // reduz fontes/paddings junto do encolhimento automático
+
+    // raridade decide a cor do glow/cursor também (comum=branco, rara=azul,
+    // épica=roxo) — calculada ANTES dos dois caminhos (com/sem arte)
+    const isExclusive = upgrade.category === 'exclusive';
+    const rarity = upgrade.rarity || 'common';
+    const accentColor = RARITY_COLORS[rarity] ?? RARITY_COLORS.common;
+    const accentHex = `#${accentColor.toString(16).padStart(6, '0')}`;
 
     // com arte própria (ver data/cardArt.js), a imagem VIRA a carta inteira
     const artKey = `card_${upgrade.id}`;
@@ -232,6 +238,11 @@ export default class LevelUpUI {
         .setDisplaySize(cardW, cardH)
         .setScrollFactor(0)
         .setInteractive({ useHandCursor: true });
+      group.add(art);
+
+      // criado DEPOIS da arte pra desenhar por CIMA dela — é a carta que
+      // acende na própria borda, não um brilho atrás vazando pro cenário
+      const setHoverFx = this._addHoverFx(group, cardW, cardH, accentColor);
 
       art.on('pointerover', () => {
         art.setDisplaySize(cardW * 1.05, cardH * 1.05);
@@ -244,14 +255,8 @@ export default class LevelUpUI {
       });
       art.on('pointerdown', () => this._choose(upgrade));
 
-      group.add(art);
       return group;
     }
-
-    const isExclusive = upgrade.category === 'exclusive';
-    const rarity = upgrade.rarity || 'common';
-    const accentColor = RARITY_COLORS[rarity] ?? RARITY_COLORS.common;
-    const accentHex = `#${accentColor.toString(16).padStart(6, '0')}`;
 
     const bg = this.scene.add
       .rectangle(0, 0, cardW, cardH, 0x22252e, 0.95)
@@ -287,7 +292,11 @@ export default class LevelUpUI {
       .setOrigin(0.5)
       .setScrollFactor(0);
 
-    const children = [bg, name, desc, tag];
+    group.add([bg, name, desc, tag]);
+
+    // criado DEPOIS do fundo/textos pra desenhar por cima, mesmo motivo
+    // do caminho com arte acima
+    const setHoverFx = this._addHoverFx(group, cardW, cardH, accentColor);
 
     bg.on('pointerover', () => {
       bg.setStrokeStyle(2, 0xffffff);
@@ -302,43 +311,49 @@ export default class LevelUpUI {
     });
     bg.on('pointerdown', () => this._choose(upgrade));
 
-    group.add(children);
     return group;
   }
 
-  // Glow discreto (mesma cor do hover do menu principal) + cursor de
-  // terminal "v" (">" rotacionado, apontando pra baixo, PRA carta) piscando
-  // centralizado acima dela — ligados juntos no pointerover/pointerout de
-  // quem chamar. Retorna a função pra ativar/desativar os dois de uma vez.
+  // Glow por raridade (comum=branco, rara=azul, épica=roxo — mesmas cores
+  // de RARITY_COLORS) + cursor de terminal "v" (">" rotacionado, apontando
+  // reto pra carta) piscando acima dela — ligados juntos no pointerover/
+  // pointerout de quem chamar. Retorna a função pra ativar/desativar os
+  // dois de uma vez.
   //
-  // O glow é feito só de contornos (sem preenchimento) coladinhos na borda
-  // da carta — não é um retângulo de luz atrás que clareia o fundo (grama
-  // do menu), é a PRÓPRIA carta que parece acender por dentro/na borda,
-  // como uma peça selecionada. Some pulsando bem devagar (respiro), pra não
-  // ficar estático/placeholder.
-  _addHoverFx(group, w, h) {
+  // IMPORTANTE: nada aqui passa do tamanho w x h da própria carta — os
+  // anéis crescem só PRA DENTRO (pad <= 0) e o véu de luz é do tamanho
+  // exato da carta. É a carta acendendo por dentro/na própria borda, sem
+  // nenhum brilho escapando pro cenário atrás (grama do menu etc.). Por
+  // isso também precisa ser adicionado ao grupo DEPOIS da arte/fundo —
+  // desenhado por cima, não atrás.
+  _addHoverFx(group, w, h, color = 0x8fd6ff) {
     const glowContainer = this.scene.add.container(0, 0).setScrollFactor(0).setVisible(false);
-    // anéis concêntricos coladinhos na borda (cresce pra fora, nunca "vaza"
-    // luz por baixo da carta) — mais opaco perto da borda, dissolvendo.
+
+    // véu aditivo do tamanho EXATO da carta — clareia ela por dentro,
+    // nunca maior que isso
+    const wash = this.scene.add.rectangle(0, 0, w, h, color, 0.16).setBlendMode(Phaser.BlendModes.ADD);
+    glowContainer.add(wash);
+
+    // anéis colados/PRA DENTRO da borda (pad 0 ou negativo) — acende bem
+    // na linha da carta, sem sobrar nem 1px pro lado de fora
     [
-      { pad: 2, strokeW: 2, alpha: 1 },
-      { pad: 6, strokeW: 2, alpha: 0.5 },
-      { pad: 11, strokeW: 3, alpha: 0.22 }
+      { pad: 0, strokeW: 3, alpha: 1 },
+      { pad: -6, strokeW: 2, alpha: 0.5 },
+      { pad: -12, strokeW: 2, alpha: 0.24 }
     ].forEach(({ pad, strokeW, alpha }) => {
-      const ring = this.scene.add
-        .rectangle(0, 0, w + pad * 2, h + pad * 2)
-        .setStrokeStyle(strokeW, 0x8fd6ff, alpha);
+      const ring = this.scene.add.rectangle(0, 0, w + pad * 2, h + pad * 2).setStrokeStyle(strokeW, color, alpha);
       glowContainer.add(ring);
     });
-    group.addAt(glowContainer, 0);
+    group.add(glowContainer);
 
     // ">" deitado de lado vira uma seta pra baixo — aponta reto pra carta,
     // não solta no vazio.
+    const colorHex = `#${color.toString(16).padStart(6, '0')}`;
     const caret = this.scene.add
       .text(0, -h / 2 - 16, '>', {
         fontFamily: '"Press Start 2P", monospace',
         fontSize: '14px',
-        color: '#e8f6ff'
+        color: colorHex
       })
       .setOrigin(0.5)
       .setRotation(Math.PI / 2)
