@@ -8,22 +8,31 @@ import EventBus from '../systems/EventBus.js';
 // direto pra montar a tela, sempre passar pelas dimensões calculadas)
 const CARD_W = 170;
 const CARD_H = 281;
-const GAP = 20;
-const ROW_GAP = 24;
+const GAP = 14;
+const ROW_GAP = 18;
 // Máximo de cartas por linha antes de quebrar pra próxima — com
 const CARDS_PER_ROW = 3;
 
 // Carta "Restock" (evolução ARSENAL OVERRIDE): fica ao lado do baralho…
 const RESTOCK_W = 96;
-const RESTOCK_GAP = 22;
+const RESTOCK_GAP = 16;
+
+// Cabeçalho fixo (independe do encolhimento das cartas): margem do topo
+// até o título + o próprio título + uma faixa exclusiva reservada só pro
+// cursor ">" do hover — nada mais desenha nela, então o cursor nunca
+// encosta/invade o texto do título, não importa quantas linhas de carta
+// tenham abaixo.
+const TITLE_TOP_MARGIN = 14;
+const TITLE_TEXT_SIZE = 16;
+const CARET_ZONE_H = 30;
+const HEADER_H = TITLE_TOP_MARGIN + TITLE_TEXT_SIZE + CARET_ZONE_H;
 
 // Margens de segurança do layout (ver _computeLayout) — nunca deixa o
-// baralho encostar na borda do canvas, nem embaixo do título.
-const LAYOUT_MARGIN_X = 24;
-const LAYOUT_MARGIN_TOP = 56;
-const LAYOUT_MARGIN_BOTTOM = 20;
+// baralho encostar na borda do canvas nem no cabeçalho.
+const LAYOUT_MARGIN_X = 14;
+const LAYOUT_MARGIN_BOTTOM = 16;
 // não deixa o encolhimento automático virar sopa de letrinhas ilegível
-const MIN_LAYOUT_SCALE = 0.55;
+const MIN_LAYOUT_SCALE = 0.6;
 
 // Visual "placa de terminal" (mesma paleta do MainMenuScene) usado no
 // botão de Restock, pra ele parecer parte do mesmo jogo em vez de um
@@ -108,20 +117,24 @@ export default class LevelUpUI {
     }
 
     // dimensões desta tela em particular — encolhem sozinhas se o baralho
-    // (rows x cards, + Restock) não couber no canvas em tamanho cheio
+    // (rows x cards, + Restock) não couber no espaço abaixo do cabeçalho
     const { cardW, cardH, gap, rowGap, restockW, restockGap } = this._computeLayout(rows, hasRestock);
 
     const screenCx = this.scene.scale.width / 2;
-    const cy = this.scene.scale.height / 2;
+    const screenH = this.scene.scale.height;
     // com Restock ativo, o baralho normal é deslocado pra esquerda pra
     const cx = hasRestock ? screenCx - (restockW + restockGap) / 2 : screenCx;
 
+    // as cartas vivem só no espaço ABAIXO do cabeçalho fixo (título + faixa
+    // do cursor), centralizadas no que sobra até o fim da tela — o título
     const totalH = rows.length * cardH + (rows.length - 1) * rowGap;
-    const startY = cy - totalH / 2 + cardH / 2;
+    const availableRowsH = screenH - HEADER_H - LAYOUT_MARGIN_BOTTOM;
+    const rowsTop = HEADER_H + Math.max(0, (availableRowsH - totalH) / 2);
+    const startY = rowsTop + cardH / 2;
 
     const title = this.scene.add
-      .text(screenCx, startY - cardH / 2 - 22, 'SUBIU DE NÍVEL — escolha um upgrade', {
-        fontSize: '16px',
+      .text(screenCx, TITLE_TOP_MARGIN + TITLE_TEXT_SIZE / 2, 'SUBIU DE NÍVEL — escolha um upgrade', {
+        fontSize: `${TITLE_TEXT_SIZE}px`,
         color: '#ffffff'
       })
       .setOrigin(0.5)
@@ -143,7 +156,8 @@ export default class LevelUpUI {
     if (hasRestock) {
       const fullRowW = CARDS_PER_ROW * cardW + (CARDS_PER_ROW - 1) * gap;
       const restockX = cx + fullRowW / 2 + restockGap + restockW / 2;
-      this.container.add(this._buildRestockCard(restockX, cy, totalH, restockW));
+      const blockCenterY = rowsTop + totalH / 2;
+      this.container.add(this._buildRestockCard(restockX, blockCenterY, totalH, restockW));
     }
 
     this.container.setVisible(true);
@@ -151,10 +165,13 @@ export default class LevelUpUI {
 
   // Calcula o tamanho REAL das cartas nesta tela: começa do tamanho
   // "ideal" (CARD_W/CARD_H) e encolhe tudo proporcionalmente (cartas,
-  // gaps e o bloco do Restock) só o suficiente pra caber na largura e
-  // na altura disponíveis do canvas — é isso que evita cartas cortadas/
-  // fora da tela quando o baralho cresce (Arsenal Expandido soma opções,
-  // e com 2+ linhas as cartas em tamanho cheio não cabem na altura).
+  // gaps e o bloco do Restock) só o suficiente pra caber no espaço
+  // disponível abaixo do cabeçalho fixo — é isso que evita cartas
+  // cortadas/fora da tela quando o baralho cresce (Arsenal Expandido soma
+  // opções, e com 2+ linhas as cartas em tamanho cheio não cabem na
+  // altura). Margens laterais e gaps enxutos + o mínimo mais alto (0.6)
+  // deixam a área de seleção ocupar mais tela mesmo no pior caso (3x
+  // Arsenal Expandido + Restock = 6 cartas em 2 linhas).
   _computeLayout(rows, hasRestock) {
     const screenW = this.scene.scale.width;
     const screenH = this.scene.scale.height;
@@ -165,7 +182,7 @@ export default class LevelUpUI {
     const naturalH = rows.length * CARD_H + Math.max(0, rows.length - 1) * ROW_GAP;
 
     const availableW = screenW - LAYOUT_MARGIN_X * 2;
-    const availableH = screenH - LAYOUT_MARGIN_TOP - LAYOUT_MARGIN_BOTTOM;
+    const availableH = screenH - HEADER_H - LAYOUT_MARGIN_BOTTOM;
 
     const scale = Math.max(MIN_LAYOUT_SCALE, Math.min(1, availableW / naturalW, availableH / naturalH));
 
@@ -322,6 +339,11 @@ export default class LevelUpUI {
   // quando o mouse passa rápido pra próxima carta.
   _springHover(group, entering) {
     this.scene.tweens.killTweensOf(group);
+    // se a carta ainda estava no fade-in de entrada (ver _animateCardIn) e
+    // o hover matou aquele tween no meio do caminho, sem isso ela ficava
+    // travada transparente pra sempre — hover nunca pode deixar a carta
+    // com opacidade parcial.
+    group.setAlpha(1);
 
     if (!entering) {
       this.scene.tweens.add({
@@ -390,7 +412,7 @@ export default class LevelUpUI {
     // não solta no vazio.
     const colorHex = `#${color.toString(16).padStart(6, '0')}`;
     const caret = this.scene.add
-      .text(0, -h / 2 - 16, '>', {
+      .text(0, -h / 2 - CARET_ZONE_H / 2, '>', {
         fontFamily: '"Press Start 2P", monospace',
         fontSize: '14px',
         color: colorHex
