@@ -78,6 +78,17 @@ const EVOLUTION_SFX = {
 const CARD_ART_SIZE = 56;
 const EVOLUTION_ART_SIZE = 72;
 
+// Cabeçalho fixo da tela de evolução (mesmo padrão do header do level-up
+// normal) — título ancorado no topo, carta ocupa o espaço restante e por
+// isso pode crescer bastante sem nunca ficar maior que a tela.
+const EVOLUTION_GOLD = 0xffd166;
+const EVOLUTION_TITLE_SIZE = 20;
+const EVOLUTION_TITLE_TOP_MARGIN = 16;
+const EVOLUTION_TITLE_GAP = 20;
+const EVOLUTION_MARGIN_X = 40;
+const EVOLUTION_MARGIN_BOTTOM = 24;
+const EVOLUTION_MAX_SCALE = 2.0; // trava de segurança pra não ficar gigante em telas muito largas/altas
+
 // Mostra as cartas de progressão, pausa a física enquanto escolhe, apli…
 export default class LevelUpUI {
   constructor(scene, runManager) {
@@ -204,12 +215,24 @@ export default class LevelUpUI {
     // toca assim que a carta evoluída APARECE na tela (o jogador acabou de
     this.scene.sound.play('sfx_evolution_effect', { volume: 0.6 });
 
-    const cx = this.scene.scale.width / 2;
-    const cy = this.scene.scale.height / 2;
+    const screenW = this.scene.scale.width;
+    const screenH = this.scene.scale.height;
+    const cx = screenW / 2;
+
+    // carta cresce pra ocupar o espaço abaixo do título (mesma lógica do
+    // header do level-up normal) — é uma carta só na tela, então sobra
+    // bastante espaço, e isso resolve o "está pequeno" sem chute manual
+    const scale = this._computeEvolutionScale();
+    const cardW = CARD_W * scale;
+    const cardH = CARD_H * scale;
+    const headerH = EVOLUTION_TITLE_TOP_MARGIN + EVOLUTION_TITLE_SIZE + EVOLUTION_TITLE_GAP;
+    const availableH = screenH - headerH - EVOLUTION_MARGIN_BOTTOM;
+    const cardTop = headerH + Math.max(0, (availableH - cardH) / 2);
+    const cardCenterY = cardTop + cardH / 2;
 
     const title = this.scene.add
-      .text(cx, cy - CARD_H / 2 - 46, 'Você desbloqueou uma Evolução!', {
-        fontSize: '18px',
+      .text(cx, EVOLUTION_TITLE_TOP_MARGIN + EVOLUTION_TITLE_SIZE / 2, 'Você desbloqueou uma Evolução!', {
+        fontSize: `${EVOLUTION_TITLE_SIZE}px`,
         color: '#ffd166',
         fontStyle: 'bold'
       })
@@ -217,8 +240,36 @@ export default class LevelUpUI {
       .setScrollFactor(0);
     this.container.add(title);
 
-    this.container.add(this._buildEvolutionCard(cx, cy, evolution));
+    this.container.add(this._buildEvolutionCard(cx, cardCenterY, evolution, cardW, cardH));
+
+    // clarão dourado rápido no instante em que a carta aparece — não
+    // bloqueia clique (não é interativo), só dá aquele "impacto" de
+    // conquista antes de sumir
+    const flash = this.scene.add
+      .rectangle(cx, screenH / 2, screenW, screenH, 0xffe9a8, 0.32)
+      .setScrollFactor(0);
+    this.container.add(flash);
+    this.scene.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 320,
+      ease: 'Sine.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
     this.container.setVisible(true);
+  }
+
+  // Tamanho da carta de evolução: cresce pra ocupar o espaço abaixo do
+  // título, travado num teto (EVOLUTION_MAX_SCALE) pra não ficar absurda
+  // em telas muito largas.
+  _computeEvolutionScale() {
+    const screenW = this.scene.scale.width;
+    const screenH = this.scene.scale.height;
+    const headerH = EVOLUTION_TITLE_TOP_MARGIN + EVOLUTION_TITLE_SIZE + EVOLUTION_TITLE_GAP;
+    const availableW = screenW - EVOLUTION_MARGIN_X * 2;
+    const availableH = screenH - headerH - EVOLUTION_MARGIN_BOTTOM;
+    return Math.min(availableW / CARD_W, availableH / CARD_H, EVOLUTION_MAX_SCALE);
   }
 
   // Comum a show() e showEvolution(): limpa a tela anterior e pausa o jog…
@@ -337,7 +388,7 @@ export default class LevelUpUI {
   // (passa um pouquinho do tamanho final e volta) — física, não um scale
   // instantâneo/seco. Saída é mais direta, sem mola, pra não enrolar
   // quando o mouse passa rápido pra próxima carta.
-  _springHover(group, entering) {
+  _springHover(group, entering, targetScale = 1.05) {
     this.scene.tweens.killTweensOf(group);
     // se a carta ainda estava no fade-in de entrada (ver _animateCardIn) e
     // o hover matou aquele tween no meio do caminho, sem isso ela ficava
@@ -356,7 +407,7 @@ export default class LevelUpUI {
       return;
     }
 
-    const TARGET = 1.05;
+    const TARGET = targetScale;
     this.scene.tweens.add({
       targets: group,
       scaleX: TARGET * 0.94, // esticão rápido: aperta na horizontal...
@@ -488,81 +539,151 @@ export default class LevelUpUI {
   }
 
   // Carta única de evolução: maior, com brilho dourado, sem "rivais" ao l…
-  _buildEvolutionCard(x, y, evolution) {
-    // mesmo fator nos dois eixos (em vez dos antigos 1.3/1.15) pra manter
-    // a proporção 0.6 da arte real — carta de evolução só fica maior,
-    // sem distorcer
-    const EVOLUTION_SCALE = 1.2;
-    const w = CARD_W * EVOLUTION_SCALE;
-    const h = CARD_H * EVOLUTION_SCALE;
+  _buildEvolutionCard(x, y, evolution, w, h) {
     const group = this.scene.add.container(x, y);
+    const ratio = w / CARD_W; // fontes/paddings acompanham o tamanho dinâmico da carta
 
     // mesma arte da carta base (ver data/cardArt.js) — a evolução usa o
     // artId quando existe (evolução com nome/arte por arma, ver
     // RunManager._resolveEvolutionName), senão cai no próprio id
     const artKey = `card_${evolution.artId ?? evolution.id}`;
     if (this.scene.textures.exists(artKey)) {
-      const glow = this.scene.add.rectangle(0, 0, w + 18, h + 18, 0xffd166, 0.22).setScrollFactor(0);
       const art = this.scene.add
         .image(0, 0, artKey)
         .setDisplaySize(w, h)
         .setScrollFactor(0)
         .setInteractive({ useHandCursor: true });
+      group.add(art);
+
+      this._addEvolutionGoldFrame(group, w, h); // por cima da arte, sempre visível
 
       art.on('pointerover', () => {
-        art.setDisplaySize(w * 1.04, h * 1.04);
+        this._springHover(group, true, 1.06);
         this.scene.sound.play('sfx_hover', { volume: 0.5 });
       });
-      art.on('pointerout', () => art.setDisplaySize(w, h));
+      art.on('pointerout', () => this._springHover(group, false));
       art.on('pointerdown', () => this._chooseEvolution(evolution));
 
-      group.add([glow, art]);
+      this._popIn(group);
       return group;
     }
 
-    const glow = this.scene.add.rectangle(0, 0, w + 18, h + 18, 0xffd166, 0.22).setScrollFactor(0);
-
     const bg = this.scene.add
       .rectangle(0, 0, w, h, 0x2a2410, 0.97)
-      .setStrokeStyle(3, 0xffd166)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
 
     const name = this.scene.add
-      .text(0, -h / 2 + 36, evolution.name, { fontSize: '24px', color: '#ffd166', fontStyle: 'bold' })
+      .text(0, -h / 2 + 30 * ratio, evolution.name, {
+        fontSize: `${Math.round(20 * ratio)}px`,
+        color: '#ffd166',
+        fontStyle: 'bold'
+      })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
     const desc = this.scene.add
-      .text(0, 6, evolution.description, {
-        fontSize: '14px',
+      .text(0, 6 * ratio, evolution.description, {
+        fontSize: `${Math.round(12 * ratio)}px`,
         color: '#ffffff',
         align: 'center',
-        wordWrap: { width: w - 30 }
+        wordWrap: { width: w - 30 * ratio }
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
     const hint = this.scene.add
-      .text(0, h / 2 - 26, 'Clique para confirmar', { fontSize: '11px', color: '#ffe9a8' })
+      .text(0, h / 2 - 22 * ratio, 'Clique para confirmar', {
+        fontSize: `${Math.round(9 * ratio)}px`,
+        color: '#ffe9a8'
+      })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
-    const children = [glow, bg, name, desc, hint];
+    group.add([bg, name, desc, hint]);
+    this._addEvolutionGoldFrame(group, w, h); // por cima de tudo, sempre visível
 
     bg.on('pointerover', () => {
-      bg.setStrokeStyle(3, 0xffffff);
-      group.setScale(1.04); // carta já nasce maior que as normais, expande um pouco menos
+      this._springHover(group, true, 1.06);
       this.scene.sound.play('sfx_hover', { volume: 0.5 });
     });
-    bg.on('pointerout', () => {
-      bg.setStrokeStyle(3, 0xffd166);
-      group.setScale(1);
-    });
+    bg.on('pointerout', () => this._springHover(group, false));
     bg.on('pointerdown', () => this._chooseEvolution(evolution));
 
-    group.add(children);
+    this._popIn(group);
     return group;
+  }
+
+  // Moldura dourada da carta de evolução: fica ligada o tempo TODO (não
+  // depende de hover — é isso que faz o jogador sentir "eu ganhei uma
+  // evolução" assim que a tela abre), respirando bem devagar. Mesma regra
+  // das outras cartas: anéis só PRA DENTRO da borda (nunca vaza pro
+  // cenário atrás) + 4 cantos ornamentados, tudo contido em w x h.
+  _addEvolutionGoldFrame(group, w, h) {
+    const frame = this.scene.add.container(0, 0).setScrollFactor(0);
+
+    const wash = this.scene.add.rectangle(0, 0, w, h, EVOLUTION_GOLD, 0.07).setBlendMode(Phaser.BlendModes.ADD);
+    frame.add(wash);
+
+    const rings = [
+      { pad: 0, strokeW: 4, alpha: 0.95 },
+      { pad: -8, strokeW: 2, alpha: 0.5 },
+      { pad: -16, strokeW: 2, alpha: 0.22 }
+    ].map(({ pad, strokeW, alpha }) => {
+      const ring = this.scene.add.rectangle(0, 0, w + pad * 2, h + pad * 2).setStrokeStyle(strokeW, EVOLUTION_GOLD, alpha);
+      frame.add(ring);
+      return ring;
+    });
+
+    // acentos nos 4 cantos — toque de "moldura antiga", sem precisar de
+    // arte nova, sempre dentro dos limites da carta
+    const inset = 12 * (w / (CARD_W * 1.2));
+    const corners = [
+      [-w / 2 + inset, -h / 2 + inset],
+      [w / 2 - inset, -h / 2 + inset],
+      [w / 2 - inset, h / 2 - inset],
+      [-w / 2 + inset, h / 2 - inset]
+    ];
+    const cornerMarks = corners.map(([mx, my]) => {
+      const mark = this.scene.add.rectangle(mx, my, 9, 9, EVOLUTION_GOLD, 0.9).setRotation(Math.PI / 4);
+      frame.add(mark);
+      return mark;
+    });
+
+    group.add(frame);
+
+    // respiro contínuo — bem devagar, piscando levemente, não gated por
+    // hover (a carta já nasce brilhando)
+    this.scene.tweens.add({
+      targets: [...rings, ...cornerMarks, wash],
+      alpha: { from: 0.55, to: 1 },
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+
+    return frame;
+  }
+
+  // Entrada da carta de evolução: um "pop" mais dramático que o das
+  // cartas normais (nasce menor e some crescendo com um pequeno estouro),
+  // pra marcar bem o momento — é uma conquista, tem que parecer uma.
+  _popIn(group) {
+    group.setAlpha(0);
+    group.setScale(0.6);
+    this.scene.tweens.add({
+      targets: group,
+      alpha: 1,
+      scaleX: 1.08,
+      scaleY: 1.08,
+      duration: 260,
+      ease: 'Back.easeOut',
+      easeParams: [2],
+      onComplete: () => {
+        this.scene.tweens.add({ targets: group, scaleX: 1, scaleY: 1, duration: 160, ease: 'Sine.easeOut' });
+      }
+    });
   }
 
   // Carta especial da evolução ARSENAL OVERRIDE: fica plantada ao lado do
