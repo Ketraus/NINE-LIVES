@@ -1,6 +1,7 @@
 import HealthSystem from '../../combat/HealthSystem.js';
 import EventBus from '../../systems/EventBus.js';
 import DamageSystem from '../../combat/DamageSystem.js';
+import SettingsManager from '../../systems/SettingsManager.js';
 
 let nextInstanceId = 1;
 
@@ -731,9 +732,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   // Toca um sfx (opcionalmente mais rápido, ver `rate`) e devolve a
+  // duração pra cronometrar coisas (ver chamadas abaixo). Usa
+  // sound.add()+play() (precisa da instância pro 'complete'/duration),
+  // então passa direto por baixo do patch de SettingsManager.js — que só
+  // intercepta o atalho sound.play(key, cfg) do manager. Sem multiplicar
+  // aqui manualmente, este som ignorava o slider de SFX (só obedecia o
+  // Master, que é nativo do Phaser e pega tudo).
   _playTimedSfx(key, volume, rate = 1) {
     const sfx = this.scene.sound.add(key);
-    sfx.play({ volume, rate });
+    sfx.play({ volume: volume * SettingsManager.getSfx(), rate });
     sfx.once('complete', () => sfx.destroy());
     return (sfx.duration / rate) * 1000;
   }
@@ -899,7 +906,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // pra soarem como a corrida rápida que é, mesmo sendo bem curta
     this._stopChargeFootsteps();
     this.chargeFootsteps = this.scene.sound.add('sfx_minotaur_footsteps', { loop: true });
-    this.chargeFootsteps.play({ volume: 0.55, rate: CHARGE_FOOTSTEPS_RATE });
+    // mesmo motivo do _playTimedSfx acima: instância própria (precisa do
+    // loop) passa direto por baixo do patch de SettingsManager.js
+    this.chargeFootsteps.play({ volume: 0.55 * SettingsManager.getSfx(), rate: CHARGE_FOOTSTEPS_RATE });
   }
 
   // Mantém a velocidade reta em linha (chase() normal não roda neste
