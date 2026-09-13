@@ -250,14 +250,14 @@ export default [
   {
     "id": "hp_up_evo_colosso",
     "name": "COLOSSO",
-    "description": "+150% de vida máxima, -50% de velocidade de movimento, +100% de tamanho do corpo.",
+    "description": "+150% de vida máxima, -50% de velocidade de movimento, +65% de tamanho do corpo.",
     "category": "evolution",
     "rarity": "epic",
     "evolvesFrom": "hp_up",
     "type": "evolution",
     "effects": [
       { "type": "maxHpPercentBonus", "value": 1.5 },
-      { "type": "sizeMultiplier", "value": 1.0 },
+      { "type": "sizeMultiplier", "value": 0.65 },
       { "type": "speedMultiplier", "value": -0.5 }
     ]
   },

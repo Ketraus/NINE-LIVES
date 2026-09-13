@@ -132,10 +132,25 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   // Recalcula escala visual + corpo de colisão a partir de
+  // `runState.sizeMultiplier` (carta/evolução que muda o tamanho, ex.:
+  // Colosso). O Arcade Body do Phaser re-escala sozinho (auto, todo frame)
+  // pelo scale ATUAL do sprite — então se passássemos o _baseRadius puro
+  // pro setCircle, o hitbox cresceria NA MESMA proporção do visual (ex.:
+  // Colosso 2x maior = hitbox 2x maior), o que fica gigante e ruim de
+  // circular entre inimigos. Por isso o raio "fonte" passado pro
+  // setCircle já vem PRÉ-DIVIDIDO pelo scale visual: o Phaser vai
+  // multiplicar de volta sozinho, e o resultado final cresce só
+  // HITBOX_GROWTH_FACTOR do que o visual (ex.: 45% do crescimento).
   applySize(sizeMultiplier) {
-    const scale = 1 + sizeMultiplier;
-    this.setScale(scale);
-    this.body.setCircle(this._baseRadius, this._baseOffsetX, this._baseOffsetY);
+    const HITBOX_GROWTH_FACTOR = 0.45;
+    const visualScale = 1 + sizeMultiplier;
+    this.setScale(visualScale);
+
+    const hitboxScale = 1 + sizeMultiplier * HITBOX_GROWTH_FACTOR;
+    const sourceRadius = (this._baseRadius * hitboxScale) / visualScale;
+    const sourceOffsetX = this.width / 2 - sourceRadius;
+    const sourceOffsetY = this.height / 2 - sourceRadius;
+    this.body.setCircle(sourceRadius, sourceOffsetX, sourceOffsetY);
   }
 
   get speed() {
