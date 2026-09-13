@@ -43,11 +43,11 @@ export default [
   {
     "id": "range_up",
     "name": "Olhar Felino",
-    "description": "+20% no alcance do ataque",
+    "description": "+12% no alcance do ataque",
     "category": "base",
     "rarity": "common",
     "type": "rangeMultiplier",
-    "value": 0.2,
+    "value": 0.12,
     "evolvesInto": "range_up_evo_hunter_instinct"
   },
   {
