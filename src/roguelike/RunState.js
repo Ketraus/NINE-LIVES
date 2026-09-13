@@ -1,4 +1,16 @@
 // Dados puros da run em andamento. Sem lógica de fluxo (isso é o
+// Curva de XP: nível 1 pede exatamente 3 grunts (8 xp cada, único inimigo
+// que nasce no início — ver data/spawnPhases.js) = 24 xp, pra o primeiro
+// level-up vir rápido. Cresce ~28% por nível no começo (rápido, mas sem
+// virar level-up a cada inimigo morto) e essa taxa de crescimento vai
+// caindo devagar até travar num piso de 8% por nível — assim o require-
+// mento nunca para de crescer, mas também nunca dispara tão rápido a
+// ponto do jogo travar no fim por exigir XP praticamente impossível.
+const BASE_XP_TO_NEXT = 24;
+const XP_GROWTH_START = 0.28;
+const XP_GROWTH_FLOOR = 0.08;
+const XP_GROWTH_DECAY_PER_LEVEL = 0.01;
+
 export default class RunState {
   constructor(weaponId = null) {
     this.weaponId = weaponId;
@@ -9,7 +21,7 @@ export default class RunState {
   reset() {
     this.level = 1;
     this.xp = 0;
-    this.xpToNext = 12;
+    this.xpToNext = BASE_XP_TO_NEXT;
     this.kills = 0;
     this.wave = 1;
     this.resetUpgrades();
@@ -66,22 +78,42 @@ export default class RunState {
     this.kills += 1;
   }
 
+  // Soma XP e sobe QUANTOS níveis o valor der direito (while, não if) —
+  // se vier uma leva grande de XP de uma vez (várias mortes no mesmo
+  // frame, orbe grande etc.), todo excedente é aproveitado e pode gerar
+  // vários level-ups em sequência, não só um. Retorna quantos níveis
+  // subiram (0 se nenhum).
   addXp(amount) {
     this.xp += amount;
-    if (this.xp >= this.xpToNext) {
+    let levelsGained = 0;
+    while (this.xp >= this.xpToNext) {
       this.xp -= this.xpToNext;
       this.level += 1;
-      this.xpToNext = Math.round(this.xpToNext * 1.2);
-      return true;
+      this.xpToNext = this._xpRequirementForLevel(this.level);
+      levelsGained += 1;
     }
-    return false;
+    return levelsGained;
   }
 
   // Sobe 1 nível sem exigir XP de verdade — usado só pelo cheat "levelup"
   forceLevelUp() {
     this.xp = 0;
     this.level += 1;
-    this.xpToNext = Math.round(this.xpToNext * 1.2);
+    this.xpToNext = this._xpRequirementForLevel(this.level);
+  }
+
+  // Quanto XP falta pra passar do nível `level` pro seguinte — recalculado
+  // do zero a partir da curva (não multiplica em cima do valor antigo),
+  // pra nunca acumular erro de arredondamento mesmo subindo vários níveis
+  // de uma vez só (ver addXp). Ver constantes no topo do arquivo pra
+  // entender a curva (rápido no início, desacelera até um piso).
+  _xpRequirementForLevel(level) {
+    let req = BASE_XP_TO_NEXT;
+    for (let l = 1; l < level; l++) {
+      const growth = Math.max(XP_GROWTH_FLOOR, XP_GROWTH_START - (l - 1) * XP_GROWTH_DECAY_PER_LEVEL);
+      req *= 1 + growth;
+    }
+    return Math.round(req);
   }
 
   // Inverso de applyUpgrade — usado só pelo cheat "remove" do DevConsole

@@ -850,6 +850,15 @@ export default class LevelUpUI {
   _close() {
     this.container.setVisible(false);
     this.container.removeAll(true);
+
+    // ainda tem level-up na fila (XP de sobra rendeu mais de um nível de
+    // uma vez, ver RunState.addXp) — abre o próximo direto, sem retomar o
+    // jogo no meio do caminho
+    if (this.runManager.hasPendingLevelUp()) {
+      this.runManager.triggerNextLevelUp();
+      return;
+    }
+
     this.scene.physics.resume();
     this.scene.time.timeScale = 1;
     EventBus.emit('levelup-closed');

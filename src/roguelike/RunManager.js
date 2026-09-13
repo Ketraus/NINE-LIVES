@@ -19,25 +19,49 @@ export default class RunManager {
     this.runState = runState;
     this.player = player;
     this.upgradeDefs = upgradeDefs;
+    // quantas telas de level-up ainda faltam mostrar (ver addXp: um burst
+    // grande de XP pode render vários níveis de uma vez) — consumida uma
+    // por vez, LevelUpUI._close() pede a próxima em vez de retomar o jogo
+    this._pendingLevelUps = 0;
   }
 
   collectXp(amount) {
-    const leveledUp = this.runState.addXp(amount);
+    const levelsGained = this.runState.addXp(amount);
     EventBus.emit('xp-changed', {
       xp: this.runState.xp,
       xpToNext: this.runState.xpToNext,
       level: this.runState.level
     });
 
-    if (leveledUp) {
+    if (levelsGained > 0) {
+      this._pendingLevelUps += levelsGained;
       this._triggerLevelUp();
     }
   }
 
+  // true enquanto ainda há level-up(s) na fila pra mostrar (ver addXp) —
+  // consultado pela LevelUpUI antes de retomar o jogo ao fechar a tela.
+  hasPendingLevelUp() {
+    return this._pendingLevelUps > 0;
+  }
+
+  // Abre a próxima tela de level-up da fila. Público (sem `_`) porque a
+  // LevelUpUI chama isto de fora depois de fechar a tela anterior.
+  triggerNextLevelUp() {
+    this._triggerLevelUp();
+  }
+
   _triggerLevelUp() {
+    if (this._pendingLevelUps <= 0) return;
     const options = this._rollLevelUpOptions();
     // Pool vazio (jogador já pegou/maxou todas as cartas disponíveis pra
-    if (options.length === 0) return;
+    // essa run) — não dá pra mostrar nada, descarta o resto da fila em vez
+    // de ficar preso tentando abrir uma tela sem cartas pra sempre.
+    if (options.length === 0) {
+      this._pendingLevelUps = 0;
+      return;
+    }
+    this._pendingLevelUps -= 1; // consumido AQUI, quando a tela realmente abre
     EventBus.emit('level-up', { options });
   }
 

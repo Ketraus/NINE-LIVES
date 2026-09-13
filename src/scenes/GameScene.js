@@ -31,6 +31,25 @@ const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa 
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 
+// Cor do orb de XP por faixa de valor — dá pra reconhecer de longe se
+// vale a pena correr atrás. Faixas batem com data/enemies.js: verde
+// (grunt 8, cyber_hound 4), azul (cyber_brute 20, exploder 26), vermelho
+// (sealer 60, elite 120) e roxo (só o Minotauro/boss, 500, dropa).
+const XP_ORB_TIERS = [
+  { min: 0, color: 0x5cd65c }, // verde — inimigos comuns
+  { min: 10, color: 0x4fa8ff }, // azul — intermediários
+  { min: 60, color: 0xff4f4f }, // vermelho — pesados (Sealer/Elite)
+  { min: 200, color: 0xb26bff } // roxo — só o boss dropa isso
+];
+
+function _xpOrbColorFor(xpReward) {
+  let color = XP_ORB_TIERS[0].color;
+  for (const tier of XP_ORB_TIERS) {
+    if (xpReward >= tier.min) color = tier.color;
+  }
+  return color;
+}
+
 // som ambiente assustador, sorteado, raro — nada de específico o dispara
 const AMBIENT_SFX_MIN_DELAY_MS = 120000; // 2min
 const AMBIENT_SFX_MAX_DELAY_MS = 240000; // 4min
@@ -308,6 +327,7 @@ export default class GameScene extends Phaser.Scene {
 
   _spawnXpOrb(x, y, xpReward) {
     const orb = this.physics.add.image(x, y, 'xp_orb').setDepth(5);
+    orb.setTintFill(_xpOrbColorFor(xpReward)); // cor sólida por faixa (ver XP_ORB_TIERS) — não depende da cor original do PNG
     orb.setData('xpReward', xpReward);
     const radius = orb.width / 2 + XP_ORB_PICKUP_RANGE_HINT;
     orb.body.setCircle(radius, orb.width / 2 - radius, orb.height / 2 - radius);
