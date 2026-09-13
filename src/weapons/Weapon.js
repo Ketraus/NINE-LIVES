@@ -30,9 +30,11 @@ export default class Weapon {
     }
   }
 
-  // Katana: golpes em arco na direção horizontal da mira do jogador —
+  // Katana: golpes em arco na direção pra qual o jogador está olhando —
+  // qualquer direção (360°), igual aos punhos, não mais travado em
+  // esquerda/direita.
   _fireSword(scene, player, enemyGroup, range, damage, statMods) {
-    const aim = player.getHorizontalAimDirection();
+    const aim = player.getAimDirection();
     const swings = statMods.doubleStrikeStacks > 0 ? statMods.doubleStrikeStacks + 1 : 1;
     const offsetDeg = this.def.comboOffsetDeg ?? 24;
     const delayMs = this.def.comboDelayMs ?? 90;
@@ -45,12 +47,16 @@ export default class Weapon {
       // 1º golpe sempre reto no eixo de mira; os seguintes alternam
       const side = i === 0 ? 0 : i % 2 === 1 ? 1 : -1;
       const angleOffset = Phaser.Math.DegToRad(offsetDeg) * side * Math.ceil(i / 2);
-      const swingAim = aim.clone().rotate(angleOffset);
       const isFinisher = isDance && i === swings - 1;
       const style = this._swingStyle(isDance, isFinisher);
       const swingRange = range * style.rangeMultiplier;
 
-      const doSwing = () =>
+      const doSwing = () => {
+        // corte final da Dança de Cortes: sempre reto na direção ATUAL do
+        // jogador (calculada só na hora que o golpe sai, depois do delay),
+        // não herda o desvio angular acumulado dos cortes anteriores —
+        // era isso que deixava ele torto em vez de mirado.
+        const swingAim = isFinisher ? player.getAimDirection() : aim.clone().rotate(angleOffset);
         this._fireArc(scene, player, enemyGroup, swingAim, swingRange, damage, hitEnemies, true, {
           tint: style.tint,
           arcDegreesOverride: this.def.arcDegrees + style.arcDegreesBonus,
@@ -59,6 +65,7 @@ export default class Weapon {
           cameraShakeMultiplier: style.cameraShakeMultiplier,
           isFinisher
         });
+      };
 
       if (i === 0) doSwing();
       else scene.time.delayedCall(delayMs * i, doSwing);
