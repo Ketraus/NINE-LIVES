@@ -204,14 +204,14 @@ export default class PreloadScene extends Phaser.Scene {
     // animações do gato jogável (ver Player._updateAnimation) — criadas uma
     this.anims.create({
       key: 'player-idle',
-      frames: this.anims.generateFrameNumbers('player_idle', { start: 0, end: 3 }),
-      frameRate: 4,
+      frames: this.anims.generateFrameNumbers('player_idle', { start: 0, end: 5 }),
+      frameRate: 6,
       repeat: -1
     });
     this.anims.create({
       key: 'player-walk',
-      frames: this.anims.generateFrameNumbers('player_walk', { start: 0, end: 3 }),
-      frameRate: 8,
+      frames: this.anims.generateFrameNumbers('player_walk', { start: 0, end: 5 }),
+      frameRate: 12,
       repeat: -1
     });
 
