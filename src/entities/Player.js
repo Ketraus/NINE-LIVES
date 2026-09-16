@@ -26,6 +26,15 @@ const SPRITE_SETS = {
     idleAnim: 'player-katana-idle',
     walkAnim: 'player-katana-walk'
   },
+  // Paws ("fists"): walk já tem sprite próprio, idle ainda não — por isso
+  // idleKey/idleAnim aqui apontam pro par base (igual à Pistola) até o
+  // idle do Paws existir.
+  fists: {
+    idleKey: 'player_idle',
+    walkKey: 'player_paws_walk',
+    idleAnim: 'player-idle',
+    walkAnim: 'player-paws-walk'
+  },
   default: {
     idleKey: 'player_idle',
     walkKey: 'player_walk',

@@ -30,6 +30,13 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Paws ("fists"): só o walk existe por enquanto — o idle continua
+    // usando 'player_idle' (o mesmo par base da Pistola) até ter sprite
+    // próprio, ver Player.js SPRITE_SETS.
+    this.load.spritesheet('player_paws_walk', 'assets/sprites/player_paws_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('enemy', 'assets/sprites/enemy.png');
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
@@ -235,6 +242,13 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'player-katana-walk',
       frames: this.anims.generateFrameNumbers('player_katana_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+    // Paws: só a animação de walk — o idle usa 'player-idle' (base)
+    this.anims.create({
+      key: 'player-paws-walk',
+      frames: this.anims.generateFrameNumbers('player_paws_walk', { start: 0, end: 5 }),
       frameRate: 12,
       repeat: -1
     });
