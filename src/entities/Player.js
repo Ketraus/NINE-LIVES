@@ -16,10 +16,30 @@ const SHIELD_RADIUS_PADDING = 8; // um pouco maior que o corpo do jogador, pra "
 const SHIELD_BLINK_INTERVAL_MS = 80; // mesmo intervalo que TornadoAbility usa pro piscar de recarga
 const SHIELD_HIT_FLASH_MS = 90;
 
+// Sprite do gato por classe de arma (runState.weaponId). Katana tem visual
+// próprio; Paws ("fists") ainda não tem sprite dedicado, então cai no
+// "default" (o mesmo usado pela Pistola) até esse sprite existir.
+const SPRITE_SETS = {
+  katana: {
+    idleKey: 'player_katana_idle',
+    walkKey: 'player_katana_walk',
+    idleAnim: 'player-katana-idle',
+    walkAnim: 'player-katana-walk'
+  },
+  default: {
+    idleKey: 'player_idle',
+    walkKey: 'player_walk',
+    idleAnim: 'player-idle',
+    walkAnim: 'player-walk'
+  }
+};
+
 export default class Player extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, runState) {
-    super(scene, x, y, 'player_idle');
+    const spriteSet = SPRITE_SETS[runState.weaponId] || SPRITE_SETS.default;
+    super(scene, x, y, spriteSet.idleKey);
     this.runState = runState;
+    this._spriteSet = spriteSet;
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -31,8 +51,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._baseOffsetY = this.height / 2 - this._baseRadius;
     this.body.setCircle(this._baseRadius, this._baseOffsetX, this._baseOffsetY);
     this.setDepth(10);
-    this.play('player-idle');
-    this._currentAnim = 'player-idle';
+    this.play(this._spriteSet.idleAnim);
+    this._currentAnim = this._spriteSet.idleAnim;
 
     const startingMaxHp = Math.round(BASE_MAX_HP * (1 + runState.maxHpPercentBonus)) + runState.maxHpBonus;
     this.healthSystem = new HealthSystem(startingMaxHp, {
@@ -230,7 +250,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   // Troca idle<->walk conforme o jogador se move, e espelha o sprite
   _updateAnimation(vec) {
     const isMoving = vec.lengthSq() > 0;
-    const anim = isMoving ? 'player-walk' : 'player-idle';
+    const anim = isMoving ? this._spriteSet.walkAnim : this._spriteSet.idleAnim;
     if (this._currentAnim !== anim) {
       this.play(anim);
       this._currentAnim = anim;

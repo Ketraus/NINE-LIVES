@@ -20,6 +20,16 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Sprite exclusivo da classe Katana (ver Player.js SPRITE_SETS). Paws
+    // ainda não tem sprite próprio, então continua usando o par acima.
+    this.load.spritesheet('player_katana_idle', 'assets/sprites/player_katana_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_katana_walk', 'assets/sprites/player_katana_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('enemy', 'assets/sprites/enemy.png');
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
@@ -211,6 +221,20 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'player-walk',
       frames: this.anims.generateFrameNumbers('player_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+    // Variante da Katana (ver Player.js SPRITE_SETS) — mesmo frameRate do
+    // par base, só troca o spritesheet de origem.
+    this.anims.create({
+      key: 'player-katana-idle',
+      frames: this.anims.generateFrameNumbers('player_katana_idle', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-katana-walk',
+      frames: this.anims.generateFrameNumbers('player_katana_walk', { start: 0, end: 5 }),
       frameRate: 12,
       repeat: -1
     });
