@@ -5,6 +5,13 @@ const BTN_W = 220;
 const BTN_H = 40;
 const BTN_GAP = 56;
 
+// diálogo de confirmação (voltar pro menu inicial)
+const CONFIRM_BTN_W = 96;
+const CONFIRM_BTN_H = 36;
+const CONFIRM_BTN_GAP = 16;
+const CONFIRM_PANEL_W = 280;
+const CONFIRM_PANEL_H = 150;
+
 // paleta "terminal cyberpunk" — mesma do MainMenuScene/SettingsScene
 const PANEL_FILL = 0x061014;
 const PANEL_FILL_ALPHA = 0.55;
@@ -91,20 +98,27 @@ export default class PauseUI {
 
     this.panelContainer.add([overlay, title]);
 
-    const buttonYs = [-20, -20 + BTN_GAP];
-    this.panelContainer.add(this._buildTerminalButton(0, buttonYs[0], 'CONTINUAR', () => this.close()));
-    this.panelContainer.add(this._buildTerminalButton(0, buttonYs[1], 'SETTINGS', () => this._openSettings()));
+    // agrupa os botões principais (+ frame/readout) pra poder escondê-los
+    // juntos quando o diálogo de confirmação abrir por cima (ver _showQuitConfirm)
+    this.mainButtonsGroup = this.scene.add.container(0, 0);
+    this.panelContainer.add(this.mainButtonsGroup);
+
+    const buttonYs = [-20, -20 + BTN_GAP, -20 + BTN_GAP * 2];
+    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[0], 'CONTINUAR', () => this.close()));
+    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[1], 'SETTINGS', () => this._openSettings()));
+    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[2], 'MENU INICIAL', () => this._showQuitConfirm()));
 
     // só existe em dispositivo touch com suporte à Fullscreen API — mesma
     if (this.scene.sys.game.device.input.touch && this.scene.scale.fullscreen.available) {
-      const y = -20 + BTN_GAP * 2;
+      const y = -20 + BTN_GAP * 3;
       buttonYs.push(y);
       this.fullscreenButton = this._buildTerminalButton(0, y, '', () => this._toggleFullscreen());
       this._refreshFullscreenButton();
-      this.panelContainer.add(this.fullscreenButton);
+      this.mainButtonsGroup.add(this.fullscreenButton);
     }
 
     this._buildTechDetails(buttonYs);
+    this._buildQuitConfirmDialog();
   }
 
   // Poucos detalhes técnicos ao redor do bloco de botões (reticle nos
@@ -149,7 +163,7 @@ export default class PauseUI {
       repeat: -1
     });
 
-    this.panelContainer.add([frame, readout]);
+    this.mainButtonsGroup.add([frame, readout]);
   }
 
   // Câmera extra só pra este painel: permite rodar o CRT (scanlines +
@@ -192,14 +206,15 @@ export default class PauseUI {
 
   // Botão estilo "placa de terminal" (mesmo padrão do Menu): fundo quase
   // transparente, borda com chamfer, caret ">" piscando e brilho no hover.
-  _buildTerminalButton(x, y, label, onSelect) {
+  // w/h opcionais pra caber botões menores (ver diálogo de confirmação).
+  _buildTerminalButton(x, y, label, onSelect, w = BTN_W, h = BTN_H) {
     const container = this.scene.add.container(x, y);
 
     const panel = this.scene.add.graphics().setScrollFactor(0);
-    this._drawPanel(panel, BTN_W, BTN_H, BORDER_IDLE);
+    this._drawPanel(panel, w, h, BORDER_IDLE);
 
     const caret = this.scene.add
-      .text(-BTN_W / 2 + 14, 0, '>', { fontFamily: PIXEL_FONT, fontSize: '12px', color: TEXT_HOVER })
+      .text(-w / 2 + 14, 0, '>', { fontFamily: PIXEL_FONT, fontSize: '12px', color: TEXT_HOVER })
       .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setVisible(false);
@@ -210,7 +225,7 @@ export default class PauseUI {
       .setScrollFactor(0);
 
     const hitArea = this.scene.add
-      .rectangle(0, 0, BTN_W, BTN_H, 0xffffff, 0)
+      .rectangle(0, 0, w, h, 0xffffff, 0)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
 
@@ -218,7 +233,7 @@ export default class PauseUI {
 
     const setHover = (hovering) => {
       panel.clear();
-      this._drawPanel(panel, BTN_W, BTN_H, hovering ? BORDER_HOVER : BORDER_IDLE);
+      this._drawPanel(panel, w, h, hovering ? BORDER_HOVER : BORDER_IDLE);
       text.setColor(hovering ? TEXT_HOVER : TEXT_IDLE);
       caret.setVisible(hovering);
 
@@ -270,6 +285,75 @@ export default class PauseUI {
     g.fillPoints(points, true);
     g.lineStyle(1, borderColor, 1);
     g.strokePoints(points, true);
+  }
+
+  // Diálogo "Você tem certeza...?" que aparece por cima dos botões
+  // principais (que ficam escondidos enquanto ele está visível) — mesmo
+  // estilo de placa/botão terminal do resto da UI.
+  _buildQuitConfirmDialog() {
+    this.confirmContainer = this.scene.add.container(0, 0).setVisible(false);
+
+    const panel = this.scene.add.graphics().setScrollFactor(0);
+    this._drawPanel(panel, CONFIRM_PANEL_W, CONFIRM_PANEL_H, BORDER_HOVER);
+
+    const message = this.scene.add
+      .text(0, -CONFIRM_PANEL_H / 2 + 40, 'Você tem certeza que quer\nvoltar pro menu inicial?', {
+        fontFamily: PIXEL_FONT,
+        fontSize: '11px',
+        color: TEXT_HOVER,
+        align: 'center',
+        lineSpacing: 10
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+
+    const btnY = CONFIRM_PANEL_H / 2 - 34;
+    const halfGap = (CONFIRM_BTN_W + CONFIRM_BTN_GAP) / 2;
+    const simBtn = this._buildTerminalButton(
+      -halfGap,
+      btnY,
+      'SIM',
+      () => this._confirmQuitToMenu(),
+      CONFIRM_BTN_W,
+      CONFIRM_BTN_H
+    );
+    const naoBtn = this._buildTerminalButton(
+      halfGap,
+      btnY,
+      'NÃO',
+      () => this._hideQuitConfirm(),
+      CONFIRM_BTN_W,
+      CONFIRM_BTN_H
+    );
+
+    this.confirmContainer.add([panel, message, simBtn, naoBtn]);
+    this.panelContainer.add(this.confirmContainer);
+  }
+
+  // Mostra o diálogo de confirmação, escondendo os botões principais por
+  // baixo (evita clique acidental neles enquanto ele está aberto).
+  _showQuitConfirm() {
+    this.mainButtonsGroup.setVisible(false);
+    this.confirmContainer.setVisible(true);
+  }
+
+  // Volta o painel ao estado normal (NÃO, ou reabertura futura da pausa).
+  _hideQuitConfirm() {
+    this.confirmContainer.setVisible(false);
+    this.mainButtonsGroup.setVisible(true);
+  }
+
+  // SIM: sai da run de vez e volta pro MainMenuScene. A cena está de saída
+  // mesmo, então não precisa da animação de saída do close() normal — só
+  // desfaz o estado de pausa (física/tempo) antes de trocar de cena, igual
+  // close() faz, e deixa o shutdown do GameScene (ver create()) limpar o
+  // resto (EventBus, spawnDirector, PauseUI.destroy() etc).
+  _confirmQuitToMenu() {
+    this.isOpen = false;
+    this.scene.physics.resume();
+    this.scene.time.timeScale = 1;
+    EventBus.emit('pause-closed');
+    this.scene.scene.start('MainMenuScene');
   }
 
   // Alterna tela cheia nos dois sentidos.
@@ -331,6 +415,10 @@ export default class PauseUI {
   close() {
     if (!this.isOpen) return;
     this.isOpen = false;
+
+    // se o diálogo "tem certeza?" ficou aberto, reseta pra próxima vez que
+    // a pausa abrir mostrar os botões principais, não o diálogo
+    this._hideQuitConfirm();
 
     // saída suave e um pouco mais rápida — some antes do jogo voltar a
     // rodar, então já libera a física/tempo de imediato
