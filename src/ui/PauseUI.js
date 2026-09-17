@@ -438,12 +438,15 @@ export default class PauseUI {
   // principal + câmera de pausa, que desenha o painel por cima) antes de
   // trocar de cena — mesmo tipo de transição que o MainMenuScene usa pra
   // sair pro WeaponSelectScene (ver MainMenuScene._playExitTransition).
+  // NÃO chama _resetQuitConfirm() aqui: o diálogo "tem certeza? SIM/NÃO"
+  // deve continuar visível enquanto a tela funde pra preto, em vez de
+  // voltar de repente pros botões principais (CONTINUAR/SETTINGS/etc) —
+  // a cena toda é destruída no fim da transição, então não precisa resetar.
   _confirmQuitToMenu() {
     if (this._quitting) return;
     this._quitting = true;
 
     this.isOpen = false;
-    this._resetQuitConfirm();
     this.scene.physics.resume();
     this.scene.time.timeScale = 1;
     EventBus.emit('pause-closed');

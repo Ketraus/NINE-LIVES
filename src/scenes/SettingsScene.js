@@ -12,6 +12,11 @@ const TEXT_HOVER = '#e8f6ff';
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const CHAMFER = 8;
 
+// fade só quando aberta como cena própria (vinda do MainMenuScene) — o
+// modo overlay (aberta por cima do pause) já usa a cortina do PauseUI
+// (transitionCover), então não recebe fade de câmera aqui.
+const SCENE_FADE_MS = 220;
+
 const TRACK_WIDTH = 240;
 const TRACK_HEIGHT = 6;
 const HANDLE_WIDTH = 10;
@@ -36,6 +41,12 @@ export default class SettingsScene extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
+
+    this._transitioning = false; // trava clique duplo no VOLTAR
+
+    if (!this.overlay) {
+      this.cameras.main.fadeIn(SCENE_FADE_MS, 0, 0, 0);
+    }
 
     const bg = this.add.image(width / 2, height / 2, 'menu_bg');
     const scale = Math.max(width / bg.width, height / bg.height);
@@ -232,12 +243,18 @@ export default class SettingsScene extends Phaser.Scene {
       }
     });
     hitArea.on('pointerdown', () => {
+      if (this._transitioning) return;
       this.sound.play('sfx_ui_click', { volume: 0.6 });
       EventBus.emit('settings-closed');
       if (this.overlay) {
         this.scene.stop();
       } else {
-        this.scene.start(this.returnTo);
+        this._transitioning = true;
+        const cam = this.cameras.main;
+        cam.fadeOut(SCENE_FADE_MS, 0, 0, 0);
+        cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+          this.scene.start(this.returnTo);
+        });
       }
     });
 

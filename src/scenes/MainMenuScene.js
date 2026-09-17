@@ -14,6 +14,11 @@ const CHAMFER = 8; // corte dos cantos, em px — visual de placa tecnológica
 const EXIT_GLITCH_MS = 160; // duração do desaparecer + glitch juntos
 const EXIT_BLACK_MS = 180;
 
+// fade simples de entrada (ao chegar aqui) e na ida pra SettingsScene —
+// sem glitch, só a cortina preta mesmo (ver _goToSettings)
+const ENTER_FADE_MS = 220;
+const SETTINGS_FADE_MS = 220;
+
 export default class MainMenuScene extends Phaser.Scene {
   constructor() {
     super('MainMenuScene');
@@ -23,6 +28,9 @@ export default class MainMenuScene extends Phaser.Scene {
     const { width, height } = this.scale;
 
     this._transitioning = false; // trava clique duplo durante a saída
+
+    // fade de entrada (chegando do Boot ou voltando da SettingsScene/pause)
+    this.cameras.main.fadeIn(ENTER_FADE_MS, 0, 0, 0);
 
     MusicManager.play(this, 'music_menu');
 
@@ -45,8 +53,10 @@ export default class MainMenuScene extends Phaser.Scene {
     );
 
     const settingsButton = this._buildTerminalButton(width / 2, height * 0.6 + 56, 220, 40, 'SETTINGS', () => {
+      if (this._transitioning) return;
+      this._transitioning = true;
       this.sound.play('sfx_ui_click', { volume: 0.6 });
-      this.scene.start('SettingsScene', { returnTo: 'MainMenuScene' });
+      this._goToSettings();
     });
 
     this.menuLayer.add([bg, title, button, settingsButton]);
@@ -196,6 +206,16 @@ export default class MainMenuScene extends Phaser.Scene {
     window.dispatchEvent(new Event('nine-lives:fullscreen-started'));
 
     this._playExitTransition();
+  }
+
+  // Fade simples pra SettingsScene (sem glitch, diferente do JOGAR) — a
+  // SettingsScene faz o fadeIn correspondente na entrada (ver create() lá).
+  _goToSettings() {
+    const cam = this.cameras.main;
+    cam.fadeOut(SETTINGS_FADE_MS, 0, 0, 0);
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.scene.start('SettingsScene', { returnTo: 'MainMenuScene' });
+    });
   }
 
   // "Troca de sistema": menu some ENQUANTO glitcha (em paralelo — o
