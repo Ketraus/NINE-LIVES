@@ -24,7 +24,9 @@ const CHAMFER = 8;
 
 const ENTER_MS = 170; // entrada suave (fade + leve scale-up)
 const EXIT_MS = 130; // saída suave, um pouco mais rápida que a entrada
-
+const DIALOG_CROSSFADE_MS = 150; // crossfade entre botões principais <-> diálogo de confirmação
+const SETTINGS_COVER_MS = 260; // fade suave da cortina preta ao entrar/sair da Settings
+const QUIT_FADE_MS = 420; // fade suave pra preto antes de trocar pra MainMenuScene
 // Menu de pausa. Dois pedaços:
 export default class PauseUI {
   constructor(scene) {
@@ -119,6 +121,18 @@ export default class PauseUI {
 
     this._buildTechDetails(buttonYs);
     this._buildQuitConfirmDialog();
+
+    // retângulo preto full-screen, por cima de tudo no painel — usado só
+    // como "cortina" nas trocas de cena (Settings / MainMenuScene) pra
+    // nunca deixar um frame sem nada cobrindo o jogo por baixo (ver
+    // _openSettings e _playQuitTransition). fillAlpha fica em 1 (opaco) —
+    // quem controla visibilidade é o alpha do próprio objeto, começando
+    // em 0 (ver bug abaixo).
+    this.transitionCover = this.scene.add
+      .rectangle(0, 0, width, height, 0x000000, 1)
+      .setScrollFactor(0)
+      .setAlpha(0); // BUG anterior: fillAlpha=0 aqui deixava a cortina permanentemente invisível, já que tweenar .alpha (que já nascia em 1) não tinha efeito nenhum sobre o fill
+    this.panelContainer.add(this.transitionCover);
   }
 
   // Poucos detalhes técnicos ao redor do bloco de botões (reticle nos
@@ -163,6 +177,7 @@ export default class PauseUI {
       repeat: -1
     });
 
+    this._readoutText = readout; // reaproveitado na transição de saída (ver _playQuitTransition)
     this.mainButtonsGroup.add([frame, readout]);
   }
 
@@ -195,13 +210,37 @@ export default class PauseUI {
   // baixo, ver init(overlay:true) na própria SettingsScene). Desabilita
   // o botão de pausa (canto superior) enquanto ela estiver aberta, senão
   // um clique ali passaria por baixo da tela de Settings sem querer.
+  // Usa o transitionCover (cortina preta) em vez de apagar o painel: se a
+  // gente fizesse o painel sumir (alpha 0) pra dar lugar à Settings, o
+  // overlay escuro sumia junto e por um instante dava pra ver o jogo por
+  // baixo antes da Settings terminar de entrar. Cobrindo com preto sólido
+  // primeiro, o painel nunca precisa ficar transparente.
   _openSettings() {
     this.toggleBg.disableInteractive();
-    EventBus.once('settings-closed', () => this.toggleBg.setInteractive({ useHandCursor: true }));
-    this.scene.scene.launch('SettingsScene', { overlay: true });
-    // sem isto, GameScene desenha por cima dela (vem depois na lista de
-    // cenas do gameConfig) e a tela abre "escondida" atrás do jogo
-    this.scene.scene.bringToTop('SettingsScene');
+    EventBus.once('settings-closed', () => {
+      this.toggleBg.setInteractive({ useHandCursor: true });
+      // Settings já fechou (this.scene.stop() síncrono) — painel por baixo
+      // continua opaco o tempo todo, só a cortina precisa sumir de novo
+      this.scene.tweens.add({
+        targets: this.transitionCover,
+        alpha: 0,
+        duration: SETTINGS_COVER_MS,
+        ease: 'Sine.easeInOut'
+      });
+    });
+
+    this.scene.tweens.add({
+      targets: this.transitionCover,
+      alpha: 1,
+      duration: SETTINGS_COVER_MS,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        this.scene.scene.launch('SettingsScene', { overlay: true });
+        // sem isto, GameScene desenha por cima dela (vem depois na lista de
+        // cenas do gameConfig) e a tela abre "escondida" atrás do jogo
+        this.scene.scene.bringToTop('SettingsScene');
+      }
+    });
   }
 
   // Botão estilo "placa de terminal" (mesmo padrão do Menu): fundo quase
@@ -330,30 +369,107 @@ export default class PauseUI {
     this.panelContainer.add(this.confirmContainer);
   }
 
-  // Mostra o diálogo de confirmação, escondendo os botões principais por
-  // baixo (evita clique acidental neles enquanto ele está aberto).
+  // Mostra o diálogo de confirmação com um crossfade rápido: os botões
+  // principais somem enquanto o diálogo aparece por cima.
   _showQuitConfirm() {
-    this.mainButtonsGroup.setVisible(false);
-    this.confirmContainer.setVisible(true);
+    this.scene.tweens.killTweensOf(this.mainButtonsGroup);
+    this.scene.tweens.killTweensOf(this.confirmContainer);
+
+    this.scene.tweens.add({
+      targets: this.mainButtonsGroup,
+      alpha: 0,
+      duration: DIALOG_CROSSFADE_MS,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        this.mainButtonsGroup.setVisible(false);
+        this.confirmContainer.setVisible(true).setAlpha(0);
+        this.scene.tweens.add({
+          targets: this.confirmContainer,
+          alpha: 1,
+          duration: DIALOG_CROSSFADE_MS,
+          ease: 'Cubic.easeOut'
+        });
+      }
+    });
   }
 
-  // Volta o painel ao estado normal (NÃO, ou reabertura futura da pausa).
+  // NÃO (ou reabertura da pausa com o diálogo ainda aberto): mesmo
+  // crossfade, no sentido contrário, de volta aos botões principais.
   _hideQuitConfirm() {
-    this.confirmContainer.setVisible(false);
-    this.mainButtonsGroup.setVisible(true);
+    this.scene.tweens.killTweensOf(this.mainButtonsGroup);
+    this.scene.tweens.killTweensOf(this.confirmContainer);
+
+    if (!this.confirmContainer.visible) {
+      // já estava fechado — só garante o estado final, sem animar de novo
+      this.mainButtonsGroup.setVisible(true).setAlpha(1);
+      this.confirmContainer.setAlpha(0);
+      return;
+    }
+
+    this.scene.tweens.add({
+      targets: this.confirmContainer,
+      alpha: 0,
+      duration: DIALOG_CROSSFADE_MS,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        this.confirmContainer.setVisible(false);
+        this.mainButtonsGroup.setVisible(true).setAlpha(0);
+        this.scene.tweens.add({
+          targets: this.mainButtonsGroup,
+          alpha: 1,
+          duration: DIALOG_CROSSFADE_MS,
+          ease: 'Cubic.easeOut'
+        });
+      }
+    });
   }
 
-  // SIM: sai da run de vez e volta pro MainMenuScene. A cena está de saída
-  // mesmo, então não precisa da animação de saída do close() normal — só
-  // desfaz o estado de pausa (física/tempo) antes de trocar de cena, igual
-  // close() faz, e deixa o shutdown do GameScene (ver create()) limpar o
-  // resto (EventBus, spawnDirector, PauseUI.destroy() etc).
+  // Reset instantâneo (sem animação) do estado do diálogo — usado quando
+  // a pausa inteira está fechando (close()) ou a run está de saída de
+  // vez (_confirmQuitToMenu()), onde uma animação a mais não faz sentido.
+  _resetQuitConfirm() {
+    this.scene.tweens.killTweensOf(this.mainButtonsGroup);
+    this.scene.tweens.killTweensOf(this.confirmContainer);
+    this.mainButtonsGroup.setVisible(true).setAlpha(1);
+    this.confirmContainer.setVisible(false).setAlpha(0);
+  }
+
+  // SIM: sai da run de vez e volta pro MainMenuScene. Fade pra preto (câmera
+  // principal + câmera de pausa, que desenha o painel por cima) antes de
+  // trocar de cena — mesmo tipo de transição que o MainMenuScene usa pra
+  // sair pro WeaponSelectScene (ver MainMenuScene._playExitTransition).
   _confirmQuitToMenu() {
+    if (this._quitting) return;
+    this._quitting = true;
+
     this.isOpen = false;
+    this._resetQuitConfirm();
     this.scene.physics.resume();
     this.scene.time.timeScale = 1;
     EventBus.emit('pause-closed');
-    this.scene.scene.start('MainMenuScene');
+
+    this._playQuitTransition();
+  }
+
+  // Transição de saída: só um fade suave pra preto (câmera principal +
+  // câmera de pausa, que desenha o painel por cima) antes de trocar pra
+  // MainMenuScene. Nada de zoom/jitter na câmera aqui: o ícone de pausa
+  // (canto superior, ver _applyZoomCompensation) usa uma compensação de
+  // zoom calculada só uma vez — se o zoom mudasse ao vivo durante a
+  // transição, essa compensação ficava desatualizada e a interface
+  // "deslocava" visivelmente. Fade puro evita esse problema de vez.
+  _playQuitTransition() {
+    // readout do painel vira aviso de saída, sem o piscar contínuo
+    this._readoutBlink?.stop();
+    this._readoutText?.setText('> SYS.EXIT : RETURNING_TO_MENU_').setAlpha(1).setColor(TEXT_HOVER);
+
+    const cam = this.scene.cameras.main;
+    cam.fadeOut(QUIT_FADE_MS, 0, 0, 0);
+    if (this.pauseCam) this.pauseCam.fadeOut(QUIT_FADE_MS, 0, 0, 0);
+
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.scene.scene.start('MainMenuScene');
+    });
   }
 
   // Alterna tela cheia nos dois sentidos.
@@ -417,8 +533,9 @@ export default class PauseUI {
     this.isOpen = false;
 
     // se o diálogo "tem certeza?" ficou aberto, reseta pra próxima vez que
-    // a pausa abrir mostrar os botões principais, não o diálogo
-    this._hideQuitConfirm();
+    // a pausa abrir mostrar os botões principais, não o diálogo (instantâneo
+    // — o painel inteiro já está saindo, não precisa de mais uma animação)
+    this._resetQuitConfirm();
 
     // saída suave e um pouco mais rápida — some antes do jogo voltar a
     // rodar, então já libera a física/tempo de imediato
