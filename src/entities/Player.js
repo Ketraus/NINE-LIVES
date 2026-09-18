@@ -16,9 +16,8 @@ const SHIELD_RADIUS_PADDING = 8; // um pouco maior que o corpo do jogador, pra "
 const SHIELD_BLINK_INTERVAL_MS = 80; // mesmo intervalo que TornadoAbility usa pro piscar de recarga
 const SHIELD_HIT_FLASH_MS = 90;
 
-// Sprite do gato por classe de arma (runState.weaponId). Katana tem visual
-// próprio; Paws ("fists") ainda não tem sprite dedicado, então cai no
-// "default" (o mesmo usado pela Pistola) até esse sprite existir.
+// Sprite do gato por classe de arma (runState.weaponId). Katana e Paws têm
+// visual próprio; qualquer outro id cai no "default" (o mesmo da Pistola).
 const SPRITE_SETS = {
   katana: {
     idleKey: 'player_katana_idle',
@@ -26,13 +25,10 @@ const SPRITE_SETS = {
     idleAnim: 'player-katana-idle',
     walkAnim: 'player-katana-walk'
   },
-  // Paws ("fists"): walk já tem sprite próprio, idle ainda não — por isso
-  // idleKey/idleAnim aqui apontam pro par base (igual à Pistola) até o
-  // idle do Paws existir.
   fists: {
-    idleKey: 'player_idle',
+    idleKey: 'player_paws_idle',
     walkKey: 'player_paws_walk',
-    idleAnim: 'player-idle',
+    idleAnim: 'player-paws-idle',
     walkAnim: 'player-paws-walk'
   },
   default: {
