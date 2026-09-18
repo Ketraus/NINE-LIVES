@@ -16,15 +16,25 @@ export default class TiledLoader {
     });
 
     // createLayer aceita um array de tilesets — necessário sempre que a
-    const groundLayer = TiledLoader._createLayer(map, tilesets, layerNames.ground);
-    const wallsLayer = TiledLoader._createLayer(map, tilesets, layerNames.walls);
+    const groundLayer = TiledLoader._createLayer(map, tilesets, layerNames.ground, true);
+    // walls é opcional: se layerNames.walls vier null/undefined (mapa ainda
+    // sem layer de colisão separada), simplesmente não cria nada e não quebra
+    const wallsLayer = layerNames.walls
+      ? TiledLoader._createLayer(map, tilesets, layerNames.walls, false)
+      : null;
 
     return { map, groundLayer, wallsLayer };
   }
 
-  static _createLayer(map, tilesets, layerName) {
+  static _createLayer(map, tilesets, layerName, required) {
     const layer = map.createLayer(layerName, tilesets, 0, 0);
     if (!layer) {
+      if (!required) {
+        console.warn(
+          `[TiledLoader] Tile Layer "${layerName}" não encontrada no mapa — seguindo sem ela.`
+        );
+        return null;
+      }
       throw new Error(
         `[TiledLoader] Tile Layer "${layerName}" não encontrada no mapa. ` +
           `No Tiled: Layer > New > Tile Layer, nomeie exatamente "${layerName}".`

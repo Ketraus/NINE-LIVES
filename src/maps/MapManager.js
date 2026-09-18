@@ -4,13 +4,21 @@ import TiledLoader from './TiledLoader.js';
 const MAP_KEY = 'map';
 
 // Um item por tileset usado no mapa. imageKey precisa ter sido carregado
+// IMPORTANTE: esses nomes têm que bater exatamente com os tilesets que
+// existem dentro do assets/maps/map.json atual (confira no Tiled em
+// Map > Tileset Properties > Name). O map.json exportado atualmente só
+// tem estes 3 tilesets — "tileset"/"darbluegrass"/"deathterrain" eram de
+// uma versão antiga do mapa (mapaa.json) e não existem mais aqui.
 const TILESETS = [
-  { imageKey: 'tileset', nameInTiled: 'tileset' },
-  { imageKey: 'darbluegrass', nameInTiled: 'darbluegrass' },
-  { imageKey: 'deathterrain', nameInTiled: 'deathterrain'},
+  { imageKey: 'Tilesetgrass', nameInTiled: 'TX Tileset Grass-1.png' },
+  { imageKey: 'Tilesetprops', nameInTiled: 'TX Props-1.png' },
+  { imageKey: 'Tilesetplant', nameInTiled: 'TX Plant-1.png' }
 ];
 
-const LAYER_NAMES = { ground: 'Ground', walls: 'Walls' };
+// O map.json atual só tem uma Tile Layer chamada "chao" (sem "Ground"/
+// "Walls" separadas). walls fica null até o mapa ter uma layer de
+// colisão de verdade — sem isso o jogador simplesmente não colide com nada.
+const LAYER_NAMES = { ground: 'chao', walls: null };
 const OBJECT_LAYER_NAME = 'Objects';
 const PLAYER_SPAWN_OBJECT_NAME = 'PlayerSpawn';
 
@@ -35,13 +43,17 @@ export default class MapManager {
     this.wallsLayer = wallsLayer;
 
     // qualquer tile não-vazio na layer Walls colide (gid 0 = vazio)
-    this.wallsLayer.setCollisionByExclusion([-1, 0]);
+    // — só roda se a layer Walls existir no mapa atual (ver LAYER_NAMES acima)
+    if (this.wallsLayer) {
+      this.wallsLayer.setCollisionByExclusion([-1, 0]);
+    }
 
     return this;
   }
 
   // Registra colisão física entre um sprite/group e as paredes do mapa.
   addCollider(gameObjectOrGroup, callback) {
+    if (!this.wallsLayer) return; // mapa atual não tem layer de paredes ainda
     this.scene.physics.add.collider(gameObjectOrGroup, this.wallsLayer, callback);
   }
 
