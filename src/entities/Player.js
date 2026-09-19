@@ -16,6 +16,15 @@ const SHIELD_RADIUS_PADDING = 8; // um pouco maior que o corpo do jogador, pra "
 const SHIELD_BLINK_INTERVAL_MS = 80; // mesmo intervalo que TornadoAbility usa pro piscar de recarga
 const SHIELD_HIT_FLASH_MS = 90;
 
+// Correção visual pro mapa novo (tiles maiores fazem o gato de 64x64 parecer
+// minúsculo do lado do chão). Puramente estético — NÃO é a mesma coisa que
+// a carta "Colosso" (sizeMultiplier em applySize abaixo): esse multiplicador
+// aumenta a escala base de TODOS os personagens sem mudar nenhum % daquela
+// mecânica (a carta continua crescendo o jogador na mesma proporção de
+// sempre, só que a partir desse novo tamanho-base). Se ainda estiver
+// pequeno/grande demais no mapa novo, é só ajustar este número.
+export const BASE_VISUAL_SCALE = 1.3;
+
 // Sprite do gato por classe de arma (runState.weaponId). Katana e Paws têm
 // visual próprio; qualquer outro id cai no "default" (o mesmo da Pistola).
 const SPRITE_SETS = {
@@ -168,10 +177,14 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   // HITBOX_GROWTH_FACTOR do que o visual (ex.: 45% do crescimento).
   applySize(sizeMultiplier) {
     const HITBOX_GROWTH_FACTOR = 0.45;
-    const visualScale = 1 + sizeMultiplier;
+    // BASE_VISUAL_SCALE multiplica os dois lados (visual e hitbox) pela
+    // mesma proporção — a curva de crescimento do sizeMultiplier (Colosso)
+    // em cima disso fica idêntica à de antes, só que partindo de um
+    // gato/hitbox já maiores por padrão.
+    const visualScale = BASE_VISUAL_SCALE * (1 + sizeMultiplier);
     this.setScale(visualScale);
 
-    const hitboxScale = 1 + sizeMultiplier * HITBOX_GROWTH_FACTOR;
+    const hitboxScale = BASE_VISUAL_SCALE * (1 + sizeMultiplier * HITBOX_GROWTH_FACTOR);
     const sourceRadius = (this._baseRadius * hitboxScale) / visualScale;
     const sourceOffsetX = this.width / 2 - sourceRadius;
     const sourceOffsetY = this.height / 2 - sourceRadius;

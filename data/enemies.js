@@ -163,10 +163,11 @@ export default [
     // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
     // original do PNG passa direto (ver Enemy.js setTint(def.color))
     "color": 16777215,
-    // frame real é 64x64 (grade 2x2, ver PreloadScene.js). Aumentado de
-    // 1.3 (~83px, ficou pequeno demais pra um boss) pra 2.2 (~140px) —
+    // frame real é 64x64 (grade 2x2, ver PreloadScene.js). Era 2.2, agora
+    // 2.86 (2.2 x 1.3) pra acompanhar o BASE_VISUAL_SCALE do jogador
+    // (ver Player.js) e manter a mesma proporção boss:jogador de antes —
     // ajuste este número de novo se ainda não estiver do tamanho certo
-    "scale": 2.2,
+    "scale": 2.86,
     "flocking": { "seek": 1.0, "cohesion": 0, "separation": 0.3, "density": 0 },
     "boss": true,
     // Boss é bem mais pesado que o Elite (knockbackResistance 0.15) —

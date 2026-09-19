@@ -1,7 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
-import Player from '../entities/Player.js';
+import Player, { BASE_VISUAL_SCALE } from '../entities/Player.js';
 import EnemySpawner from '../entities/enemies/EnemySpawner.js';
 import WeaponManager from '../weapons/WeaponManager.js';
 import AbilityManager from '../abilities/AbilityManager.js';
@@ -175,10 +175,16 @@ export default class GameScene extends Phaser.Scene {
     const spawn = this.mapManager.getPlayerSpawn();
     this.player = new Player(this, spawn.x, spawn.y, this.runState);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
+    // Zoom-base compensa o BASE_VISUAL_SCALE do Player.js: como o gato/boss
+    // agora são 1.5x maiores (fix do mapa novo), sem isso ficariam "gigantes"
+    // na tela. Dividindo o zoom pela mesma escala, a câmera puxa pra trás na
+    // medida exata — a proporção gato:tile nova fica de pé, mas o tamanho do
+    // gato na tela volta a ser o de antes (e ainda sobra mais mapa visível).
+    const baseZoom = 1 / BASE_VISUAL_SCALE;
     // celular: câmera um pouco mais próxima, só estética/sensação de jogo
-    if (this.sys.game.device.input.touch) {
-      this.cameras.main.setZoom(1.4);
-    }
+    // (mesmo bônus relativo de antes — 1.4x mais perto que o desktop)
+    const zoom = this.sys.game.device.input.touch ? baseZoom * 1.4 : baseZoom;
+    this.cameras.main.setZoom(zoom);
     // startFollow() só define o alvo; o scroll real da câmera (e portanto
     this.cameras.main.centerOn(spawn.x, spawn.y);
     this.mapManager.addCollider(this.player);
