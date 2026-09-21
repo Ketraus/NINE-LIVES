@@ -92,13 +92,17 @@ export default [
   {
     "id": "elite",
     "name": "Elite",
-    "sprite": "enemy",
+    "sprite": "cyber_elite_idle",
+    "walkAnim": "cyber_elite-walk",
+    "idleTexture": "cyber_elite_idle",
     "hp": 455,
     "speed": 60,
     "contactDamage": 22,
     "contactCooldownMs": 900,
     "xpReward": 120,
-    "color": 16711884,
+    // sem tint (sprite real, não mais o placeholder) — branco = cor
+    // original do PNG passa direto (mesmo tratamento dos outros)
+    "color": 16777215,
     "scale": 2.0,
     "flocking": { "seek": 1.0, "cohesion": 0.4, "separation": 0.5, "density": 0.2 },
     "elite": true,
