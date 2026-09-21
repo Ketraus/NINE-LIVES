@@ -65,6 +65,9 @@ export default [
     "sprite": "exploder_idle",
     "walkAnim": "exploder-walk",
     "idleTexture": "exploder_idle",
+    // arte vem com a cabeça do lado oposto ao padrão dos outros inimigos —
+    // sem isso a cabeça olhava pra trás do movimento (ver updateFacing)
+    "invertFacing": true,
     // mesma correção de escala do jogador/outros inimigos (ver Player.js
     // BASE_VISUAL_SCALE) — sem isso fica pequeno do lado do mapa novo.
     "scale": 1.3,

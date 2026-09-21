@@ -267,8 +267,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   updateFacing() {
     if (!this.active || !this.body) return; // pode já ter morrido dentro do próprio chase() (ex.: Exploder)
     const vx = this.body.velocity.x;
-    if (vx > 5) this.setFlipX(true);
-    else if (vx < -5) this.setFlipX(false);
+    // Exploder (def.invertFacing): arte já vem "de frente" com a cabeça
+    // do lado oposto ao das outras sprites, então o flip precisa ser
+    // invertido pra cabeça acompanhar a direção do movimento certinho.
+    const flipWhenRight = !this.def.invertFacing;
+    if (vx > 5) this.setFlipX(flipWhenRight);
+    else if (vx < -5) this.setFlipX(!flipWhenRight);
   }
 
   // Recalcula qual walkAnim/idleTexture usar AGORA, dado o estado atual
@@ -632,15 +636,16 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.scene.time.delayedCall(90, () => {
       if (!this.active) return;
       // Do fim do flash branco até bater no alvo (ou virar 'preparing'),
+      // volta pra cor normal (sem tint vermelho) e só pisca em alpha.
       this._currentStatusTint = null;
+      this._refreshStatusTint(this.scene.time.now);
       this.scene.tweens.add({
         targets: this,
         alpha: { from: 1, to: 0.5 },
         duration: 80,
         yoyo: true,
         repeat: -1,
-        ease: 'Sine.easeInOut',
-        onUpdate: () => { if (this.active && this.explodeState === 'charging') this.setTintFill(0xff1a1a); }
+        ease: 'Sine.easeInOut'
       });
     });
     this.setScale(1, 1);
@@ -655,21 +660,39 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     });
   }
 
-  // Início da preparação: para no lugar e pisca em laranja de aviso.
+  // Início da preparação: para no lugar, incha e pisca frenéticamente
+  // branco (aviso final de que vai explodir).
   _startPreparing(nowMs) {
     this.explodeState = 'preparing';
     this.explodePrepUntil = nowMs + this.def.explodePrepMs;
     this.setVelocity(0, 0);
     this.scene.tweens.killTweensOf(this);
+    this.setAlpha(1);
     this.scene.tweens.add({
       targets: this,
-      alpha: { from: 1, to: 0.35 },
-      scaleX: 1.25,
-      scaleY: 1.25,
+      scaleX: this.baseScale * 1.25,
+      scaleY: this.baseScale * 1.25,
       duration: 110,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
+    });
+    // pisca branco/normal bem rápido (frenético) até explodir de vez
+    this._explodeFlashOn = false;
+    this._explodeFlashTimer?.remove();
+    this._explodeFlashTimer = this.scene.time.addEvent({
+      delay: 45,
+      loop: true,
+      callback: () => {
+        if (!this.active) return;
+        this._explodeFlashOn = !this._explodeFlashOn;
+        if (this._explodeFlashOn) {
+          this.setTintFill(0xffffff);
+        } else {
+          this._currentStatusTint = null;
+          this._refreshStatusTint(this.scene.time.now);
+        }
+      }
     });
   }
 
@@ -677,6 +700,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _explode(target, nowMs) {
     this.explodeState = 'exploding';
     this.scene.tweens.killTweensOf(this);
+    this._explodeFlashTimer?.remove();
     this.setAlpha(1);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.explodeRadius && target.active && !target.healthSystem?.isDead()) {
@@ -1599,6 +1623,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   die() {
     if (!this.active) return;
     this.scene.tweens.killTweensOf(this);
+    // Exploder: o timer do pisca-pisca frenético de explosão também não
+    // morre sozinho com o sprite, senão continua chamando callback à toa.
+    this._explodeFlashTimer?.remove();
     // Sealer: o anel da arena não é filho do sprite (é um Graphics à
     this.arenaGraphics?.destroy();
     // Elite: mesma lógica — o Graphics do telegraph (mísseis/melee) não é
