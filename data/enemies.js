@@ -42,13 +42,20 @@ export default [
   {
     "id": "cyber_brute",
     "name": "CyberBrute (Tank)",
-    "sprite": "enemy",
+    "sprite": "cyber_brute_idle",
+    "walkAnim": "cyber_brute-walk",
+    "idleTexture": "cyber_brute_idle",
+    // mesma correção de escala do jogador/Grunt/CyberHound (ver Player.js
+    // BASE_VISUAL_SCALE) — sem isso fica pequeno do lado do mapa novo.
+    "scale": 1.3,
     "hp": 50,
     "speed": 42,
     "contactDamage": 16,
     "contactCooldownMs": 1000,
     "xpReward": 20,
-    "color": 6045240,
+    // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
+    // original do PNG passa direto (mesmo tratamento dos outros)
+    "color": 16777215,
     "minSpawnTimeMs": 60000,
     "flocking": { "seek": 0.9, "cohesion": 0.5, "separation": 0.4, "density": 0.15 }
   },

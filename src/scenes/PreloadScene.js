@@ -53,6 +53,12 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // CyberBrute (Tank): mesmo padrão
+    this.load.image('cyber_brute_idle', 'assets/sprites/cyber_brute_idle.png');
+    this.load.spritesheet('cyber_brute_walk', 'assets/sprites/cyber_brute_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
@@ -291,6 +297,15 @@ export default class PreloadScene extends Phaser.Scene {
       key: 'cyber_hound-walk',
       frames: this.anims.generateFrameNumbers('cyber_hound_walk', { start: 0, end: 5 }),
       frameRate: 16,
+      repeat: -1
+    });
+    // animação de andar do CyberBrute — frameRate mais baixo que o Grunt
+    // (8 vs 12), mesma lógica proporcional à velocidade (speed 42 vs 60),
+    // passo pesado de Tank
+    this.anims.create({
+      key: 'cyber_brute-walk',
+      frames: this.anims.generateFrameNumbers('cyber_brute_walk', { start: 0, end: 5 }),
+      frameRate: 8,
       repeat: -1
     });
     // animação de andar do Minotauro (ver Enemy.js constructor -> def.walkA…
