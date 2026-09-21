@@ -107,15 +107,37 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const radius = this.width / 2 - 2;
     this.body.setCircle(radius, this.width / 2 - radius, this.height / 2 - radius);
     this.setDepth(9);
-    this.setTint(def.color);
+
+    // Variação sutil de tom por instância (evita "impresso igualzinho" —
+    // ver conversa sobre "exército de clones"): escurece entre 0% e ~10%
+    // em cima da cor de cada tipo definida em enemies.js, sem trocar a cor
+    // em si, só a luminosidade. Puramente cosmético, não mexe em nada de
+    // mecânica/hitbox.
+    const brightness = Phaser.Math.FloatBetween(0.9, 1.0);
+    const tintedColor =
+      (Math.round(((def.color >> 16) & 0xff) * brightness) << 16) |
+      (Math.round(((def.color >> 8) & 0xff) * brightness) << 8) |
+      Math.round((def.color & 0xff) * brightness);
+    this.setTint(tintedColor);
 
     // Escala base opcional (def.scale, ex.: Sealer maior pra se destacar
-    this.baseScale = def.scale || 1;
+    // + variação sutil (±5%) pela mesma razão do tom acima. Tudo que lê
+    // this.baseScale depois (squash de dano, tween de spawn, pulso de
+    // carga) puxa esse valor já com a variação, então fica consistente
+    // sozinho em qualquer lugar do código sem precisar tocar em mais nada.
+    const scaleJitter = Phaser.Math.FloatBetween(0.95, 1.05);
+    this.baseScale = (def.scale || 1) * scaleJitter;
     this.setScale(this.baseScale, this.baseScale);
 
     // Sprite com animação de verdade (hoje só o Minotauro, ver
     if (def.walkAnim) {
       this.anims.play(def.walkAnim);
+      // Dessincroniza a animação entre instâncias: sem isso, todo Grunt
+      // (ou qualquer inimigo com sprite animado) que nasce no mesmo
+      // instante fica andando em uníssono — dá a sensação de "exército de
+      // clones" mesmo a arte sendo boa. Começar em um ponto aleatório do
+      // ciclo resolve sem precisar de arte nova nenhuma.
+      this.anims.setProgress(Math.random());
     }
     this.walkAnim = def.walkAnim || null;
     this.idleTexture = def.idleTexture || null;
@@ -317,7 +339,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.isIdleVisual = true;
       }
     } else if (this.isIdleVisual) {
-      if (this.walkAnim) this.anims.play(this.walkAnim);
+      if (this.walkAnim) {
+        this.anims.play(this.walkAnim);
+        this.anims.setProgress(Math.random());
+      }
       this.isIdleVisual = false;
     }
   }

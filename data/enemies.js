@@ -2,13 +2,21 @@ export default [
   {
     "id": "grunt",
     "name": "Grunt",
-    "sprite": "enemy",
+    "sprite": "grunt_idle",
+    "walkAnim": "grunt-walk",
+    "idleTexture": "grunt_idle",
+    // mesma correção de escala do jogador (ver Player.js BASE_VISUAL_SCALE)
+    // — sem isso, com a câmera mais longe pro gato não ficar gigante (ver
+    // GameScene.js), o Grunt ficaria pequeno de novo do lado do mapa novo.
+    "scale": 1.3,
     "hp": 20,
     "speed": 60,
     "contactDamage": 6,
     "contactCooldownMs": 900,
     "xpReward": 8,
-    "color": 15680580,
+    // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
+    // original do PNG passa direto (mesmo tratamento do Minotauro)
+    "color": 16777215,
     "flocking": { "seek": 1.0, "cohesion": 0.35, "separation": 0.9, "density": 0.6 }
   },
   {

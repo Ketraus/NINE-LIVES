@@ -40,6 +40,13 @@ export default class PreloadScene extends Phaser.Scene {
       frameHeight: 64
     });
     this.load.image('enemy', 'assets/sprites/enemy.png');
+    // Grunt: primeiro inimigo comum com sprite próprio (mesmo padrão do
+    // Minotauro) — idle é imagem única, walk é spritesheet de verdade.
+    this.load.image('grunt_idle', 'assets/sprites/grunt_idle.png');
+    this.load.spritesheet('grunt_walk', 'assets/sprites/grunt_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
@@ -264,6 +271,13 @@ export default class PreloadScene extends Phaser.Scene {
       repeat: -1
     });
 
+    // animação de andar do Grunt (ver Enemy.js constructor -> def.walkAnim)
+    this.anims.create({
+      key: 'grunt-walk',
+      frames: this.anims.generateFrameNumbers('grunt_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
     // animação de andar do Minotauro (ver Enemy.js constructor -> def.walkA…
     this.anims.create({
       key: 'minotaur-walk',
