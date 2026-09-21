@@ -22,13 +22,20 @@ export default [
   {
     "id": "cyber_hound",
     "name": "CyberHound (Runner)",
-    "sprite": "enemy",
+    "sprite": "cyber_hound_idle",
+    "walkAnim": "cyber_hound-walk",
+    "idleTexture": "cyber_hound_idle",
+    // mesma correção de escala do jogador/Grunt (ver Player.js
+    // BASE_VISUAL_SCALE) — sem isso fica pequeno do lado do mapa novo.
+    "scale": 1.3,
     "hp": 8,
     "speed": 120,
     "contactDamage": 5,
     "contactCooldownMs": 800,
     "xpReward": 4,
-    "color": 11526834,
+    // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
+    // original do PNG passa direto (mesmo tratamento do Grunt/Minotauro)
+    "color": 16777215,
     "minSpawnTimeMs": 35000,
     "flocking": { "seek": 1.3, "cohesion": 0.1, "separation": 0.6, "density": 1.0 }
   },
