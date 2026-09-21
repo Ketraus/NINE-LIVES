@@ -140,6 +140,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.anims.setProgress(Math.random());
     }
     this.walkAnim = def.walkAnim || null;
+    // sinal de crowding do SwarmSystem (ver chase()/updateAnimState()),
+    // começa em 0 (sozinho) até o 1º chase() calcular o valor real
+    this._crowding = 0;
     this.idleTexture = def.idleTexture || null;
     this.isIdleVisual = false;
     // Versões SEM machado (Machado Arremessado, ver _launchAxe/
@@ -338,13 +341,26 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.setTexture(this.idleTexture);
         this.isIdleVisual = true;
       }
-    } else if (this.isIdleVisual) {
+      return;
+    }
+    if (this.isIdleVisual) {
       if (this.walkAnim) {
         this.anims.play(this.walkAnim);
         this.anims.setProgress(Math.random());
       }
       this.isIdleVisual = false;
     }
+    // Ritmo da animação ligado direto no crowding calculado pelo
+    // SwarmSystem (0 = sozinho, 1 = bem espremido) — não em velocity nem
+    // em deslocamento real: o vetor de movimento do chase() é SEMPRE
+    // normalizado pra magnitude 1 ali dentro (SwarmSystem.computeMoveDir),
+    // então tanto body.velocity quanto o deslocamento real ficam ~cheios
+    // o tempo todo mesmo quando o inimigo tá visualmente "preso" no meio
+    // de outros — as duas primeiras tentativas mediam algo que nunca
+    // baixava de verdade. Este número (this._crowding, setado no chase())
+    // é o sinal direto de "quantos vizinhos colados", então funciona de
+    // verdade: quanto mais lotado, mais devagar a animação.
+    this.anims.timeScale = Phaser.Math.Clamp(1 - (this._crowding || 0) * 0.75, 0.25, 1);
   }
 
   chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {
@@ -378,8 +394,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     if (moveDir) {
       this.setVelocity(moveDir.x * speed, moveDir.y * speed);
+      // Sinal de "quão lotado" (0..1, ver SwarmSystem.computeMoveDir) — a
+      // velocidade acima é SEMPRE cheia (o vetor é normalizado ali dentro),
+      // então é esse número, não a velocity, que updateAnimState() usa
+      // pra saber se deve desacelerar a animação.
+      this._crowding = moveDir.crowding || 0;
       return;
     }
+    this._crowding = 0;
 
     // fallback: seek puro direto pro alvo (sem enxame) — mesmo comportament…
     const dx = target.x - this.x;

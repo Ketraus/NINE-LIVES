@@ -62,6 +62,17 @@ export default class SwarmSystem {
 
     const neighbors = this._neighborsWithin(enemy, this.config.neighborRadius);
 
+    // Quão "lotado" este inimigo está agora (0..1) — mesma régua da força
+    // de Densidade abaixo, mas calculada aqui incondicionalmente pra
+    // servir de sinal de crowding pro chase()/Enemy.js usar na animação
+    // (ver Enemy.updateAnimState): a velocidade que sai daqui embaixo é
+    // SEMPRE normalizada pra magnitude 1 (nunca desacelera de verdade —
+    // só muda de direção), então o único jeito confiável de saber "esse
+    // inimigo tá espremido" é este número, não a velocidade resultante.
+    const crowding = neighbors.length > 0
+      ? Math.min(1, Math.max(0, neighbors.length - this.config.densityThreshold) / this.config.densitySaturation)
+      : 0;
+
     // Força 2 — Coesão: puxa em direção à posição MÉDIA dos vizinhos
     let cohesion = { x: 0, y: 0 };
     // Força 4 — Densidade: só o componente LATERAL (perpendicular ao
@@ -88,9 +99,7 @@ export default class SwarmSystem {
         const latY = awayY - dot * seek.y;
         const latLen = Math.hypot(latX, latY);
         if (latLen > 0) {
-          const crowding = Math.max(0, neighbors.length - this.config.densityThreshold);
-          const strength = Math.min(1, crowding / this.config.densitySaturation);
-          density = { x: (latX / latLen) * strength, y: (latY / latLen) * strength };
+          density = { x: (latX / latLen) * crowding, y: (latY / latLen) * crowding };
         }
       }
     }
@@ -110,6 +119,6 @@ export default class SwarmSystem {
     const fx = seek.x * weights.seek + cohesion.x * weights.cohesion + separation.x * weights.separation + density.x * weights.density;
     const fy = seek.y * weights.seek + cohesion.y * weights.cohesion + separation.y * weights.separation + density.y * weights.density;
     const len = Math.hypot(fx, fy);
-    return len > 0 ? { x: fx / len, y: fy / len } : seek;
+    return len > 0 ? { x: fx / len, y: fy / len, crowding } : { ...seek, crowding };
   }
 }
