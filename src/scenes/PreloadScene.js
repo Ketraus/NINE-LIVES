@@ -59,6 +59,12 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Exploder: mesmo padrão
+    this.load.image('exploder_idle', 'assets/sprites/exploder_idle.png');
+    this.load.spritesheet('exploder_walk', 'assets/sprites/exploder_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
@@ -306,6 +312,14 @@ export default class PreloadScene extends Phaser.Scene {
       key: 'cyber_brute-walk',
       frames: this.anims.generateFrameNumbers('cyber_brute_walk', { start: 0, end: 5 }),
       frameRate: 8,
+      repeat: -1
+    });
+    // animação de andar do Exploder — mesma lógica proporcional (speed 45
+    // vs 60 do Grunt)
+    this.anims.create({
+      key: 'exploder-walk',
+      frames: this.anims.generateFrameNumbers('exploder_walk', { start: 0, end: 5 }),
+      frameRate: 9,
       repeat: -1
     });
     // animação de andar do Minotauro (ver Enemy.js constructor -> def.walkA…

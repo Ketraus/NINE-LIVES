@@ -62,13 +62,20 @@ export default [
   {
     "id": "exploder",
     "name": "Exploder",
-    "sprite": "enemy",
+    "sprite": "exploder_idle",
+    "walkAnim": "exploder-walk",
+    "idleTexture": "exploder_idle",
+    // mesma correção de escala do jogador/outros inimigos (ver Player.js
+    // BASE_VISUAL_SCALE) — sem isso fica pequeno do lado do mapa novo.
+    "scale": 1.3,
     "hp": 14,
     "speed": 45,
     "contactDamage": 5,
     "contactCooldownMs": 900,
     "xpReward": 26,
-    "color": 16737792,
+    // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
+    // original do PNG passa direto (mesmo tratamento dos outros)
+    "color": 16777215,
     "minSpawnTimeMs": 90000,
     "flocking": { "seek": 1.0, "cohesion": 0.3, "separation": 0.7, "density": 0.5 },
     "explodes": true,
