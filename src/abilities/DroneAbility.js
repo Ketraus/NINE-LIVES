@@ -1,6 +1,5 @@
 import DamageSystem from '../combat/DamageSystem.js';
 
-const FOLLOW_LERP = 0.15; // suaviza o "voo" do drone atrás do jogador
 const BULLET_LIFETIME_MS = 1200;
 const DEFAULT_PROJECTILE_SPEED = 320;
 
@@ -28,6 +27,18 @@ const SQUARE_OFFSETS = [
   { x: SQUARE_RADIUS, y: SQUARE_RADIUS } // canto inferior direito
 ];
 
+// Física do "voo" do drone (_follow): spring crítico-amortecido em vez de
+// lerp direto. Ele acelera na direção do alvo e freia com damping, então
+// quando o player muda de direção o drone faz uma curva de verdade (com
+// leve overshoot) em vez de simplesmente deslizar em linha reta atrás.
+const FOLLOW_ACCEL = 0.02; // "puxão" na direção do alvo, por frame
+const FOLLOW_DAMPING = 0.82; // freio da velocidade acumulada (0-1, maior = mais solto/oscilante)
+const BANK_FROM_VX = 0.045; // rad de inclinação por px/frame de velocidade horizontal
+const MAX_BANK = 0.4; // rad máximo de inclinação (~23°)
+const BANK_SMOOTHING = 0.18; // suaviza a transição do ângulo
+const HOVER_AMPLITUDE = 3; // px de flutuação vertical (respiro parado)
+const HOVER_PERIOD_MS = 1000;
+
 // Habilidade exclusiva da Pistola (carta "pistol_drone"): um sprite que
 export default class DroneAbility {
   // (ver AbilityManager._unlock) — define o offset de escolta usado.
@@ -42,12 +53,18 @@ export default class DroneAbility {
     // ligado por upgrade() quando CatForce 2.0 é confirmada — ver
     this.laser = false;
     this.laserColor = LASER_DEFAULT_COLOR;
+    // Estado do voo (_follow): velocidade acumulada do spring + ângulo de
+    // banking atual + fase do hover (cada drone flutua fora de sincronia).
+    this._vx = 0;
+    this._vy = 0;
+    this._bankAngle = 0;
+    this._hoverPhase = (formationIndex * 137) % 1000;
   }
 
   update(time, player, enemyGroup, scene) {
     if (!this.sprite) this._create(scene, player, enemyGroup);
 
-    this._follow(player);
+    this._follow(player, time);
 
     if (time - this.lastMs < this.def.cooldownMs) return;
     const target = this._findNearestEnemy(enemyGroup);
@@ -61,7 +78,8 @@ export default class DroneAbility {
   upgrade(def) {
     this.laser = true;
     this.laserColor = def.laserColor ?? LASER_DEFAULT_COLOR;
-    this.sprite?.setTint(this.laserColor);
+    // Troca pro sprite evoluído (CatForce) em vez de só tingir o placeholder.
+    this.sprite?.setTexture('gato_drone_catforce');
     if (this.scene && this.sprite) this._playUpgradeFx(this.scene, this.sprite.x, this.sprite.y);
   }
 
@@ -78,10 +96,11 @@ export default class DroneAbility {
 
   _create(scene, player, enemyGroup) {
     this.scene = scene;
+    // Sprite próprio do GatoDrone (gato_drone.png); vira gato_drone_catforce
+    // ao evoluir (ver upgrade()), sem mais depender do xp_orb tintado.
     this.sprite = scene.add
-      .image(player.x + this.offset.x, player.y + this.offset.y, 'xp_orb')
+      .image(player.x + this.offset.x, player.y + this.offset.y, this.laser ? 'gato_drone_catforce' : 'gato_drone')
       .setDepth(16)
-      .setTint(this.laser ? this.laserColor : 0x7af0ff)
       .setScale(1.1);
 
     this.bulletGroup = scene.physics.add.group();
@@ -102,9 +121,25 @@ export default class DroneAbility {
     scene.mapManager?.addCollider(this.bulletGroup, (bullet) => bullet.destroy());
   }
 
-  _follow(player) {
-    this.sprite.x = Phaser.Math.Linear(this.sprite.x, player.x + this.offset.x, FOLLOW_LERP);
-    this.sprite.y = Phaser.Math.Linear(this.sprite.y, player.y + this.offset.y, FOLLOW_LERP);
+  _follow(player, time) {
+    // Hover: leve flutuação senoidal somada ao ponto-alvo (cada drone com
+    // fase própria pra não bobbing todo mundo igual/sincronizado).
+    const hover = Math.sin((time + this._hoverPhase) / HOVER_PERIOD_MS * Math.PI * 2) * HOVER_AMPLITUDE;
+    const targetX = player.x + this.offset.x;
+    const targetY = player.y + this.offset.y + hover;
+
+    // Spring: acelera na direção do alvo e amortece — cria uma curva com
+    // leve overshoot ao virar, em vez de deslizar reto (lerp) atrás do player.
+    this._vx = (this._vx + (targetX - this.sprite.x) * FOLLOW_ACCEL) * FOLLOW_DAMPING;
+    this._vy = (this._vy + (targetY - this.sprite.y) * FOLLOW_ACCEL) * FOLLOW_DAMPING;
+    this.sprite.x += this._vx;
+    this.sprite.y += this._vy;
+
+    // Banking: inclina na direção do movimento horizontal (feito o drone
+    // "entrando" na curva), suavizado pra não tremer.
+    const targetBank = Phaser.Math.Clamp(this._vx * BANK_FROM_VX, -MAX_BANK, MAX_BANK);
+    this._bankAngle = Phaser.Math.Linear(this._bankAngle, targetBank, BANK_SMOOTHING);
+    this.sprite.rotation = this._bankAngle;
   }
 
   _findNearestEnemy(enemyGroup) {

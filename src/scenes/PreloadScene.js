@@ -106,6 +106,8 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('minotaur_axe_thrown', 'assets/sprites/minotaur_axe_thrown.png');
     this.load.image('minotaur_axe_thrown_rage', 'assets/sprites/minotaur_axe_thrown_rage.png');
     this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
+    this.load.image('gato_drone', 'assets/sprites/gato_drone.png');
+    this.load.image('gato_drone_catforce', 'assets/sprites/gato_drone_catforce.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
 
     // salvar em assets/music/
