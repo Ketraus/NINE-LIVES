@@ -6,13 +6,13 @@ export default [
     "type": "melee",
     "shape": "arc",
     "damage": 8,
-    "range": 78,
+    "range": 100,
     "arcDegrees": 140,
     "cooldownMs": 200,
     "fxTint": 0xffb199,
     "fxDurationMs": 100,
     "cameraShake": 0.0025,
-    "knockback": 420
+    "knockback": 500
   },
   {
     "id": "katana",
@@ -21,7 +21,7 @@ export default [
     "type": "melee",
     "shape": "sword",
     "damage": 24,
-    "range": 90,
+    "range": 120,
     "arcDegrees": 100,
     "cooldownMs": 1000,
     "fxTint": 0xcfe8ff,
