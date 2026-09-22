@@ -129,6 +129,23 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.baseScale = (def.scale || 1) * scaleJitter;
     this.setScale(this.baseScale, this.baseScale);
 
+    // Sombra simples embaixo do inimigo: elipse escura, translúcida, sem
+    // luz/dinâmica nenhuma — só pra dar noção de "chão" (ver preUpdate
+    // logo abaixo, que a mantém colada nos pés a cada frame). Mantida
+    // pequena e bem discreta pra não chamar atenção nos inimigos base.
+    const shadowWidth = this.displayWidth * 0.42;
+    const shadowHeight = shadowWidth * 0.38;
+    // Fração vertical do frame até os pés (def.shadowOffsetYFrac, 0.46 é
+    // o padrão que serve pra quase todo mundo — só o Exploder, que é bem
+    // mais baixinho dentro do próprio frame, precisa de um valor menor).
+    this._shadowYFrac = def.shadowOffsetYFrac != null ? def.shadowOffsetYFrac : 0.46;
+    this.shadow = scene.add.ellipse(x, y + this.displayHeight * this._shadowYFrac, shadowWidth, shadowHeight, 0x000000, 0.2);
+    this.shadow.setDepth(this.depth - 1);
+    // Desvio horizontal opcional (def.shadowOffsetX, em pixels "nativos"
+    // do PNG, medido nos pés, sem flip) pra corrigir sombra em artes que
+    // não são 100% centralizadas no frame — mesma ideia do Player.js.
+    this.shadowOffsetX = def.shadowOffsetX || 0;
+
     // Sprite com animação de verdade (hoje só o Minotauro, ver
     if (def.walkAnim) {
       this.anims.play(def.walkAnim);
@@ -247,6 +264,24 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.stompReadyAt = scene.time.now + Phaser.Math.Between(1500, 2500);
       this.stompRaiseUntil = 0;
     }
+  }
+
+  // Mantém a sombra colada nos pés do inimigo, todo frame (chamado pelo
+  // próprio Phaser automaticamente, sem precisar ligar em lugar nenhum).
+  preUpdate(time, delta) {
+    super.preUpdate(time, delta);
+    if (this.shadow) {
+      const offsetX = this.shadowOffsetX * this.scaleX * (this.flipX ? -1 : 1);
+      this.shadow.x = this.x + offsetX;
+      this.shadow.y = this.y + this.displayHeight * this._shadowYFrac;
+    }
+  }
+
+  // Garante que a sombra some junto quando o inimigo é destruído (morte,
+  // despawn por fuga, etc.) — sem isso ela ficaria órfã na tela.
+  destroy(fromScene) {
+    this.shadow?.destroy();
+    super.destroy(fromScene);
   }
 
   // Decide e aplica o tint "de status" certo pro instante atual, com

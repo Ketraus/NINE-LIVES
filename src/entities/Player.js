@@ -27,24 +27,37 @@ export const BASE_VISUAL_SCALE = 1.3;
 
 // Sprite do gato por classe de arma (runState.weaponId). Katana e Paws têm
 // visual próprio; qualquer outro id cai no "default" (o mesmo da Pistola).
+// shadowOffsetLeft/Right: testamos um único valor espelhado por sinal
+// (offset * (flipX?-1:1)) e ele NUNCA acertou os dois lados ao mesmo tempo
+// — só um lado por vez, e com offset 0 o desvio residual é igual nos dois
+// sentidos (viés fixo, não depende de flip). Isso mostra que a correção
+// necessária não é simétrica nesse projeto, então agora são 2 valores
+// independentes, calibrados olhando o jogo direto — sem assumir que um é
+// o negativo do outro. Ajuste cada um manualmente até a sombra bater.
 const SPRITE_SETS = {
   katana: {
     idleKey: 'player_katana_idle',
     walkKey: 'player_katana_walk',
     idleAnim: 'player-katana-idle',
-    walkAnim: 'player-katana-walk'
+    walkAnim: 'player-katana-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
   },
   fists: {
     idleKey: 'player_paws_idle',
     walkKey: 'player_paws_walk',
     idleAnim: 'player-paws-idle',
-    walkAnim: 'player-paws-walk'
+    walkAnim: 'player-paws-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
   },
   default: {
     idleKey: 'player_idle',
     walkKey: 'player_walk',
     idleAnim: 'player-idle',
-    walkAnim: 'player-walk'
+    walkAnim: 'player-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
   }
 };
 
@@ -65,6 +78,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._baseOffsetY = this.height / 2 - this._baseRadius;
     this.body.setCircle(this._baseRadius, this._baseOffsetX, this._baseOffsetY);
     this.setDepth(10);
+    // Sombra simples embaixo do jogador (mesma ideia da Enemy.js): elipse
+    // escura translúcida, sem luz/dinâmica nenhuma. Tamanho reajustado em
+    // applySize (Colosso etc.), posição seguida a cada frame em update().
+    this.shadow = scene.add.ellipse(x, y, 10, 10, 0x000000, 0.35).setDepth(8);
     this.play(this._spriteSet.idleAnim);
     this._currentAnim = this._spriteSet.idleAnim;
 
@@ -189,6 +206,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const sourceOffsetX = this.width / 2 - sourceRadius;
     const sourceOffsetY = this.height / 2 - sourceRadius;
     this.body.setCircle(sourceRadius, sourceOffsetX, sourceOffsetY);
+
+    const shadowWidth = this.displayWidth * 0.55;
+    this.shadow?.setSize(shadowWidth, shadowWidth * 0.4);
   }
 
   get speed() {
@@ -198,6 +218,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   update() {
     if (this.isDead) {
       this.setVelocity(0, 0);
+      this._updateShadow();
       return;
     }
 
@@ -205,6 +226,21 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._autoAttack();
     this._updateInvulnerableFlash();
     this._updateShield(this.scene.time.now);
+    // Roda depois de _handleMovement (que chama _updateAnimation/setFlipX):
+    // se rodasse antes, usaria o flipX do frame anterior e a sombra ficaria
+    // 1 frame atrasada sempre que o jogador trocasse de direção.
+    this._updateShadow();
+  }
+
+  _updateShadow() {
+    if (!this.shadow) return;
+    // flipX true = olhando pra direita (ver _updateAnimation). Cada lado
+    // usa seu próprio valor (shadowOffsetLeft/Right) em vez de um só
+    // espelhado por sinal — não são simétricos nesse projeto (ver
+    // comentário acima do SPRITE_SETS).
+    const rawOffset = this.flipX ? this._spriteSet.shadowOffsetRight : this._spriteSet.shadowOffsetLeft;
+    this.shadow.x = this.x + (rawOffset || 0) * this.scaleX;
+    this.shadow.y = this.y + this.displayHeight * 0.46;
   }
 
   // Controla a transparência do sprite: desvio (carta "Sexto Sentido") tem

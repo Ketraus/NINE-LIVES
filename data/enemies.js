@@ -17,7 +17,13 @@ export default [
     // sem tint (sprite real, não mais o placeholder cinza) — branco = cor
     // original do PNG passa direto (mesmo tratamento do Minotauro)
     "color": 16777215,
-    "flocking": { "seek": 1.0, "cohesion": 0.35, "separation": 0.9, "density": 0.6 }
+    "flocking": { "seek": 1.0, "cohesion": 0.35, "separation": 0.9, "density": 0.6 },
+    // desvio horizontal da sombra (ver Enemy.js) — 0 = sombra só
+    // centralizada no sprite. A 1ª tentativa de medir isso automático
+    // (script em cima do PNG) pegava rabo/arma junto com os pés e
+    // exagerava pra um lado; olhando os frames direto, os pés já ficam
+    // perto o suficiente do centro. Só mexer aqui se precisar afinar.
+    "shadowOffsetX": 0
   },
   {
     "id": "cyber_hound",
@@ -37,7 +43,8 @@ export default [
     // original do PNG passa direto (mesmo tratamento do Grunt/Minotauro)
     "color": 16777215,
     "minSpawnTimeMs": 35000,
-    "flocking": { "seek": 1.3, "cohesion": 0.1, "separation": 0.6, "density": 1.0 }
+    "flocking": { "seek": 1.3, "cohesion": 0.1, "separation": 0.6, "density": 1.0 },
+    "shadowOffsetX": 0
   },
   {
     "id": "cyber_brute",
@@ -57,7 +64,8 @@ export default [
     // original do PNG passa direto (mesmo tratamento dos outros)
     "color": 16777215,
     "minSpawnTimeMs": 60000,
-    "flocking": { "seek": 0.9, "cohesion": 0.5, "separation": 0.4, "density": 0.15 }
+    "flocking": { "seek": 0.9, "cohesion": 0.5, "separation": 0.4, "density": 0.15 },
+    "shadowOffsetX": 0
   },
   {
     "id": "exploder",
@@ -87,7 +95,12 @@ export default [
     "explodeTriggerRadius": 55,
     "explodePrepMs": 400,
     "explodeRadius": 75,
-    "explodeDamage": 20
+    "explodeDamage": 20,
+    "shadowOffsetX": 0,
+    // Exploder é bem mais baixinho dentro do próprio frame de 64px que os
+    // outros inimigos — a fração padrão (0.46) jogaria a sombra longe
+    // demais dos pés dele.
+    "shadowOffsetYFrac": 0.3
   },
   {
     "id": "elite",
@@ -125,7 +138,8 @@ export default [
     "eliteMissileRadius": 70,
     "eliteMissileStepGapMs": 350,
     "eliteMissileWarnAfterMs": 550,
-    "eliteMissileDamage": 30
+    "eliteMissileDamage": 30,
+    "shadowOffsetX": 0
   },
   {
     "id": "sealer",
@@ -210,6 +224,7 @@ export default [
     "scale": 2.86,
     "flocking": { "seek": 1.0, "cohesion": 0, "separation": 0.3, "density": 0 },
     "boss": true,
+    "shadowOffsetX": 0,
     // Boss é bem mais pesado que o Elite (knockbackResistance 0.15) —
     // quase não sente empurrão nenhum.
     "knockbackResistance": 0.05,
