@@ -119,24 +119,26 @@ export default class SpawnDirector {
     const cap = this._currentMaxAlive();
     this.enemySpawner.setMaxAlive(cap);
 
+    // Boss também é checado sempre, mesmo com autospawn desligado — evento
+    this._checkBossSchedule();
+    // idem: música só volta quando o Minotauro morrer de verdade (ver
+    this._checkBossMusicRestore();
+
+    // Boss (Minotauro): trava TODO spawn automático desde o instante do
+    // gatilho até ele morrer — inclusive Sealer e Elite por horário fixo,
+    // que antes disparavam mesmo durante o encontro (bug).
+    if (this._isBossEncounterActive()) return;
+
     // Sealer nasce SEMPRE por horário manual, nunca pelo sorteio normal
     this._checkSealerSchedule();
 
     // Elite também é checado sempre, mesmo com autospawn desligado —
     this._checkEliteSchedule();
 
-    // Boss também é checado sempre, mesmo com autospawn desligado — evento
-    this._checkBossSchedule();
-    // idem: música só volta quando o Minotauro morrer de verdade (ver
-    this._checkBossMusicRestore();
-
     if (!this.autoSpawnEnabled) return; // cheat "autospawn" desligado: só spawn manual (ver toggleAutoSpawn)
 
     // Arena do Sealer ativa: NINGUÉM mais nasce até ele morrer (ou a
     if (this.enemySpawner.hasActiveSealer()) return;
-
-    // Boss (Minotauro): trava TODO spawn automático desde o instante do
-    if (this._isBossEncounterActive()) return;
 
     // Quando o teto sobe bastante entre uma leva e outra, o lote normal
     const deficit = cap - this.enemySpawner.getAliveCount();
