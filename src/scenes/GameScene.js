@@ -329,6 +329,29 @@ export default class GameScene extends Phaser.Scene {
     if (this.sys.game.device.input.touch) {
       this.touchJoystick = new TouchJoystick(this);
     }
+
+    this._buildAutoPauseOnBlur();
+  }
+
+  // Perdeu o foco da janela/aba (trocou de aba, minimizou, alt-tab, etc.):
+  // abre o menu de pausa sozinho (nunca fecha sozinho ao voltar — quem
+  // decide retomar é o jogador). Phaser.Core.Events BLUR/HIDDEN cobrem
+  // tanto blur de janela quanto document.visibilitychange, num só lugar.
+  _buildAutoPauseOnBlur() {
+    const gameEvents = this.sys.game.events;
+    const handleBlur = () => {
+      if (this.isGameOver || this.hasWon) return;
+      this.pauseUI.open();
+    };
+    gameEvents.on(Phaser.Core.Events.BLUR, handleBlur);
+    gameEvents.on(Phaser.Core.Events.HIDDEN, handleBlur);
+
+    // gameEvents é global (sobrevive ao scene.restart()) — sem isso os
+    // listeners se acumulariam a cada morte/restart da run
+    this.events.once('shutdown', () => {
+      gameEvents.off(Phaser.Core.Events.BLUR, handleBlur);
+      gameEvents.off(Phaser.Core.Events.HIDDEN, handleBlur);
+    });
   }
 
   _spawnXpOrb(x, y, xpReward) {

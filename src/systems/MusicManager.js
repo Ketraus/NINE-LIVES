@@ -26,7 +26,12 @@ class MusicManager {
 
   // scene.sound/scene.tweens/scene.cache; a faixa em si sobrevive à
   play(scene, key) {
-    if (this.currentKey === key) return; // já é a faixa tocando, não reinicia
+    // Se já é a faixa tocando MAS existe overlay por cima (tema do Boss
+    // ou tela de cartas — ex.: jogador morreu em pleno confronto e a run
+    // reiniciou pedindo a mesma 'music_game' de sempre), não pode sair
+    // cedo: precisa continuar até a limpeza de overlay logo abaixo, senão
+    // o tema do Boss fica tocando pra sempre.
+    if (this.currentKey === key && !this.bossSound && !this.duckedSound) return;
 
     if (!scene.cache.audio.exists(key)) {
       // faixa ainda não adicionada (ver PreloadScene) — não fica tocando
