@@ -71,6 +71,12 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Sealer (Fechador de Arena): mesmo padrão
+    this.load.image('cyber_sealer_idle', 'assets/sprites/cyber_sealer_idle.png');
+    this.load.spritesheet('cyber_sealer_walk', 'assets/sprites/cyber_sealer_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
@@ -334,6 +340,14 @@ export default class PreloadScene extends Phaser.Scene {
       key: 'cyber_elite-walk',
       frames: this.anims.generateFrameNumbers('cyber_elite_walk', { start: 0, end: 5 }),
       frameRate: 12,
+      repeat: -1
+    });
+    // animação de andar do Sealer — parado a maior parte do tempo, walk é
+    // só um detalhe visual quando ele se reposiciona
+    this.anims.create({
+      key: 'cyber_sealer-walk',
+      frames: this.anims.generateFrameNumbers('cyber_sealer_walk', { start: 0, end: 5 }),
+      frameRate: 8,
       repeat: -1
     });
     // animação de andar do Minotauro (ver Enemy.js constructor -> def.walkA…

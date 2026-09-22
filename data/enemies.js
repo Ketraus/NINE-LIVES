@@ -130,13 +130,17 @@ export default [
   {
     "id": "sealer",
     "name": "Fechador de Arena (Sealer)",
-    "sprite": "enemy",
+    "sprite": "cyber_sealer_idle",
+    "walkAnim": "cyber_sealer-walk",
+    "idleTexture": "cyber_sealer_idle",
     "hp": 140,
     "speed": 55,
     "contactDamage": 6,
     "contactCooldownMs": 1000,
     "xpReward": 60,
-    "color": 10170623,
+    // sem tint (sprite real, não mais o placeholder) — branco = cor
+    // original do PNG passa direto (mesmo tratamento do Elite)
+    "color": 16777215,
     "minSpawnTimeMs": 150000,
     "flocking": { "seek": 0, "cohesion": 0, "separation": 0.2, "density": 0 },
     "sealer": true,
