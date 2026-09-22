@@ -199,11 +199,22 @@ export default class PauseUI {
     this.scene.cameras.main.ignore(this.panelContainer);
 
     // filtro inicial: já nasce só desenhando o panelContainer
-    this.pauseCam.ignore(this.scene.children.list.filter((obj) => obj !== this.panelContainer));
+    this.refreshIgnoreList();
 
     this.pauseCam.setPostPipeline(['Scanlines', 'CrtWave']);
     this.pauseCam.getPostPipeline('Scanlines').setLineHeight(2).setDarkAmount(0.12);
     this.pauseCam.getPostPipeline('CrtWave').setAmplitude(0.001).setFrequency(9).setSpeed(0.9);
+  }
+
+  // Recalcula o que a pauseCam ignora (tudo, exceto o painel de pausa).
+  // Precisa rodar de novo sempre que algo nascer DEPOIS do PauseUI (ex.:
+  // TouchJoystick, criado em GameScene._buildInput, que roda depois de
+  // _buildUI) — senão esse objeto fica fora do filtro inicial e a pauseCam
+  // desenha ele por cima de novo (aparência de "duplicado" na tela, mesmo
+  // com a pausa fechada, já que essa câmera está sempre ativa).
+  refreshIgnoreList() {
+    if (!this.pauseCam) return;
+    this.pauseCam.ignore(this.scene.children.list.filter((obj) => obj !== this.panelContainer));
   }
 
   // Abre a SettingsScene por cima do jogo (que continua pausado por
@@ -513,9 +524,7 @@ export default class PauseUI {
 
     // câmera de pausa só deve desenhar o painel — recalcula a cada abertura
     // pra cobrir inimigos/objetos que tenham spawnado depois da criação
-    if (this.pauseCam) {
-      this.pauseCam.ignore(this.scene.children.list.filter((obj) => obj !== this.panelContainer));
-    }
+    this.refreshIgnoreList();
 
     // entrada suave: some com o "pop" instantâneo de tela travando de vez
     this.scene.tweens.killTweensOf(this.panelContainer);

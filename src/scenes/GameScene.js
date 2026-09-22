@@ -330,6 +330,11 @@ export default class GameScene extends Phaser.Scene {
       this.touchJoystick = new TouchJoystick(this);
     }
 
+    // TouchJoystick acabou de nascer (se nasceu) DEPOIS do PauseUI
+    // (ver _buildUI, antes de _buildInput) — sem isso a pauseCam dele
+    // desenharia o joystick de novo por cima (duplicado), ver PauseUI.refreshIgnoreList
+    this.pauseUI.refreshIgnoreList();
+
     this._buildAutoPauseOnBlur();
   }
 
