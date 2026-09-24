@@ -1,8 +1,11 @@
-// Feedback visual de dano. Fica separado do DamageSystem para que a lógica
-// de combate continue independente da apresentação.
+// Feedback visual de dano.
 //
-// Os textos são reutilizados por cena (pool simples) para evitar criar e
-// destruir dezenas de GameObjects por segundo em ataques de área.
+// IMPORTANTE: os números não usam pool de GameObjects de propósito.
+// Phaser Text cria uma textura/frame interno e, se um Text destruído for
+// reutilizado depois de um scene.restart(), o Phaser 3.80 pode chegar ao
+// Frame.setSize() com a textura nula ("reading 'cut'").
+// Para o volume de damage numbers do jogo, criar/destruir textos curtos é
+// muito mais seguro. O manager também limpa tudo no shutdown da cena.
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const NORMAL_COLOR = '#fff1a8';
@@ -12,17 +15,39 @@ const STROKE_COLOR = '#16131a';
 
 const BASE_FONT_SIZE = 10;
 const BASE_DEPTH = 25;
-const MAX_POOL_SIZE = 80;
 
-const scenePools = new WeakMap();
+const sceneNumbers = new WeakMap();
+const sceneCleanupRegistered = new WeakSet();
 
-function _getPool(scene) {
-  let pool = scenePools.get(scene);
-  if (!pool) {
-    pool = [];
-    scenePools.set(scene, pool);
+function _getSet(scene) {
+  let set = sceneNumbers.get(scene);
+  if (!set) {
+    set = new Set();
+    sceneNumbers.set(scene, set);
   }
-  return pool;
+  return set;
+}
+
+function _ensureSceneCleanup(scene) {
+  if (sceneCleanupRegistered.has(scene)) return;
+  sceneCleanupRegistered.add(scene);
+
+  const cleanup = () => {
+    const set = sceneNumbers.get(scene);
+    if (!set) return;
+
+    for (const text of set) {
+      if (!text) continue;
+      scene.tweens?.killTweensOf(text);
+      if (text.scene === scene) text.destroy();
+    }
+
+    set.clear();
+    sceneNumbers.delete(scene);
+  };
+
+  scene.events.once('shutdown', cleanup);
+  scene.events.once('destroy', cleanup);
 }
 
 function _colorForTarget(target) {
@@ -31,35 +56,13 @@ function _colorForTarget(target) {
   return NORMAL_COLOR;
 }
 
-function _getText(scene) {
-  const pool = _getPool(scene);
-  const text = pool.pop();
-  if (text) return text;
+function _finish(scene, text) {
+  const set = sceneNumbers.get(scene);
+  set?.delete(text);
 
-  return scene.add.text(0, 0, '', {
-    fontFamily: PIXEL_FONT,
-    fontSize: `${BASE_FONT_SIZE}px`,
-    fontStyle: 'bold',
-    color: NORMAL_COLOR,
-    stroke: STROKE_COLOR,
-    strokeThickness: 4,
-    resolution: 2
-  })
-    .setOrigin(0.5, 0.65)
-    .setDepth(BASE_DEPTH);
-}
-
-function _release(scene, text) {
-  if (!text || !text.scene) return;
-  text.setVisible(false);
-  text.setActive(false);
-  text.setAlpha(1);
-  text.setScale(1);
-  text.setRotation(0);
-
-  const pool = _getPool(scene);
-  if (pool.length < MAX_POOL_SIZE) pool.push(text);
-  else text.destroy();
+  if (text?.scene === scene) {
+    text.destroy();
+  }
 }
 
 export default class DamageNumberManager {
@@ -68,42 +71,46 @@ export default class DamageNumberManager {
    * x/y são capturados pelo DamageSystem antes do alvo morrer/desaparecer.
    */
   static show(scene, x, y, damage, target) {
-    if (!scene || !scene.add || !Number.isFinite(damage) || damage <= 0) return;
+    if (!scene || !scene.add || !scene.sys || !scene.sys.isActive()) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!Number.isFinite(damage) || damage <= 0) return;
 
-    const text = _getText(scene);
-    const pool = _getPool(scene);
+    _ensureSceneCleanup(scene);
 
+    const roundedDamage = Math.max(1, Math.round(damage));
     const spreadX = Phaser.Math.Between(-7, 7);
     const spreadY = Phaser.Math.Between(-4, 5);
     const startX = x + spreadX;
     const startY = y - 10 + spreadY;
     const rise = Phaser.Math.Between(20, 28);
-
     const color = _colorForTarget(target);
-    const roundedDamage = Math.max(1, Math.round(damage));
+
+    const text = scene.add.text(startX, startY, String(roundedDamage), {
+      fontFamily: PIXEL_FONT,
+      fontSize: `${BASE_FONT_SIZE}px`,
+      fontStyle: 'bold',
+      color,
+      stroke: STROKE_COLOR,
+      strokeThickness: 4
+    });
 
     text
-      .setText(String(roundedDamage))
-      .setColor(color)
-      .setPosition(startX, startY)
+      .setOrigin(0.5, 0.65)
+      .setDepth(BASE_DEPTH)
       .setAlpha(1)
       .setScale(0.62)
-      .setRotation(Phaser.Math.FloatBetween(-0.035, 0.035))
-      .setDepth(BASE_DEPTH)
-      .setVisible(true)
-      .setActive(true);
+      .setRotation(Phaser.Math.FloatBetween(-0.035, 0.035));
 
-    // Garante que um texto devolvido ao pool não carregue tweens antigos.
-    scene.tweens.killTweensOf(text);
+    _getSet(scene).add(text);
 
-    // Primeiro: pequeno "pop" de impacto. Depois: sobe e desaparece.
     scene.tweens.add({
       targets: text,
       scale: 1.0,
       duration: 85,
       ease: 'Back.easeOut',
       onComplete: () => {
-        if (!text.active) return;
+        // A cena pode ter sido reiniciada durante o tween.
+        if (text.scene !== scene || !scene.sys.isActive()) return;
 
         scene.tweens.add({
           targets: text,
@@ -112,7 +119,7 @@ export default class DamageNumberManager {
           scale: 0.9,
           duration: 470,
           ease: 'Cubic.easeOut',
-          onComplete: () => _release(scene, text)
+          onComplete: () => _finish(scene, text)
         });
       }
     });
