@@ -1,4 +1,6 @@
 // Funções utilitárias de dano. Ficam centralizadas aqui em vez de
+import DamageNumberManager from './DamageNumberManager.js';
+
 export default class DamageSystem {
   // 3 variações de grito de dor do Minotauro (ver _hitSfxKey) — sorteadas
   // a cada golpe pra não ficar repetitivo
@@ -18,7 +20,14 @@ export default class DamageSystem {
 
     if (this._rollDodge(target)) return false;
 
-    target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs));
+    const targetScene = target.scene;
+    const finalDamage = this._applyShield(target, this._applyDamageReduction(target, damage), nowMs);
+    const hitX = target.x;
+    const hitY = target.y;
+    const appliedDamage = target.healthSystem.takeDamage(finalDamage);
+    if (appliedDamage > 0 && target.def) {
+      DamageNumberManager.show(targetScene, hitX, hitY, appliedDamage, target);
+    }
     target.playHitReaction?.();
 
     if (target.invulnerableMs) {
@@ -37,7 +46,13 @@ export default class DamageSystem {
     damage *= target.vulnerableDamageMultiplier || 1;
     // guardado ANTES de takeDamage: se este golpe matar o alvo, o
     const targetScene = target.scene;
-    target.healthSystem.takeDamage(this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0));
+    const finalDamage = this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0);
+    const hitX = target.x;
+    const hitY = target.y;
+    const appliedDamage = target.healthSystem.takeDamage(finalDamage);
+    if (appliedDamage > 0 && target.def) {
+      DamageNumberManager.show(targetScene, hitX, hitY, appliedDamage, target);
+    }
     target.playHitReaction?.();
     // som de impacto genérico — toca sempre que um golpe de arma/ataque
     targetScene?.sound?.play(this._hitSfxKey(target), { volume: 0.5 });

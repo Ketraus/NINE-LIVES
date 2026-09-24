@@ -2,6 +2,7 @@ import HealthSystem from '../../combat/HealthSystem.js';
 import EventBus from '../../systems/EventBus.js';
 import DamageSystem from '../../combat/DamageSystem.js';
 import SettingsManager from '../../systems/SettingsManager.js';
+import DamageNumberManager from '../../combat/DamageNumberManager.js';
 
 let nextInstanceId = 1;
 
@@ -467,7 +468,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (nowMs >= this.bleedUntil) return;
     if (nowMs < this.nextBleedTickAt) return;
     this.nextBleedTickAt += this.bleedTickIntervalMs;
-    this.healthSystem.takeDamage(this.bleedTickDamage);
+    const hitX = this.x;
+    const hitY = this.y;
+    const appliedDamage = this.healthSystem.takeDamage(this.bleedTickDamage);
+    if (appliedDamage > 0) {
+      DamageNumberManager.show(this.scene, hitX, hitY, appliedDamage, this);
+    }
   }
 
   // Empurra o inimigo na direção (dirX, dirY) — vetor já normalizado —

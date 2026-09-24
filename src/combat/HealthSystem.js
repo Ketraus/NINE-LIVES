@@ -9,13 +9,20 @@ export default class HealthSystem {
   }
 
   takeDamage(amount) {
-    if (this.dead || amount <= 0) return;
+    if (this.dead || amount <= 0) return 0;
+
+    const appliedDamage = Math.min(this.current, amount);
     this.current = Math.max(0, this.current - amount);
     this.onChange(this.current, this.maxHp);
+
     if (this.current <= 0) {
       this.dead = true;
       this.onDeath();
     }
+
+    // Retorna o dano que realmente saiu da vida. Útil para feedback visual
+    // sem expor o dano bruto antes de redução/escudo.
+    return appliedDamage;
   }
 
   heal(amount) {
