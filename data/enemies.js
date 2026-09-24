@@ -54,7 +54,7 @@ export default [
     "idleTexture": "cyber_brute_idle",
     // mesma correção de escala do jogador/Grunt/CyberHound (ver Player.js
     // BASE_VISUAL_SCALE) — sem isso fica pequeno do lado do mapa novo.
-    "scale": 1.3,
+    "scale": 1.4,
     "hp": 50,
     "speed": 42,
     "contactDamage": 16,

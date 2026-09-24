@@ -50,7 +50,7 @@ export default [
     "description": "Dispara em inimigos próximos.",
     "type": "ranged",
     "damage": 5,
-    "range": 220,
+    "range": 235,
     "cooldownMs": 480,
     "projectileSpeed": 640,
     "projectileTint": 0x4fd1ff,
