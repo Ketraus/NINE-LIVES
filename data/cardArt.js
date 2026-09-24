@@ -21,5 +21,11 @@ export default [
   // carta (ver LevelUpUI._buildEvolutionCard).
   'armor_up_evo_shield', 'thorns_up_evo_sobrecarga', 'range_up_evo_katana_stray',
   'speed_up_evo_tornado', 'range_up_evo_hunter_instinct',
-  'dmg_up_evo_overcharge_fists', 'dmg_up_evo_overcharge_katana', 'dmg_up_evo_overcharge_pistol'
+  'dmg_up_evo_overcharge_fists', 'dmg_up_evo_overcharge_katana', 'dmg_up_evo_overcharge_pistol',
+
+  // últimas evoluções (arte adicionada): Cyberus, Restock, Reflexos de
+  // Predador, CatForce 2.0, NeoShuriken, Dança de Cortes, Smartshot
+  'dog_purify_evo_cyberus', 'arsenal_expandido_evo_override', 'range_up_evo_fists_bullet_time',
+  'pistol_drone_evo_catforce', 'katana_shuriken_evo_shurivex', 'katana_double_evo_danca_cortes',
+  'pistol_fragmentation_evo_smartshot'
 ];
