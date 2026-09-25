@@ -1,4 +1,5 @@
 import cardArtIds from '../../data/cardArt.js';
+import AssetManager from '../systems/AssetManager.js';
 
 export default class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -7,6 +8,7 @@ export default class PreloadScene extends Phaser.Scene {
 
   preload() {
     this._buildLoadingBar();
+    AssetManager.preload(this);
 
     // arte das cartas normais (comuns/épicas/raras/evoluções) — só carrega
     cardArtIds.forEach((id) => this.load.image(`card_${id}`, `assets/ui/cards/${id}.png`));
@@ -255,6 +257,8 @@ export default class PreloadScene extends Phaser.Scene {
   }
 
   create() {
+    AssetManager.createAnimations(this);
+
     // as artes das cartas de arma não são pixel art, então usam filtro
     const smoothKeys = ['card_fists', 'card_katana', 'card_pistol']
       .concat(cardArtIds.map((id) => `card_${id}`));
