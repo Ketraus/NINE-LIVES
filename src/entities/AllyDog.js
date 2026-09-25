@@ -52,7 +52,11 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
       this.setVelocity(0, 0);
       return;
     }
-    if (this.anims.currentAnim?.key !== 'purification-walk') this.play('purification-walk');
+    if (dx > 0) this.setFlipX(true);
+    else if (dx < 0) this.setFlipX(false);
+    if (!this.anims.isPlaying || this.anims.currentAnim?.key !== 'purification-walk') {
+      this.play('purification-walk');
+    }
     const dist = Math.sqrt(distSq);
     this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
   }

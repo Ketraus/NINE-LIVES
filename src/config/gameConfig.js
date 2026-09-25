@@ -31,6 +31,9 @@ export const gameConfig = {
   height: BASE_HEIGHT,
   backgroundColor: '#111318',
   pixelArt: true,
+  render: {
+    roundPixels: true
+  },
   // registra os pipelines custom (efeitos "retrô" do menu — ver src/fx/)
   pipeline: {
     CrtWave: CrtWavePipeline,

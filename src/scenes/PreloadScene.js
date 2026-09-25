@@ -266,6 +266,15 @@ export default class PreloadScene extends Phaser.Scene {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 
+    // Sprites de gameplay são pixel art e podem ser desenhados em escalas
+    // fracionárias; NEAREST mantém os pixels nítidos nesses casos.
+    [
+      'gato_drone',
+      'gato_drone_catforce',
+      'asset_purification_idle',
+      'asset_purification_walk'
+    ].forEach((key) => this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST));
+
     // animações do gato jogável (ver Player._updateAnimation) — criadas uma
     this.anims.create({
       key: 'player-idle',
