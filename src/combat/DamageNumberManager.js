@@ -84,6 +84,20 @@ function _finish(scene, text) {
   }
 }
 
+function _motionFor(style, isCritical) {
+  const angle = Phaser.Math.FloatBetween(-2.55, -0.6);
+  const speed = Phaser.Math.FloatBetween(isCritical ? 42 : 26, isCritical ? 62 : 44);
+  const duration = Phaser.Math.Between(isCritical ? 560 : 500, isCritical ? 720 : 660);
+  return {
+    velocityX: Math.cos(angle) * speed,
+    velocityY: Math.sin(angle) * speed,
+    gravity: Phaser.Math.FloatBetween(isCritical ? 48 : 34, isCritical ? 68 : 52),
+    duration,
+    delay: Phaser.Math.Between(0, isCritical ? 18 : 34),
+    popScale: isCritical ? style.scale * 1.12 : style.scale
+  };
+}
+
 export default class DamageNumberManager {
   /**
    * Mostra o dano efetivamente aplicado à vida do alvo.
@@ -102,7 +116,10 @@ export default class DamageNumberManager {
     const startX = x + spreadX;
     const startY = y - 10 + spreadY;
     const style = _styleFor(target, feedback);
-    const rise = Phaser.Math.Between(style.rise - 4, style.rise + 4);
+    const motion = _motionFor(style, feedback.isCritical);
+    const initialScale = feedback.isCritical ? style.scale * 0.48 : style.scale * 0.62;
+    const launchX = startX;
+    const launchY = startY;
 
     const text = scene.add.text(startX, startY, String(roundedDamage), {
       fontFamily: PIXEL_FONT,
@@ -117,27 +134,34 @@ export default class DamageNumberManager {
       .setOrigin(0.5, 0.65)
       .setDepth(BASE_DEPTH)
       .setAlpha(1)
-      .setScale(0.62 * style.scale)
+      .setScale(initialScale)
       .setRotation(Phaser.Math.FloatBetween(-0.035, 0.035));
 
     _getSet(scene).add(text);
 
     scene.tweens.add({
       targets: text,
-      scale: style.scale,
-      duration: 85,
+      scale: motion.popScale,
+      duration: feedback.isCritical ? 115 : 85,
+      delay: motion.delay,
       ease: 'Back.easeOut',
       onComplete: () => {
         // A cena pode ter sido reiniciada durante o tween.
         if (text.scene !== scene || !scene.sys.isActive()) return;
 
         scene.tweens.add({
-          targets: text,
-          y: startY - rise,
-          alpha: 0,
-          scale: style.scale * 0.9,
-          duration: 470,
+          targets: { progress: 0 },
+          progress: 1,
+          duration: motion.duration,
           ease: 'Cubic.easeOut',
+          onUpdate: (tween, target) => {
+            if (text.scene !== scene || !scene.sys.isActive()) return;
+            const elapsed = (target.progress * motion.duration) / 1000;
+            text.x = launchX + motion.velocityX * elapsed;
+            text.y = launchY + motion.velocityY * elapsed + 0.5 * motion.gravity * elapsed * elapsed;
+            text.alpha = 1 - target.progress;
+            text.setScale(Phaser.Math.Linear(motion.popScale, style.scale * 0.9, target.progress));
+          },
           onComplete: () => _finish(scene, text)
         });
       }
