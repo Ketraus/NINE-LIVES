@@ -105,7 +105,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
-    const radius = this.width / 2 - 2;
+    // A arte ocupa só parte do frame 64x64. Usar o frame inteiro como corpo
+    // fazia o inimigo causar dano antes de tocar visualmente no jogador.
+    const hitboxScale = def.hitboxScale ?? 0.32;
+    const radius = Math.min(this.width, this.height) * hitboxScale;
     this.body.setCircle(radius, this.width / 2 - radius, this.height / 2 - radius);
     this.setDepth(9);
 
@@ -472,7 +475,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const hitY = this.y;
     const appliedDamage = this.healthSystem.takeDamage(this.bleedTickDamage);
     if (appliedDamage > 0) {
-      DamageNumberManager.show(this.scene, hitX, hitY, appliedDamage, this);
+      DamageNumberManager.show(this.scene, hitX, hitY, appliedDamage, this, { kind: 'bleed' });
     }
   }
 

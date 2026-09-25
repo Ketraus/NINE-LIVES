@@ -37,7 +37,7 @@ export default class AuraShockAbility {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
       if (dist <= effectiveRadius) {
-        DamageSystem.applyWeaponHit(enemy, this.def.damage, player, time);
+        DamageSystem.applyWeaponHit(enemy, this.def.damage, player, time, { kind: 'ability', color: AURA_COLOR });
         hitSomeone = true;
       }
     });

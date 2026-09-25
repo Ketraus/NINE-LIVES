@@ -197,7 +197,10 @@ export default class AllyDogAbility {
       if (normalizedAngle > halfArc) return;
 
       // sem `source`: dano do Cyberus, mesmo motivo da granada/contato não
-      DamageSystem.applyWeaponHit(enemy, this.evoDef.swordDamage, undefined, scene.time.now);
+      DamageSystem.applyWeaponHit(enemy, this.evoDef.swordDamage, undefined, scene.time.now, {
+        kind: 'ability',
+        color: this.evoDef.swordTint
+      });
     });
   }
 
@@ -258,7 +261,10 @@ export default class AllyDogAbility {
       if (distToBeam > this.evoDef.cannonWidth) return;
 
       // sem `source`: dano do Cyberus, mesmo motivo da granada/espada não
-      DamageSystem.applyWeaponHit(enemy, this.evoDef.cannonDamage, undefined, time);
+      DamageSystem.applyWeaponHit(enemy, this.evoDef.cannonDamage, undefined, time, {
+        kind: 'ability',
+        color: CANNON_COLOR_CORE
+      });
     });
   }
 
@@ -333,7 +339,10 @@ export default class AllyDogAbility {
       const dist = Phaser.Math.Distance.Between(zone.x, zone.y, enemy.x, enemy.y);
       if (dist <= this.evoDef.grenadeRadius) {
         // sem `source`: dano do Cyberus, igual ao contato normal do
-        DamageSystem.applyWeaponHit(enemy, this.evoDef.grenadeDamage, undefined, time);
+        DamageSystem.applyWeaponHit(enemy, this.evoDef.grenadeDamage, undefined, time, {
+          kind: 'explosion',
+          color: FLAME_COLOR
+        });
       }
     });
   }

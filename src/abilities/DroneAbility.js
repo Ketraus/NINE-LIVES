@@ -110,7 +110,10 @@ export default class DroneAbility {
       if (hitSet.has(enemy)) return;
       hitSet.add(enemy);
 
-      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player);
+      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player, scene.time.now, {
+        kind: 'ability',
+        color: this.laser ? this.laserColor : BASE_BULLET_COLOR
+      });
       if (bullet.getData('pierce')) {
         this._spawnHitSpark(this.scene, enemy.x, enemy.y, bullet.getData('color'));
       } else {

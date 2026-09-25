@@ -70,7 +70,6 @@ export default [
     "value": 0.1,
     "evolvesInto": "armor_up_evo_shield"
   },
-
   // ---------- cartas base épicas: raras de aparecer, qualquer classe pode
   // receber (ver RunManager._pickWeightedUpgrades pro peso de sorteio) ----------
   {

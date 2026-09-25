@@ -54,7 +54,12 @@ export default class SlamAbility {
     enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
-      if (dist <= radius) DamageSystem.applyWeaponHit(enemy, this.def.damage, player);
+      if (dist <= radius) {
+        DamageSystem.applyWeaponHit(enemy, this.def.damage, player, undefined, {
+          kind: 'ability',
+          color: this.evolved ? TERREMOTO_SHOCKWAVE_COLOR : 0xff5555
+        });
+      }
     });
     this._showFx(scene, player, radius);
 
@@ -91,7 +96,12 @@ export default class SlamAbility {
         const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
         if (dist > radius) return;
 
-        if (damage > 0) DamageSystem.applyWeaponHit(enemy, damage, player);
+        if (damage > 0) {
+          DamageSystem.applyWeaponHit(enemy, damage, player, now, {
+            kind: 'ability',
+            color: TERREMOTO_SHOCKWAVE_COLOR
+          });
+        }
 
         // direção radial (jogador -> inimigo), já normalizada — mesma
         const dirX = dist > 0 ? (enemy.x - player.x) / dist : 1;

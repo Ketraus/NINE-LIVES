@@ -31,6 +31,8 @@ export default class RunState {
   resetUpgrades() {
     // multiplicadores/bônus que upgrades (cartas) alteram
     this.damageMultiplier = 0;
+    this.criticalChance = 0.05;
+    this.criticalDamageMultiplier = 1.65;
     this.speedMultiplier = 0;
     this.cooldownMultiplier = 0; // fração de redução, ex 0.15 = -15%
     this.rangeMultiplier = 0;

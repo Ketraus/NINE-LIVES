@@ -95,7 +95,10 @@ export default class TornadoAbility {
       if (!enemy?.active) return;
       const dist = Phaser.Math.Distance.Between(tornado.x, tornado.y, enemy.x, enemy.y);
       if (dist <= this.def.radius) {
-        DamageSystem.applyWeaponHit(enemy, this.def.damage, this.player, time);
+        DamageSystem.applyWeaponHit(enemy, this.def.damage, this.player, time, {
+          kind: 'ability',
+          color: TORNADO_COLOR
+        });
         hitSomeone = true;
       }
     });

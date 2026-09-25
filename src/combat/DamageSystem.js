@@ -38,10 +38,12 @@ export default class DamageSystem {
   }
 
   // Dano direto de um ataque de arma (sem cooldown próprio — quem
-  static applyWeaponHit(target, damage, source, nowMs) {
+  static applyWeaponHit(target, damage, source, nowMs, feedback = {}) {
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (this._rollDodge(target)) return false;
+    const isCritical = !!source?.runState && Math.random() < (source.runState.criticalChance || 0);
+    if (isCritical) damage *= source.runState.criticalDamageMultiplier || 1.65;
     // janela vulnerável do Minotauro pós-investida (ver Enemy._endCharge) —
     damage *= target.vulnerableDamageMultiplier || 1;
     // guardado ANTES de takeDamage: se este golpe matar o alvo, o
@@ -51,7 +53,7 @@ export default class DamageSystem {
     const hitY = target.y;
     const appliedDamage = target.healthSystem.takeDamage(finalDamage);
     if (appliedDamage > 0 && target.def) {
-      DamageNumberManager.show(targetScene, hitX, hitY, appliedDamage, target);
+      DamageNumberManager.show(targetScene, hitX, hitY, appliedDamage, target, { ...feedback, isCritical });
     }
     target.playHitReaction?.();
     // som de impacto genérico — toca sempre que um golpe de arma/ataque

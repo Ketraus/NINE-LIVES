@@ -60,7 +60,10 @@ export default class ShurikenAbility {
       if (hitSet.has(enemy)) return;
       hitSet.add(enemy);
 
-      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player, scene.time.now);
+      DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player, scene.time.now, {
+        kind: 'ability',
+        color: this.evolved ? this.chainColor : SHURIKEN_COLOR
+      });
 
       // Shurivex: ainda tem 1 salto disponível -> procura um segundo alvo
       const chainsLeft = bullet.getData('chainsLeft');

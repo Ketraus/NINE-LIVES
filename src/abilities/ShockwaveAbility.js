@@ -48,7 +48,10 @@ export default class ShockwaveAbility {
       // não atravessa: para no primeiro inimigo que acertar em vez de
       if (!wave.active) return;
 
-      const hit = DamageSystem.applyWeaponHit(enemy, wave.getData('damage'), player, scene.time.now);
+      const hit = DamageSystem.applyWeaponHit(enemy, wave.getData('damage'), player, scene.time.now, {
+        kind: 'ability',
+        color: SHOCKWAVE_COLOR
+      });
       if (hit && this.def.knockback) {
         const dir = wave.getData('dir');
         enemy.applyKnockback(dir.x, dir.y, this.def.knockback, scene.time.now);
@@ -67,7 +70,10 @@ export default class ShockwaveAbility {
       if (enemy === hitEnemy || !enemy.active) return;
       const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
       if (dist <= this.explosionRadius) {
-        DamageSystem.applyWeaponHit(enemy, dmg, player, scene.time.now);
+        DamageSystem.applyWeaponHit(enemy, dmg, player, scene.time.now, {
+          kind: 'explosion',
+          color: BLASTIX_EXPLOSION_COLOR
+        });
       }
     });
     this._showExplosionFx(scene, x, y);
