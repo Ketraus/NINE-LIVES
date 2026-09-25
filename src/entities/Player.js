@@ -314,6 +314,16 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  pauseVisual() {
+    if (!this.active) return;
+    this.anims.pause();
+  }
+
+  resumeVisual() {
+    if (!this.active) return;
+    this.anims.resume();
+  }
+
   // Ataque 100% automático: o jogador só controla o movimento.
   _autoAttack() {
     this.weaponManager?.tryAttack(this);

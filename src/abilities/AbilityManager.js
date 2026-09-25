@@ -90,4 +90,16 @@ export default class AbilityManager {
   update(time) {
     this.active.forEach((ability) => ability.update(time, this.player, this.enemyGroup, this.scene));
   }
+
+  pauseVisuals() {
+    this.active.forEach((ability) => {
+      ability.dog?.pauseVisual?.();
+      ability.sprite?.anims?.pause?.();
+      ability.tornadoes?.forEach((tornado) => tornado.fx?.anims?.pause?.());
+    });
+  }
+
+  resumeVisuals() {
+    this.active.forEach((ability) => ability.dog?.resumeVisual?.());
+  }
 }

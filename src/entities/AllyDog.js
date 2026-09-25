@@ -48,8 +48,9 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const distSq = dx * dx + dy * dy;
-    if (distSq === 0) {
+    if (distSq < 25) {
       this.setVelocity(0, 0);
+      this.pauseVisual();
       return;
     }
     if (dx > 0) this.setFlipX(true);
@@ -63,10 +64,19 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
 
   stop() {
     this.setVelocity(0, 0);
-    if (!this._isCyberus) {
-      this.anims.stop();
-      this.setTexture('asset_purification_idle');
-    }
+    this.pauseVisual();
+  }
+
+  pauseVisual() {
+    if (!this.active) return;
+    this.anims.stop();
+    if (!this._isCyberus) this.setTexture('asset_purification_idle');
+  }
+
+  resumeVisual() {
+    if (!this.active || this._isCyberus) return;
+    if (this.body.velocity.lengthSq() > 25) this.play('purification-walk');
+    else this.setTexture('asset_purification_idle');
   }
 
   // Feedback visual de "acabei de atacar": um pulso rápido de escala (some

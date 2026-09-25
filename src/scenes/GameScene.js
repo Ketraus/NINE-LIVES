@@ -293,11 +293,13 @@ export default class GameScene extends Phaser.Scene {
     EventBus.on('levelup-opened', () => {
       this.isPaused = true;
       this.spawnDirector.pause();
+      this._setGameplayVisualsPaused(true);
       MusicManager.duckForCards(this);
     });
     EventBus.on('levelup-closed', () => {
       this.isPaused = false;
       this.spawnDirector.resume();
+      this._setGameplayVisualsPaused(false);
       MusicManager.restoreFromCards(this);
     });
 
@@ -305,11 +307,24 @@ export default class GameScene extends Phaser.Scene {
     EventBus.on('pause-opened', () => {
       this.isPaused = true;
       this.spawnDirector.pause();
+      this._setGameplayVisualsPaused(true);
     });
     EventBus.on('pause-closed', () => {
       this.isPaused = false;
       this.spawnDirector.resume();
+      this._setGameplayVisualsPaused(false);
     });
+  }
+
+  _setGameplayVisualsPaused(paused) {
+    if (paused) this.player?.pauseVisual?.();
+    else this.player?.resumeVisual?.();
+    this.enemySpawner?.group?.getChildren().forEach((enemy) => {
+      if (paused) enemy.pauseVisual?.();
+      else enemy.resumeVisual?.();
+    });
+    if (paused) this.abilityManager?.pauseVisuals();
+    else this.abilityManager?.resumeVisuals();
   }
 
   _buildInput() {

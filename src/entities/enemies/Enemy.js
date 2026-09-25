@@ -406,6 +406,19 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.anims.timeScale = Phaser.Math.Clamp(1 - (this._crowding || 0) * 0.75, 0.25, 1);
   }
 
+  pauseVisual() {
+    if (!this.active || !this.idleTexture) return;
+    this.anims.stop();
+    this.setTexture(this.idleTexture);
+    this.isIdleVisual = true;
+  }
+
+  resumeVisual() {
+    if (!this.active || !this.body || !this.idleTexture) return;
+    this.isIdleVisual = false;
+    this.updateAnimState();
+  }
+
   chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {
     if (!this.active || this.healthSystem.isDead()) return;
 
