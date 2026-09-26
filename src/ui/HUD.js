@@ -1,4 +1,5 @@
 import EventBus from '../systems/EventBus.js';
+import MusicManager from '../systems/MusicManager.js';
 
 const SHIELD_BAR_COLOR = 0xffd166; // dourado — precisa contrastar com o gradiente ciano->vermelho da vida,…
 const SHIELD_FILL_ALPHA = 0.95; // escudo cobre a barra de vida por cima, então precisa ser bem mais opa…
@@ -46,12 +47,27 @@ const XP_FILL_ALPHA = 0.85;
 const SHARP_TIP_FLAT = 2;
 
 // vinheta de vida baixa: bordas da tela escurecem/avermelham progressiv…
-const LOW_HP_THRESHOLD = 0.3; // só aparece abaixo de 30% de vida
-const LOW_HP_MAX_ALPHA = 0.55; // opacidade da vinheta com vida quase zerada
+const LOW_HP_THRESHOLD = 0.6; // começa a nascer (bem suave) abaixo de 60% de vida
+const LOW_HP_MAX_ALPHA = 0.85; // opacidade da vinheta com vida quase zerada
+const LOW_HP_CURVE_POWER = 2; // ease-in: quase 0 logo abaixo do threshold, sobe rápido só perto de 0 hp
 const LOW_HP_FADE_MS = 300; // suaviza entrada/saída ao cruzar o threshold
 const LOW_HP_PULSE_MAX_AMP = 0.15; // variação de opacidade do pulso
 const LOW_HP_PULSE_MS_FAR = 900; // duração do pulso logo abaixo do threshold
 const LOW_HP_PULSE_MS_NEAR = 420; // duração do pulso com vida quase zerada (mais urgente)
+
+// sequência de morte: vinheta preta "engolindo" a tela (casada com a
+// duração de sfx_death_shutdown, ~2.8s) -> silêncio total -> "Você Morreu"
+const DEATH_SOUND_MS = 2800; // duração de sfx_death_shutdown
+const DEATH_SILENCE_MS = 500; // silêncio total depois que o som acaba, antes do texto
+const DEATH_MUSIC_FADE_MS = 250; // música corta quase junto (tela já apagou)
+
+// colapso estilo monitor CRT desligando: cortinas pretas fecham na vertical
+// até sobrar só uma linha fina brilhante, que então encolhe na horizontal
+// até virar um ponto e sumir — tudo isso acontece bem no início do som
+const DEATH_COLLAPSE_V_MS = 300; // cortinas fechando (vertical)
+const DEATH_COLLAPSE_H_MS = 220; // linha encolhendo até um ponto (horizontal)
+const DEATH_LINE_HEIGHT = 4; // espessura da linha brilhante
+const DEATH_LINE_COLOR = 0x4fd1ff; // mesmo ciano usado na barra de vida/HUD
 
 // layout vertical do resto da HUD. Escudo não tem mais linha própria —
 const XP_Y = 16 + HP_PANEL_H + 6;
@@ -72,10 +88,12 @@ export default class HUD {
     this._buildWinText();
     this._buildLowHpVignette();
 
-    // gameOverGroup/winGroup são containers à parte (ver _buildGameOverText
+    // gameOverGroup/winGroup/deathOverlayGroup são containers à parte (ver
+    // _buildGameOverText/_buildDeathOverlay), cada um com sua própria depth
     this._applyZoomCompensation(this.uiContainer);
     this._applyZoomCompensation(this.gameOverGroup);
     this._applyZoomCompensation(this.winGroup);
+    this._applyZoomCompensation(this.deathOverlayGroup);
 
     this._bindEvents();
   }
@@ -218,8 +236,8 @@ export default class HUD {
       const cy = h / 2;
       const maxR = Math.sqrt(cx * cx + cy * cy);
       const grad = ctx.createRadialGradient(cx, cy, maxR * 0.45, cx, cy, maxR);
-      grad.addColorStop(0, 'rgba(120,0,0,0)');
-      grad.addColorStop(1, 'rgba(120,0,0,0.9)');
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, 'rgba(0,0,0,0.9)');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
       canvasTexture.refresh();
@@ -232,12 +250,53 @@ export default class HUD {
       .setAlpha(0);
     this._lowHpActive = false;
     this.uiContainer.add(this.lowHpVignette);
+
+    this._buildDeathOverlay(w, h);
+  }
+
+  // Retângulo preto cobrindo a tela toda (fallback/base), mais duas
+  // "cortinas" pretas e uma linha fina brilhante que fazem o efeito de
+  // monitor CRT desligando (ver player-died). Container próprio (não dentro
+  // de uiContainer, que tem depth 0 — jogador/inimigos têm depth maior que
+  // isso e apareceriam por cima do preto) com depth alta o suficiente pra
+  // ficar acima de tudo do gameplay, mas abaixo do texto "Você Morreu"
+  // (gameOverGroup, depth 200).
+  _buildDeathOverlay(w, h) {
+    this.deathOverlayGroup = this.scene.add.container(0, 0).setDepth(195);
+    this.deathOverlay = this.scene.add
+      .rectangle(w / 2, h / 2, w, h, 0x000000, 1)
+      .setScrollFactor(0)
+      .setAlpha(0);
+
+    const halfCurtainH = h / 2 - DEATH_LINE_HEIGHT / 2;
+    this.deathCurtainTop = this.scene.add
+      .rectangle(0, 0, w, halfCurtainH, 0x000000, 1)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setScale(1, 0);
+    this.deathCurtainBottom = this.scene.add
+      .rectangle(0, h, w, halfCurtainH, 0x000000, 1)
+      .setOrigin(0, 1)
+      .setScrollFactor(0)
+      .setScale(1, 0);
+    this.deathCollapseLine = this.scene.add
+      .rectangle(w / 2, h / 2, w, DEATH_LINE_HEIGHT, DEATH_LINE_COLOR, 1)
+      .setScrollFactor(0)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0);
+
+    this.deathOverlayGroup.add([
+      this.deathOverlay,
+      this.deathCurtainTop,
+      this.deathCurtainBottom,
+      this.deathCollapseLine
+    ]);
   }
 
   // ratio = vida atual/máxima (0..1). Some suavemente acima do threshold;
   // abaixo dele, entra num pulso lento que acelera conforme a vida cai.
   _updateLowHpVignette(ratio) {
-    const belowThreshold = ratio > 0 && ratio <= LOW_HP_THRESHOLD;
+    const belowThreshold = ratio <= LOW_HP_THRESHOLD;
     this.scene.tweens.killTweensOf(this.lowHpVignette);
 
     if (!belowThreshold) {
@@ -252,7 +311,11 @@ export default class HUD {
     }
 
     this._lowHpActive = true;
-    const intensity = 1 - ratio / LOW_HP_THRESHOLD; // 0 no threshold, 1 quase morrendo
+    // s = 0 no threshold (entrando), s = 1 morrendo. Elevar s (não ratio/threshold
+    // direto) é o que garante o começo bem suave — elevar a proporção restante
+    // rampa rápido logo na entrada, que era o problema da versão anterior.
+    const s = 1 - ratio / LOW_HP_THRESHOLD;
+    const intensity = Math.pow(s, LOW_HP_CURVE_POWER);
     const baseAlpha = intensity * LOW_HP_MAX_ALPHA;
     const pulseAmp = intensity * LOW_HP_PULSE_MAX_AMP;
     const pulseMs = Phaser.Math.Linear(LOW_HP_PULSE_MS_FAR, LOW_HP_PULSE_MS_NEAR, intensity);
@@ -423,7 +486,52 @@ export default class HUD {
     });
 
     EventBus.on('player-died', () => {
-      this.gameOverGroup.setVisible(true);
+      // congela o pulso de vida baixa exatamente como estava — sem resetar
+      // alpha, então o corte pro preto não dá aquele "flash" de volta ao normal
+      this.scene.tweens.killTweensOf(this.lowHpVignette);
+      this._lowHpActive = false;
+
+      this.scene.sound.play('sfx_death_shutdown', { volume: 0.9 });
+      MusicManager.stop(this.scene, DEATH_MUSIC_FADE_MS);
+
+      // monitor CRT desligando: cortinas fecham na vertical até sobrar só
+      // a linha fina brilhante, que aí encolhe na horizontal até um ponto
+      this.deathOverlay.setAlpha(0);
+      this.deathCurtainTop.setScale(1, 0);
+      this.deathCurtainBottom.setScale(1, 0);
+      this.deathCollapseLine.setScale(1, 1).setAlpha(0);
+
+      this.scene.tweens.add({
+        targets: [this.deathCurtainTop, this.deathCurtainBottom],
+        scaleY: 1,
+        duration: DEATH_COLLAPSE_V_MS,
+        ease: 'Cubic.easeIn'
+      });
+      this.scene.tweens.add({
+        targets: this.deathCollapseLine,
+        alpha: 1,
+        duration: DEATH_COLLAPSE_V_MS,
+        ease: 'Cubic.easeIn',
+        onComplete: () => {
+          // linha fina formada -> agora encolhe até virar um ponto e sumir
+          this.scene.tweens.add({
+            targets: this.deathCollapseLine,
+            scaleX: 0,
+            alpha: 0,
+            duration: DEATH_COLLAPSE_H_MS,
+            ease: 'Cubic.easeIn',
+            onComplete: () => this.deathOverlay.setAlpha(1) // trava preto sólido (segurança)
+          });
+        }
+      });
+
+      // em paralelo: som toca até o fim, silêncio, só então o texto
+      this.scene.time.delayedCall(DEATH_SOUND_MS, () => {
+        this.scene.time.delayedCall(DEATH_SILENCE_MS, () => {
+          this.gameOverGroup.setAlpha(0).setVisible(true);
+          this.scene.tweens.add({ targets: this.gameOverGroup, alpha: 1, duration: 400 });
+        });
+      });
     });
 
     EventBus.on('player-won', () => {
@@ -442,6 +550,13 @@ export default class HUD {
       this.scene.tweens.killTweensOf(this.lowHpVignette);
       this.lowHpVignette.setAlpha(0);
       this._lowHpActive = false;
+      this.scene.tweens.killTweensOf(this.deathOverlay);
+      this.deathOverlay.setAlpha(0);
+      this.scene.tweens.killTweensOf([this.deathCurtainTop, this.deathCurtainBottom, this.deathCollapseLine]);
+      this.deathCurtainTop.setScale(1, 0);
+      this.deathCurtainBottom.setScale(1, 0);
+      this.deathCollapseLine.setScale(1, 1).setAlpha(0);
+      this.gameOverGroup.setAlpha(1);
     });
   }
 

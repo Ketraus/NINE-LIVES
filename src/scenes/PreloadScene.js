@@ -143,6 +143,7 @@ export default class PreloadScene extends Phaser.Scene {
 
     // som ao coletar um orb de xp (ver GameScene, overlap player x xpOrbGro…
     this.load.audio('sfx_xp_collect', 'assets/sfx/xp_collect.mp3');
+    this.load.audio('sfx_death_shutdown', 'assets/sfx/death_shutdown.mp3');
 
     // som genérico de evolução — toca em QUALQUER carta de evolução
     this.load.audio('sfx_evolution_effect', 'assets/sfx/evolution_effect.mp3');
