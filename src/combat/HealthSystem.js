@@ -26,9 +26,15 @@ export default class HealthSystem {
   }
 
   heal(amount) {
-    if (this.dead) return;
+    if (this.dead || amount <= 0) return 0;
+
+    const appliedHeal = Math.min(this.maxHp - this.current, amount);
     this.current = Math.min(this.maxHp, this.current + amount);
     this.onChange(this.current, this.maxHp);
+
+    // Retorna a cura que realmente entrou na vida (útil pro feedback
+    // visual do lifesteal não mostrar número maior que o que encheu).
+    return appliedHeal;
   }
 
   increaseMax(amount, { healToFull = false } = {}) {

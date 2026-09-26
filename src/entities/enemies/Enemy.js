@@ -164,6 +164,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // sinal de crowding do SwarmSystem (ver chase()/updateAnimState()),
     // começa em 0 (sozinho) até o 1º chase() calcular o valor real
     this._crowding = 0;
+    // intenção de movimento (ver _moveTo/updateAnimState) — começa parado
+    // até o 1º chase() decidir uma velocidade de verdade
+    this._wantsToMove = false;
     this.idleTexture = def.idleTexture || null;
     this.isIdleVisual = false;
     // Versões SEM machado (Machado Arremessado, ver _launchAxe/
@@ -302,6 +305,18 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   // Move o inimigo por um frame. IA "principal" continua sendo perseguir
+  // Wrapper de setVelocity: guarda a INTENÇÃO de movimento (_wantsToMove)
+  // no exato instante em que decidimos a velocidade, em vez de inferir se
+  // o inimigo "está andando" relendo this.body.velocity depois. Ler a
+  // velocity de volta ficava pouco confiável logo após pausar/retomar o
+  // jogo (physics.pause()/resume()) — o valor podia não refletir mais a
+  // intenção real, e updateAnimState() acabava travando no idle enquanto
+  // o inimigo continuava se deslocando (bug do "deslizando parado").
+  _moveTo(vx, vy) {
+    this.setVelocity(vx, vy);
+    this._wantsToMove = vx !== 0 || vy !== 0;
+  }
+
   // Ajusta flipX pra virar o sprite conforme a direção horizontal do
   updateFacing() {
     if (!this.active || !this.body) return; // pode já ter morrido dentro do próprio chase() (ex.: Exploder)
@@ -377,8 +392,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Troca entre a animação de andar e a textura parada (idle) conforme a
   updateAnimState() {
     if (!this.active || !this.body || !this.idleTexture) return;
-    const speed = Math.hypot(this.body.velocity.x, this.body.velocity.y);
-    if (speed < 5) {
+    if (!this._wantsToMove) {
       if (!this.isIdleVisual) {
         this.anims.stop();
         this.setTexture(this.idleTexture);
@@ -415,7 +429,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   resumeVisual() {
     if (!this.active || !this.body || !this.idleTexture) return;
-    this.isIdleVisual = false;
+    // NÃO zera isIdleVisual aqui antes de chamar updateAnimState(): ele
+    // precisa continuar true (do pauseVisual()) pra updateAnimState()
+    // reconhecer a transição idle->andando e chamar anims.play() de novo.
+    // Zerar aqui ANTES fazia o guard "if (this.isIdleVisual)" lá dentro
+    // já dar falso, então o anims.play(walkAnim) nunca era chamado — o
+    // sprite ficava preso na textura idle (parado) pro resto da run,
+    // mesmo com o inimigo se movendo normalmente por baixo (_wantsToMove).
     this.updateAnimState();
   }
 
@@ -442,14 +462,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     if (nowMs < this.knockbackUntil) return; // ainda sendo empurrado, não sobrescreve a velocity
     if (isParalyzed) {
-      this.setVelocity(0, 0); // paralisado: para no lugar, não persegue
+      this._moveTo(0, 0); // paralisado: para no lugar, não persegue
       return;
     }
 
     const speed = this.def.speed * speedMultiplier;
 
     if (moveDir) {
-      this.setVelocity(moveDir.x * speed, moveDir.y * speed);
+      this._moveTo(moveDir.x * speed, moveDir.y * speed);
       // Sinal de "quão lotado" (0..1, ver SwarmSystem.computeMoveDir) — a
       // velocidade acima é SEMPRE cheia (o vetor é normalizado ali dentro),
       // então é esse número, não a velocity, que updateAnimState() usa
@@ -465,7 +485,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const distSq = dx * dx + dy * dy;
     if (distSq === 0) return;
     const dist = Math.sqrt(distSq);
-    this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+    this._moveTo((dx / dist) * speed, (dy / dist) * speed);
   }
 
   // Aplica (ou reaplica) Sangramento — carta "Hemorragia", evolução da
@@ -496,7 +516,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   applyKnockback(dirX, dirY, force, nowMs, durationMs = 130) {
     if (!this.active || this.healthSystem.isDead()) return;
     const resistance = this.def.knockbackResistance ?? 1;
-    this.setVelocity(dirX * force * resistance, dirY * force * resistance);
+    this._moveTo(dirX * force * resistance, dirY * force * resistance);
     this.knockbackUntil = nowMs + durationMs;
   }
 
@@ -544,7 +564,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.sealerMoveDir = this._decideSealerMoveDir(target, radius);
     }
     const speed = this.def.speed * speedMultiplier;
-    this.setVelocity(this.sealerMoveDir.x * speed, this.sealerMoveDir.y * speed);
+    this._moveTo(this.sealerMoveDir.x * speed, this.sealerMoveDir.y * speed);
   }
 
   // Uma "decisão" do Sealer: se o jogador estiver longe, na maior parte
@@ -646,7 +666,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Estado do Exploder (só roda quando def.explodes = true). Retorna
   _updateExplosive(target, nowMs) {
     if (this.explodeState === 'preparing') {
-      this.setVelocity(0, 0);
+      this._moveTo(0, 0);
       if (nowMs >= this.explodePrepUntil) this._explode(target, nowMs);
       return true;
     }
@@ -681,8 +701,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist === 0) { this.setVelocity(0, 0); return; }
-    this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
+    if (dist === 0) { this._moveTo(0, 0); return; }
+    this._moveTo((dx / dist) * speed, (dy / dist) * speed);
   }
 
   // Início da arrancada ("XANBLAU"): flash branco + esticada rápida,
@@ -722,7 +742,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _startPreparing(nowMs) {
     this.explodeState = 'preparing';
     this.explodePrepUntil = nowMs + this.def.explodePrepMs;
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this.scene.tweens.killTweensOf(this);
     this.setAlpha(1);
     this.scene.tweens.add({
@@ -785,7 +805,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Início do ataque de mísseis: escolhe a posição do jogador AGORA (não
   _startEliteMissiles(target, nowMs) {
     this.eliteState = 'missile_telegraph';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
 
     // Lock: o Elite "trava a mira" no jogador — toca assim que o
@@ -805,7 +825,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // Revela uma área vermelha por vez (a cada eliteMissileStepGapMs) —
   _updateMissileTelegraph(target, nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     if (this.eliteMissileRevealed < this.eliteMissilePoints.length && nowMs >= this.eliteMissileNextStepAt) {
       this.eliteMissileRevealed += 1;
       this.eliteMissileNextStepAt = nowMs + this.def.eliteMissileStepGapMs;
@@ -875,7 +895,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // Mísseis voando de verdade: interpola cada bola do Elite até a área
   _updateMissileLaunch(target, nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawMissileTelegraph(nowMs);
 
     const progress = Math.min(
@@ -915,13 +935,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Início do golpe corpo a corpo: aviso em vermelho ao redor do próprio
   _startEliteMelee(target, nowMs) {
     this.eliteState = 'melee_telegraph';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     this.eliteMeleeTelegraphUntil = nowMs + this.def.eliteMeleeTelegraphMs;
   }
 
   _updateMeleeTelegraph(target, nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawMeleeTelegraph(nowMs);
     if (nowMs >= this.eliteMeleeTelegraphUntil) this._startEliteMeleeSwing(nowMs);
   }
@@ -934,7 +954,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateMeleeSwing(target, nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawMeleeTelegraph(nowMs);
     if (nowMs >= this.eliteMeleeSwingDetonateAt) this._resolveMelee(target, nowMs);
   }
@@ -1004,7 +1024,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Para, trava a direção da investida NO INSTANTE ATUAL do jogador (o
   _startCharge(target, nowMs) {
     this.bossState = 'charge_telegraph';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     const len = Math.hypot(dx, dy) || 1;
@@ -1016,7 +1036,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateChargeTelegraph(nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawChargeTelegraph(nowMs);
     if (nowMs >= this.bossChargeTelegraphUntil) this._launchCharge(nowMs);
   }
@@ -1027,7 +1047,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bossTelegraphGraphics.clear();
     this.bossChargeHasHit = false;
     this.bossChargeDashUntil = nowMs + this.def.chargeDurationMs;
-    this.setVelocity(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
+    this._moveTo(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
     this.scene.cameras.main.shake(CHARGE_LAUNCH_SHAKE_MS, CHARGE_LAUNCH_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
     // passos em loop acompanhando o dash — acelerados (CHARGE_FOOTSTEPS_RATE)
@@ -1041,7 +1061,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // Mantém a velocidade reta em linha (chase() normal não roda neste
   _updateChargeDash(target, nowMs) {
-    this.setVelocity(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
+    this._moveTo(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
     if (!this.bossChargeHasHit) {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
       if (dist <= this.def.chargeHitRadius && target.active && !target.healthSystem?.isDead()) {
@@ -1056,14 +1076,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Corte (evolução da Investida): IMEDIATAMENTE ao fim da investida,
   _startSwing(nowMs) {
     this.bossState = 'charge_swing_telegraph';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this.bossSwingUntil = nowMs + this.def.chargeSwingTelegraphMs;
     this._stopChargeFootsteps(); // parou de correr, para os passos
     this.scene.sound.play('sfx_minotaur_swing_attack', { volume: 0.8 });
   }
 
   _updateChargeSwingTelegraph(target, nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawSwingTelegraph(nowMs);
     if (nowMs >= this.bossSwingUntil) this._resolveSwing(target, nowMs);
   }
@@ -1082,7 +1102,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Fim da investida+corte: para, fica "atordoado" (tint +
   _endCharge(nowMs) {
     this.bossState = 'charge_vulnerable';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this.setTint(CHARGE_VULNERABLE_TINT);
     // mantém _currentStatusTint em sincronia (ver _refreshStatusTint) —
     this._currentStatusTint = CHARGE_VULNERABLE_TINT;
@@ -1092,7 +1112,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateChargeVulnerable(nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     if (nowMs >= this.bossVulnerableUntil) {
       this._refreshStatusTint(nowMs); // volta pro tint normal (ou de status, se houver)
       this.vulnerableDamageMultiplier = 1;
@@ -1130,7 +1150,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Passos 1-3: para, trava o ALVO (posição do jogador AGORA, igual à
   _startAxeThrow(target, nowMs) {
     this.bossState = 'axe_telegraph';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this.axeTargetX = target.x;
     this.axeTargetY = target.y;
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
@@ -1139,7 +1159,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateAxeTelegraph(nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawAxeTelegraph(nowMs);
     if (nowMs >= this.axeTelegraphUntil) this._launchAxe(nowMs);
   }
@@ -1395,7 +1415,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Passos 1-4: para, trava a DIREÇÃO no instante atual (igual a
   _startCleave(target, nowMs) {
     this.bossState = 'cleave_telegraph';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     const dx = target.x - this.x;
     const dy = target.y - this.y;
     this.cleaveAngle = Math.atan2(dy, dx);
@@ -1407,7 +1427,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateCleaveTelegraph(nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     const progress = Math.min((nowMs - this.cleaveTelegraphStartMs) / this.cleaveTelegraphDurationMs, 1);
     this._drawCleaveTelegraph(progress);
     if (nowMs >= this.cleaveTelegraphEndAt) this._startCleavePause(nowMs);
@@ -1434,7 +1454,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateCleavePause(target, nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawCleaveTelegraph(1); // mantém o cone no máximo durante a pausa
     if (nowMs >= this.cleavePauseEndAt) this._executeCleave(target, nowMs);
   }
@@ -1549,7 +1569,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateCleaveRecover(nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     if (nowMs >= this.cleaveRecoverEndAt) {
       this.bossState = 'chasing';
       this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.cleaveCooldownMs);
@@ -1568,7 +1588,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Passo 1: jogador detectado muito perto (ver _updateBossAbility) —
   _startStomp(nowMs) {
     this.bossState = 'stomp_raise';
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     this.stompRaiseDurationMs = this._bossTelegraph(this.def.stompRaiseMs + this.def.stompPauseMs);
     this.stompRaiseUntil = nowMs + this.stompRaiseDurationMs;
@@ -1576,7 +1596,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateStompRaise(target, nowMs) {
-    this.setVelocity(0, 0);
+    this._moveTo(0, 0);
     this._drawStompTelegraph(nowMs);
     if (nowMs >= this.stompRaiseUntil) this._resolveStomp(target, nowMs);
   }
@@ -1649,7 +1669,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Corre reto na direção sorteada em flee(), mais rápido que o normal
   _updateFlee(nowMs) {
     const speed = this.def.speed * FLEE_SPEED_MULTIPLIER;
-    this.setVelocity(this.fleeDirX * speed, this.fleeDirY * speed);
+    this._moveTo(this.fleeDirX * speed, this.fleeDirY * speed);
     if (this._isOutsideCameraView(FLEE_DESPAWN_MARGIN) || nowMs >= this.fleeMaxUntil) this._leave();
   }
 

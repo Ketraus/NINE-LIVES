@@ -75,10 +75,15 @@ export default class DamageSystem {
   }
 
   // Cura `source` em uma fração do dano que ele acabou de causar, se ele
+  // tiver a carta Sede de Sangue. Mostra o número verde de cura recebida.
   static _applyLifesteal(source, damage) {
     const fraction = source?.runState?.lifestealFraction;
     if (!fraction || !source.healthSystem || source.healthSystem.isDead()) return;
-    source.healthSystem.heal(damage * fraction);
+
+    const appliedHeal = source.healthSystem.heal(damage * fraction);
+    if (appliedHeal > 0 && source.scene) {
+      DamageNumberManager.show(source.scene, source.x, source.y, appliedHeal, source, { kind: 'heal' });
+    }
   }
 
   // Rola a chance de paralisar `target` (carta "Overcharge" — evolução do

@@ -13,6 +13,7 @@ const ABILITY_COLOR = '#8ee7ff';
 const CRITICAL_COLOR = '#ffd21f';
 const BLEED_COLOR = '#ff4d5a';
 const EXPLOSION_COLOR = '#ff9f43';
+const HEAL_COLOR = '#7dffa0';
 const STROKE_COLOR = '#16131a';
 
 const BASE_FONT_SIZE = 10;
@@ -71,6 +72,9 @@ function _styleFor(target, feedback) {
   if (feedback.kind === 'ability') {
     return { color: _cssColor(feedback.color) || ABILITY_COLOR, scale: 1.04 * bossScale, rise: 28, fontSize: 10 };
   }
+  if (feedback.kind === 'heal') {
+    return { color: HEAL_COLOR, scale: 1, rise: 22, fontSize: 10 };
+  }
   const baseColor = Math.random() < 0.45 ? '#ffffff' : NORMAL_COLOR;
   return { color: baseColor, scale: bossScale, rise: 24, fontSize: 10 };
 }
@@ -84,7 +88,19 @@ function _finish(scene, text) {
   }
 }
 
-function _motionFor(style, isCritical) {
+function _motionFor(style, isCritical, kind) {
+  if (kind === 'heal') {
+    // Simples: sobe reto, sem arco/gravidade, some no topo.
+    return {
+      velocityX: Phaser.Math.FloatBetween(-4, 4),
+      velocityY: Phaser.Math.FloatBetween(-30, -24),
+      gravity: 0,
+      duration: Phaser.Math.Between(620, 720),
+      delay: 0,
+      popScale: style.scale
+    };
+  }
+
   const angle = Phaser.Math.FloatBetween(-2.55, -0.6);
   const speed = Phaser.Math.FloatBetween(isCritical ? 42 : 26, isCritical ? 62 : 44);
   const duration = Phaser.Math.Between(isCritical ? 560 : 500, isCritical ? 720 : 660);
@@ -111,17 +127,19 @@ export default class DamageNumberManager {
     _ensureSceneCleanup(scene);
 
     const roundedDamage = Math.max(1, Math.round(damage));
+    const isHeal = feedback.kind === 'heal';
     const spreadX = Phaser.Math.Between(-7, 7);
     const spreadY = Phaser.Math.Between(-4, 5);
     const startX = x + spreadX;
     const startY = y - 10 + spreadY;
     const style = _styleFor(target, feedback);
-    const motion = _motionFor(style, feedback.isCritical);
+    const motion = _motionFor(style, feedback.isCritical, feedback.kind);
     const initialScale = feedback.isCritical ? style.scale * 0.48 : style.scale * 0.62;
     const launchX = startX;
     const launchY = startY;
+    const label = isHeal ? `+${roundedDamage}` : String(roundedDamage);
 
-    const text = scene.add.text(startX, startY, String(roundedDamage), {
+    const text = scene.add.text(startX, startY, label, {
       fontFamily: PIXEL_FONT,
       fontSize: `${style.fontSize || BASE_FONT_SIZE}px`,
       fontStyle: 'bold',
