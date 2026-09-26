@@ -74,7 +74,7 @@ const DEATH_LINE_COLOR = 0x4fd1ff; // mesmo ciano usado na barra de vida/HUD
 // uma pontinha de aberração cromática, pulsando (mesmo esquema de entrada
 // suave + pulso acelerado da vinheta, ver _updateLowHpVignette) cada vez
 // mais rápido e mais forte quanto mais perto de 0 hp. Mexe só na câmera
-// principal (ver _setupCriticalFx) — desligado o resto do tempo.
+// principal (ver _setupCameraFx) — desligado o resto do tempo.
 const CRITICAL_HP_THRESHOLD = 0.15;
 const CRITICAL_STATIC_MAX = 0.32; // intensidade do chiado com vida quase zerada
 const CRITICAL_WAVE_AMP_MAX = 0.0055; // ondulação nitidamente mais forte que a do menu
@@ -87,7 +87,7 @@ const CRITICAL_FADE_MS = 300; // suaviza entrada/saída ao cruzar o limiar
 // arremate do "monitor desligando" na morte: um estouro de chiado +
 // aberração cromática + ondulação instável (o "estalo" elétrico do
 // desligar), sincronizado com as cortinas fechando e depois zerado junto
-// com o preto sólido — ver _burstDeathFx/_resetDeathCameraFx.
+// com o preto sólido — ver _burstDeathFx/_resetCameraFx.
 const DEATH_STATIC_PEAK = 0.75;
 const DEATH_STATIC_ATTACK_MS = 70; // sobe bem rápido, quase instantâneo
 const DEATH_CHROMATIC_PEAK = 7;
@@ -109,6 +109,43 @@ const DEATH_LINE_BOUNCE_MS = 70;
 const DEATH_AFTERGLOW_SIZE = 140;
 const DEATH_AFTERGLOW_FADE_MS = 320;
 
+// tela de "Você Morreu": os mesmos filtros retrô do menu principal (ver
+// MainMenuScene._setupRetroFx) voltam bem devagar, tipo o sistema CRT
+// sendo religado depois do apagão — nada de aparecer tudo de uma vez
+// junto com o texto (ver _startGameOverFx/_applyGameOverFx). Um ruído
+// branco bem baixinho entra no mesmo ritmo, como o chiado residual de um
+// tubo ligado de novo (ver _playDeathNoise). Valores "ligado" = mesmos
+// defaults usados no menu.
+const GAMEOVER_FX_RAMP_MS = 2600;
+const GAMEOVER_BLOOM_THRESHOLD = 0.72;
+const GAMEOVER_BLOOM_RADIUS = 1.6;
+const GAMEOVER_BLOOM_INTENSITY = 0.18;
+const GAMEOVER_WAVE_AMPLITUDE = 0.0012;
+const GAMEOVER_WAVE_FREQUENCY = 9;
+const GAMEOVER_WAVE_SPEED = 0.9;
+const GAMEOVER_GHOST_DECAY = 0.55;
+// threshold "desligado" fica logo abaixo de 1 (nunca em 1.0 exato — o
+// shader do GhostTrail faz smoothstep(threshold, 1.0, lum), e com os dois
+// limites iguais isso vira divisão por zero/NaN)
+const GAMEOVER_GHOST_THRESHOLD_OFF = 0.98;
+const GAMEOVER_GHOST_THRESHOLD_ON = 0.6;
+const GAMEOVER_SCANLINES_DARK = 0.12;
+const GAMEOVER_CHROMATIC_SHIFT = 1.5;
+const GAMEOVER_FLICKER_RATE = 4;
+const GAMEOVER_FLICKER_AMOUNT = 0.05;
+const GAMEOVER_NOISE_VOLUME = 0.008; // bem bem baixo — só uma ambientação atrás do texto
+
+// "sistema acabando": quanto mais perto da morte, mais baixa a música —
+// bem sutil logo abaixo do limiar (quase imperceptível), caindo rápido só
+// perto de 0 hp, até praticamente sumir por volta de ~10% de vida (ver
+// HUD._musicDuckFactor/MusicManager.setHpDuckFactor). Limiar propositalmente
+// mais alto que o da vinheta/chiado — o ouvido percebe volume bem antes do
+// olho perceber uma vinheta, então a curva precisa começar mais cedo e ser
+// bem mais gradual pra não soar como um corte.
+const MUSIC_DUCK_THRESHOLD = 0.5;
+const MUSIC_DUCK_CURVE_POWER = 1.5;
+const MUSIC_DUCK_TWEEN_MS = 450; // suaviza cada ajuste (tomou dano -> nova vida -> novo alvo)
+
 // layout vertical do resto da HUD. Escudo não tem mais linha própria —
 const XP_Y = 16 + HP_PANEL_H + 6;
 
@@ -127,7 +164,10 @@ export default class HUD {
     this._buildGameOverText();
     this._buildWinText();
     this._buildLowHpVignette();
-    this._setupCriticalFx();
+    this._setupCameraFx();
+    // ducking de música pela vida (ver _updateMusicDuck) — independe de
+    // WebGL, então nasce fora do _setupCameraFx
+    this._musicDuckProxy = { value: 1 };
 
     // gameOverGroup/winGroup/deathOverlayGroup são containers à parte (ver
     // _buildGameOverText/_buildDeathOverlay), cada um com sua própria depth
@@ -358,32 +398,53 @@ export default class HUD {
     ]);
   }
 
-  // Efeitos de câmera pilotados pela vida crítica (_updateCriticalFx) e
-  // pelo estouro da morte (_burstDeathFx): ondulação de CRT, chiado de
-  // estática, flicker e aberração cromática, todos com intensidade 0 por
-  // padrão — gameplay normal fica limpa, só a HUD liga isso, então fica
-  // tudo num lugar só. Precisa de WebGL; em Canvas o jogo roda igual, só
-  // sem esses efeitos extras (mesma guarda usada no menu/pausa).
-  _setupCriticalFx() {
+  // Efeitos de câmera pilotados pela vida crítica (_updateCriticalFx), pelo
+  // estouro da morte (_burstDeathFx) e pela recuperação progressiva do
+  // "Você Morreu" (_startGameOverFx): a mesma pilha de filtros do menu
+  // principal (ver MainMenuScene._setupRetroFx) + o chiado de estática
+  // (StaticNoise, só nosso). Tudo nasce "desligado" — gameplay normal fica
+  // limpa, só a HUD liga isso, então fica tudo num lugar só. Bloom e
+  // GhostTrail (os dois pesados — GhostTrail usa render targets próprios)
+  // ficam com active=false até a tela de morte, pra não pagar esse custo
+  // nos ~10 minutos de gameplay; os outros são passe único e baratos o
+  // bastante pra ficar sempre ligados (a 0, então imperceptíveis).
+  // Precisa de WebGL; em Canvas o jogo roda igual, só sem esses efeitos
+  // extras (mesma guarda usada no menu/pausa).
+  _setupCameraFx() {
     this._criticalFxProxy = { value: 0 };
+    this._gameOverFxProxy = { value: 0 };
     if (this.scene.renderer.type !== Phaser.WEBGL) return;
 
     const cam = this.scene.cameras.main;
-    cam.setPostPipeline(['CrtWave', 'ChromaticAberration', 'Flicker', 'StaticNoise']);
+    cam.setPostPipeline(['Bloom', 'CrtWave', 'GhostTrail', 'Scanlines', 'ChromaticAberration', 'Flicker', 'StaticNoise']);
+
+    this._bloomFx = cam.getPostPipeline('Bloom');
+    this._bloomFx.setThreshold(GAMEOVER_BLOOM_THRESHOLD).setRadius(GAMEOVER_BLOOM_RADIUS).setIntensity(0);
+    this._bloomFx.active = false;
 
     this._crtWaveFx = cam.getPostPipeline('CrtWave');
     this._crtWaveFx.setAmplitude(0).setFrequency(9).setSpeed(0.9);
+
+    this._ghostTrailFx = cam.getPostPipeline('GhostTrail');
+    this._ghostTrailFx.setDecay(GAMEOVER_GHOST_DECAY).setThreshold(GAMEOVER_GHOST_THRESHOLD_OFF);
+    this._ghostTrailFx.active = false;
+
+    this._scanlinesFx = cam.getPostPipeline('Scanlines');
+    this._scanlinesFx.setLineHeight(2).setDarkAmount(0);
 
     this._chromaticFx = cam.getPostPipeline('ChromaticAberration');
     this._chromaticFx.setMaxShift(0);
 
     this._flickerFx = cam.getPostPipeline('Flicker');
-    this._flickerFx.setRate(4).setAmount(0);
+    this._flickerFx.setRate(GAMEOVER_FLICKER_RATE).setAmount(0);
 
     this._staticFx = cam.getPostPipeline('StaticNoise');
     this._staticFx.setIntensity(0);
 
-    this.scene.events.once('shutdown', () => cam.resetPostPipeline());
+    this.scene.events.once('shutdown', () => {
+      cam.resetPostPipeline();
+      this._stopDeathNoise();
+    });
   }
 
   // ratio = vida atual/máxima (0..1). Mesmo esquema de entrada suave +
@@ -464,15 +525,105 @@ export default class HUD {
     });
   }
 
-  // Zera todos os efeitos de câmera (crítico + morte) — chamado quando a
-  // tela já está preta sólida, pra não deixar chiado/ondulação vazando por
-  // baixo do "Você Morreu".
-  _resetDeathCameraFx() {
-    if (!this._staticFx) return;
-    this._staticFx.setIntensity(0);
+  // Zera todos os efeitos de câmera (crítico + morte + recuperação do game
+  // over) de volta pro estado "desligado" de gameplay normal — chamado
+  // quando a tela já está preta sólida (some o estouro da morte por baixo
+  // do "Você Morreu") e também no restart, pra não vazar nada pra próxima run.
+  _resetCameraFx() {
+    if (!this._staticFx) return; // sem WebGL, esses pipelines nem existem
+    this._bloomFx.setIntensity(0);
+    this._bloomFx.active = false;
+    this._crtWaveFx.setAmplitude(0).setFrequency(9).setSpeed(0.9);
+    this._ghostTrailFx.setThreshold(GAMEOVER_GHOST_THRESHOLD_OFF);
+    this._ghostTrailFx.active = false;
+    this._scanlinesFx.setDarkAmount(0);
     this._chromaticFx.setMaxShift(0);
-    this._crtWaveFx.setAmplitude(0).setFrequency(9);
     this._flickerFx.setAmount(0);
+    this._staticFx.setIntensity(0);
+  }
+
+  // Espalha 0..1 pelos mesmos filtros "retrô" do menu principal — chamado
+  // bem devagar (GAMEOVER_FX_RAMP_MS) depois que o "Você Morreu" aparece,
+  // pra dar a sensação de sistema CRT sendo religado aos poucos, nunca um
+  // flash junto com o texto.
+  _applyGameOverFx(v) {
+    this._bloomFx.setIntensity(v * GAMEOVER_BLOOM_INTENSITY);
+    this._crtWaveFx
+      .setAmplitude(v * GAMEOVER_WAVE_AMPLITUDE)
+      .setFrequency(GAMEOVER_WAVE_FREQUENCY)
+      .setSpeed(GAMEOVER_WAVE_SPEED);
+    this._ghostTrailFx.setThreshold(Phaser.Math.Linear(GAMEOVER_GHOST_THRESHOLD_OFF, GAMEOVER_GHOST_THRESHOLD_ON, v));
+    this._scanlinesFx.setDarkAmount(v * GAMEOVER_SCANLINES_DARK);
+    this._chromaticFx.setMaxShift(v * GAMEOVER_CHROMATIC_SHIFT);
+    this._flickerFx.setAmount(v * GAMEOVER_FLICKER_AMOUNT);
+  }
+
+  // Liga a recuperação progressiva dos filtros retrô (Bloom/GhostTrail só
+  // voltam a ficar active aqui — ver _setupCameraFx) + o ruído branco
+  // baixinho por trás do "Você Morreu". Chamado uma vez, quando o texto
+  // começa a aparecer.
+  _startGameOverFx() {
+    if (this._staticFx) {
+      this._bloomFx.active = true;
+      this._ghostTrailFx.active = true;
+      this._gameOverFxProxy.value = 0;
+      this.scene.tweens.add({
+        targets: this._gameOverFxProxy,
+        value: 1,
+        duration: GAMEOVER_FX_RAMP_MS,
+        ease: 'Sine.easeInOut',
+        onUpdate: () => this._applyGameOverFx(this._gameOverFxProxy.value)
+      });
+    }
+
+    this._playDeathNoise();
+  }
+
+  // Ruído branco gerado na hora via Web Audio (sem asset): um
+  // AudioBufferSourceNode em loop, com o ganho subindo devagar junto com
+  // os filtros (mesmo GAMEOVER_FX_RAMP_MS) até um volume bem baixinho —
+  // só uma ambientação atrás do texto, o chiado residual de um tubo ligado
+  // de novo. Só funciona com WebAudioSoundManager (this.scene.sound.context
+  // existe); no fallback HTML5Audio (raro) simplesmente não toca nada.
+  _playDeathNoise() {
+    const ctx = this.scene.sound.context;
+    if (!ctx) return;
+
+    const bufferSeconds = 2;
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * bufferSeconds, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+
+    source.connect(gain).connect(ctx.destination);
+    source.start();
+    gain.gain.linearRampToValueAtTime(GAMEOVER_NOISE_VOLUME, ctx.currentTime + GAMEOVER_FX_RAMP_MS / 1000);
+
+    this._deathNoise = { source, gain };
+  }
+
+  // Corta o ruído branco (restart ou saída da cena) com uma rampa curtinha
+  // de 150ms pra não estalar.
+  _stopDeathNoise() {
+    if (!this._deathNoise) return;
+    const { source, gain } = this._deathNoise;
+    const ctx = this.scene.sound.context;
+    try {
+      const now = ctx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.15);
+      source.stop(now + 0.16);
+    } catch (e) {
+      // já parado/desconectado — sem problema
+    }
+    this._deathNoise = null;
   }
 
   // ratio = vida atual/máxima (0..1). Some suavemente acima do threshold;
@@ -511,6 +662,32 @@ export default class HUD {
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+  }
+
+  // "Sistema acabando": quanto mais perto da morte, mais baixa a música
+  // (ver MUSIC_DUCK_*) — MusicManager cuida de aplicar o fator em cima de
+  // qualquer faixa que esteja tocando agora (jogo, Boss ou cartas), sem
+  // mexer nos fades de troca de cena. Tween curtinho a cada mudança de
+  // vida pra suavizar (tomou dano -> novo alvo), não pra pulsar.
+  _updateMusicDuck(ratio) {
+    this.scene.tweens.killTweensOf(this._musicDuckProxy);
+    this.scene.tweens.add({
+      targets: this._musicDuckProxy,
+      value: HUD._musicDuckFactor(ratio),
+      duration: MUSIC_DUCK_TWEEN_MS,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => MusicManager.setHpDuckFactor(this._musicDuckProxy.value)
+    });
+  }
+
+  // 1 (volume cheio) acima do limiar; abaixo dele, cai bem devagar no
+  // início (quase imperceptível) e rápido só perto de 0 hp — por volta de
+  // ~10% de vida já está bem baixinho, quase sem música.
+  static _musicDuckFactor(ratio) {
+    const r = Phaser.Math.Clamp(ratio, 0, 1);
+    if (r >= MUSIC_DUCK_THRESHOLD) return 1;
+    const s = 1 - r / MUSIC_DUCK_THRESHOLD; // 0 no limiar, 1 com 0 de vida
+    return Math.pow(1 - s, MUSIC_DUCK_CURVE_POWER);
   }
 
   _buildXpBar() {
@@ -597,7 +774,7 @@ export default class HUD {
 
     const bg = this.scene.add.rectangle(cx, cy, 320, 140, 0x000000, 0.75).setScrollFactor(0);
     const title = this.scene.add
-      .text(cx, cy - 30, 'VOCÊ MORREU', { fontSize: '22px', color: '#ff6666' })
+      .text(cx, cy - 30, 'VOCÊ MORREU', { fontSize: '22px', color: '#ffffff' })
       .setOrigin(0.5)
       .setScrollFactor(0);
     const hint = this.scene.add
@@ -642,6 +819,7 @@ export default class HUD {
       this.hpText.setText(`${Math.ceil(current)} / ${max}`);
       this._updateLowHpVignette(ratio);
       this._updateCriticalFx(ratio);
+      this._updateMusicDuck(ratio);
     });
 
     // só existe pra quem pegou "Escudo Energético" — o overlay fica com
@@ -674,6 +852,7 @@ export default class HUD {
       this.scene.tweens.killTweensOf(this.lowHpVignette);
       this._lowHpActive = false;
       this.scene.tweens.killTweensOf(this._criticalFxProxy);
+      this.scene.tweens.killTweensOf(this._musicDuckProxy);
 
       this.scene.sound.play('sfx_death_shutdown', { volume: 0.9 });
       MusicManager.stop(this.scene, DEATH_MUSIC_FADE_MS);
@@ -720,7 +899,7 @@ export default class HUD {
                 ease: 'Cubic.easeIn',
                 onComplete: () => {
                   this.deathOverlay.setAlpha(1); // trava preto sólido (segurança)
-                  this._resetDeathCameraFx();
+                  this._resetCameraFx();
 
                   // ponto de fósforo residual: acende e apaga rápido por
                   // cima do preto — o toque final do tubo descarregando
@@ -739,11 +918,14 @@ export default class HUD {
         }
       });
 
-      // em paralelo: som toca até o fim, silêncio, só então o texto
+      // em paralelo: som toca até o fim, silêncio, só então o texto —
+      // junto com ele, a recuperação progressiva dos filtros + o chiado
+      // baixinho (ver _startGameOverFx)
       this.scene.time.delayedCall(DEATH_SOUND_MS, () => {
         this.scene.time.delayedCall(DEATH_SILENCE_MS, () => {
           this.gameOverGroup.setAlpha(0).setVisible(true);
           this.scene.tweens.add({ targets: this.gameOverGroup, alpha: 1, duration: 400 });
+          this._startGameOverFx();
         });
       });
     });
@@ -774,7 +956,12 @@ export default class HUD {
       this.deathAfterglow.setScale(1).setAlpha(0);
       this.gameOverGroup.setAlpha(1);
       this.scene.tweens.killTweensOf(this._criticalFxProxy);
-      this._resetDeathCameraFx();
+      this.scene.tweens.killTweensOf(this._gameOverFxProxy);
+      this._resetCameraFx();
+      this._stopDeathNoise();
+      this.scene.tweens.killTweensOf(this._musicDuckProxy);
+      this._musicDuckProxy.value = 1;
+      MusicManager.setHpDuckFactor(1);
     });
   }
 

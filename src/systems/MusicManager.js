@@ -22,6 +22,10 @@ class MusicManager {
     this.bossSound = null;
     // guarda de idempotência da entrada do Boss (ver duckForBoss/
     this._bossDucked = false;
+    // "sistema acabando": fator multiplicativo (0..1) aplicado em cima do
+    // volume base de qualquer faixa tocando agora, pilotado pela HUD
+    // conforme a vida do jogador cai — ver setHpDuckFactor/_applyHpDuck.
+    this._hpDuckFactor = 1;
   }
 
   // scene.sound/scene.tweens/scene.cache; a faixa em si sobrevive à
@@ -62,6 +66,10 @@ class MusicManager {
     this._bossDucked = false;
     this._cutOverlay(scene, this.duckedSound);
     this.duckedSound = null;
+    // faixa nova começa sem ducking de vida (ver setHpDuckFactor) — uma
+    // run anterior pode ter deixado isso baixo, e essa é sempre uma faixa
+    // nova (menu, ou início/restart de run)
+    this._hpDuckFactor = 1;
 
     const sound = scene.sound.add(key, { loop: true, volume: 0 });
     sound.play();
@@ -69,6 +77,34 @@ class MusicManager {
 
     this.currentKey = key;
     this.currentSound = sound;
+  }
+
+  // Ducking pela vida do jogador (ver HUD._updateMusicDuck): quanto mais
+  // perto da morte, mais baixa a música — multiplica em cima do volume
+  // base de qualquer faixa que esteja tocando agora (jogo, Boss ou
+  // cartas). Aplicado direto (sem tween própria aqui — quem tweena é a
+  // HUD, chamando isso a cada passo do tween dela), então não briga com
+  // os fades de troca de cena/ducking, que continuam mexendo no volume
+  // "base" normalmente — este fator só multiplica em cima do que estiver
+  // valendo no momento em que for chamado.
+  setHpDuckFactor(factor) {
+    this._hpDuckFactor = Phaser.Math.Clamp(factor, 0, 1);
+    this._applyHpDuck();
+  }
+
+  _applyHpDuck() {
+    const track = this._activeTrack();
+    if (!track) return;
+    track.sound.volume = track.baseVolume * SettingsManager.getMusic() * this._hpDuckFactor;
+  }
+
+  // Qual faixa está "no comando" agora (mesma prioridade usada em
+  // restoreFromCards/applyLiveMusicVolume: cartas > Boss > jogo).
+  _activeTrack() {
+    if (this.duckedSound) return { sound: this.duckedSound, baseVolume: CARD_MUSIC_VOLUME };
+    if (this.bossSound) return { sound: this.bossSound, baseVolume: BOSS_MUSIC_VOLUME };
+    if (this.currentSound) return { sound: this.currentSound, baseVolume: MUSIC_VOLUME };
+    return null;
   }
 
   // Fade out curto + stop/destroy de uma faixa "extra" (Boss ou cartas)
@@ -186,11 +222,11 @@ class MusicManager {
   // cartas estiver aberta; senão a principal), sem esperar o próximo fade.
   applyLiveMusicVolume() {
     if (this.duckedSound) {
-      this.duckedSound.volume = CARD_MUSIC_VOLUME * SettingsManager.getMusic();
+      this.duckedSound.volume = CARD_MUSIC_VOLUME * SettingsManager.getMusic() * this._hpDuckFactor;
     } else if (this.bossSound) {
-      this.bossSound.volume = BOSS_MUSIC_VOLUME * SettingsManager.getMusic();
+      this.bossSound.volume = BOSS_MUSIC_VOLUME * SettingsManager.getMusic() * this._hpDuckFactor;
     } else if (this.currentSound) {
-      this.currentSound.volume = MUSIC_VOLUME * SettingsManager.getMusic();
+      this.currentSound.volume = MUSIC_VOLUME * SettingsManager.getMusic() * this._hpDuckFactor;
     }
   }
 }
