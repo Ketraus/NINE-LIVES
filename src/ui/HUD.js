@@ -45,6 +45,14 @@ const XP_FILL_ALPHA = 0.85;
 // tamanho da "achatada" na ponta das setas (vida e xp): sem isso a pont…
 const SHARP_TIP_FLAT = 2;
 
+// vinheta de vida baixa: bordas da tela escurecem/avermelham progressiv…
+const LOW_HP_THRESHOLD = 0.3; // só aparece abaixo de 30% de vida
+const LOW_HP_MAX_ALPHA = 0.55; // opacidade da vinheta com vida quase zerada
+const LOW_HP_FADE_MS = 300; // suaviza entrada/saída ao cruzar o threshold
+const LOW_HP_PULSE_MAX_AMP = 0.15; // variação de opacidade do pulso
+const LOW_HP_PULSE_MS_FAR = 900; // duração do pulso logo abaixo do threshold
+const LOW_HP_PULSE_MS_NEAR = 420; // duração do pulso com vida quase zerada (mais urgente)
+
 // layout vertical do resto da HUD. Escudo não tem mais linha própria —
 const XP_Y = 16 + HP_PANEL_H + 6;
 
@@ -62,6 +70,7 @@ export default class HUD {
     this._buildRunTimer();
     this._buildGameOverText();
     this._buildWinText();
+    this._buildLowHpVignette();
 
     // gameOverGroup/winGroup são containers à parte (ver _buildGameOverText
     this._applyZoomCompensation(this.uiContainer);
@@ -194,6 +203,71 @@ export default class HUD {
     });
   }
 
+  // Gradiente radial (canvas texture, gerado 1x) cobrindo a tela toda,
+  // transparente no centro e vermelho escuro nas bordas. Fica dentro do
+  // uiContainer pra herdar a mesma compensação de zoom do resto da HUD.
+  _buildLowHpVignette() {
+    const w = this.scene.scale.width;
+    const h = this.scene.scale.height;
+    const key = 'hud_low_hp_vignette';
+
+    if (!this.scene.textures.exists(key)) {
+      const canvasTexture = this.scene.textures.createCanvas(key, w, h);
+      const ctx = canvasTexture.getContext();
+      const cx = w / 2;
+      const cy = h / 2;
+      const maxR = Math.sqrt(cx * cx + cy * cy);
+      const grad = ctx.createRadialGradient(cx, cy, maxR * 0.45, cx, cy, maxR);
+      grad.addColorStop(0, 'rgba(120,0,0,0)');
+      grad.addColorStop(1, 'rgba(120,0,0,0.9)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+      canvasTexture.refresh();
+    }
+
+    this.lowHpVignette = this.scene.add
+      .image(w / 2, h / 2, key)
+      .setScrollFactor(0)
+      .setDepth(130)
+      .setAlpha(0);
+    this._lowHpActive = false;
+    this.uiContainer.add(this.lowHpVignette);
+  }
+
+  // ratio = vida atual/máxima (0..1). Some suavemente acima do threshold;
+  // abaixo dele, entra num pulso lento que acelera conforme a vida cai.
+  _updateLowHpVignette(ratio) {
+    const belowThreshold = ratio > 0 && ratio <= LOW_HP_THRESHOLD;
+    this.scene.tweens.killTweensOf(this.lowHpVignette);
+
+    if (!belowThreshold) {
+      this._lowHpActive = false;
+      this.scene.tweens.add({
+        targets: this.lowHpVignette,
+        alpha: 0,
+        duration: LOW_HP_FADE_MS,
+        ease: 'Cubic.easeOut'
+      });
+      return;
+    }
+
+    this._lowHpActive = true;
+    const intensity = 1 - ratio / LOW_HP_THRESHOLD; // 0 no threshold, 1 quase morrendo
+    const baseAlpha = intensity * LOW_HP_MAX_ALPHA;
+    const pulseAmp = intensity * LOW_HP_PULSE_MAX_AMP;
+    const pulseMs = Phaser.Math.Linear(LOW_HP_PULSE_MS_FAR, LOW_HP_PULSE_MS_NEAR, intensity);
+
+    this.lowHpVignette.setAlpha(baseAlpha);
+    this.scene.tweens.add({
+      targets: this.lowHpVignette,
+      alpha: baseAlpha + pulseAmp,
+      duration: pulseMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
   _buildXpBar() {
     const x = 16;
     const y = XP_Y;
@@ -321,6 +395,7 @@ export default class HUD {
       const ratio = Phaser.Math.Clamp(current / max, 0, 1);
       this._drawHpFill(ratio);
       this.hpText.setText(`${Math.ceil(current)} / ${max}`);
+      this._updateLowHpVignette(ratio);
     });
 
     // só existe pra quem pegou "Escudo Energético" — o overlay fica com
@@ -364,6 +439,9 @@ export default class HUD {
       // a nova run pode não ter (ou ainda não ter pego) o Escudo Energético
       this._drawShieldFill(0);
       this._hadShield = false;
+      this.scene.tweens.killTweensOf(this.lowHpVignette);
+      this.lowHpVignette.setAlpha(0);
+      this._lowHpActive = false;
     });
   }
 
