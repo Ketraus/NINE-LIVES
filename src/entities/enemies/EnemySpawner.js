@@ -4,6 +4,7 @@ import SwarmSystem from './SwarmSystem.js';
 const DEFAULT_MAX_ALIVE = 14; // trava inicial da quantidade simultânea, até o SpawnDirector assumir o…
 // Quanto além da borda da câmera o inimigo precisa nascer pra garantir…
 const SPAWN_MARGIN_BEYOND_VIEW = 80;
+const ABANDONED_DISTANCE_MARGIN = 240;
 
 // "Vibrada" na tela quando o Elite nasce — feedback bem besta de propós…
 const ELITE_SPAWN_SHAKE_MS = 300;
@@ -299,6 +300,8 @@ export default class EnemySpawner {
     const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
     const active = this.group.getChildren().filter((e) => e.active);
     this.swarmSystem.rebuild(active);
+    const view = this._currentCameraView();
+    const abandonmentDistance = Math.hypot(view.width, view.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW + ABANDONED_DISTANCE_MARGIN;
 
     active.forEach((enemy) => {
       if (this.frozen) {
@@ -308,6 +311,7 @@ export default class EnemySpawner {
         enemy.chase(this.player, nowMs, speedMultiplier, moveDir);
         enemy.updateFacing();
         enemy.updateAnimState();
+        if (enemy.updateAbandonment(this.player, nowMs, abandonmentDistance)) return;
       }
       enemy.updateBleed(nowMs);
     });

@@ -25,6 +25,7 @@ export default class DamageSystem {
     const hitX = target.x;
     const hitY = target.y;
     const appliedDamage = target.healthSystem.takeDamage(finalDamage);
+    if (appliedDamage > 0 && target.def && !attacker?.def) target.abandonedSince = null;
     if (appliedDamage > 0 && target.def) {
       DamageNumberManager.show(targetScene, hitX, hitY, appliedDamage, target);
     }
@@ -52,6 +53,7 @@ export default class DamageSystem {
     const hitX = target.x;
     const hitY = target.y;
     const appliedDamage = target.healthSystem.takeDamage(finalDamage);
+    if (appliedDamage > 0 && target.def && !source?.def) target.abandonedSince = null;
     if (appliedDamage > 0 && target.def) {
       DamageNumberManager.show(targetScene, hitX, hitY, appliedDamage, target, { ...feedback, isCritical });
     }

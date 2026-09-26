@@ -93,6 +93,7 @@ const STOMP_SHAKE_INTENSITY = 0.01;
 const FLEE_SPEED_MULTIPLIER = 1.8;
 const FLEE_DESPAWN_MARGIN = 150;
 const FLEE_MAX_DURATION_MS = 15000;
+const ABANDONED_DESPAWN_MS = 12000;
 
 export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, def) {
@@ -204,6 +205,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.fleeMaxUntil = 0;
     this.fleeDirX = 0;
     this.fleeDirY = 0;
+    this.abandonedSince = null;
 
     // sangramento (carta "Hemorragia" — evolução da Sanguessuga, ver
     this.bleedUntil = 0;
@@ -282,6 +284,33 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.shadow.x = this.x + offsetX;
       this.shadow.y = this.y + this.displayHeight * this._shadowYFrac;
     }
+  }
+
+  updateAbandonment(player, nowMs, distanceLimit) {
+    if (
+      !this.active ||
+      this.def.elite ||
+      this.def.sealer ||
+      this.def.boss ||
+      this.def.special ||
+      this.def.event ||
+      this.fleeing
+    ) return false;
+
+    const distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
+    if (distance <= distanceLimit) {
+      this.abandonedSince = null;
+      return false;
+    }
+
+    if (this.abandonedSince == null) {
+      this.abandonedSince = nowMs;
+      return false;
+    }
+
+    if (nowMs - this.abandonedSince < ABANDONED_DESPAWN_MS) return false;
+    this._leave();
+    return true;
   }
 
   // Garante que a sombra some junto quando o inimigo é destruído (morte,
