@@ -10,6 +10,7 @@ import ScanlinesPipeline from '../fx/ScanlinesPipeline.js';
 import FlickerPipeline from '../fx/FlickerPipeline.js';
 import BloomPipeline from '../fx/BloomPipeline.js';
 import ChromaticAberrationPipeline from '../fx/ChromaticAberrationPipeline.js';
+import StaticNoisePipeline from '../fx/StaticNoisePipeline.js';
 
 const BASE_WIDTH = 704;
 const BASE_HEIGHT = 512; // altura de referência: HUD e telas de carta são pensados pra caber nela
@@ -41,7 +42,8 @@ export const gameConfig = {
     Scanlines: ScanlinesPipeline,
     Flicker: FlickerPipeline,
     Bloom: BloomPipeline,
-    ChromaticAberration: ChromaticAberrationPipeline
+    ChromaticAberration: ChromaticAberrationPipeline,
+    StaticNoise: StaticNoisePipeline
   },
   physics: {
     default: 'arcade',

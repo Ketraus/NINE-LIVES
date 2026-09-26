@@ -69,6 +69,46 @@ const DEATH_COLLAPSE_H_MS = 220; // linha encolhendo até um ponto (horizontal)
 const DEATH_LINE_HEIGHT = 4; // espessura da linha brilhante
 const DEATH_LINE_COLOR = 0x4fd1ff; // mesmo ciano usado na barra de vida/HUD
 
+// vida crítica (<=15%): "chiado" de sinal fraco entra em cena por cima da
+// vinheta vermelha — ruído de estática + leve ondulação de CRT + flicker +
+// uma pontinha de aberração cromática, pulsando (mesmo esquema de entrada
+// suave + pulso acelerado da vinheta, ver _updateLowHpVignette) cada vez
+// mais rápido e mais forte quanto mais perto de 0 hp. Mexe só na câmera
+// principal (ver _setupCriticalFx) — desligado o resto do tempo.
+const CRITICAL_HP_THRESHOLD = 0.15;
+const CRITICAL_STATIC_MAX = 0.32; // intensidade do chiado com vida quase zerada
+const CRITICAL_WAVE_AMP_MAX = 0.0055; // ondulação nitidamente mais forte que a do menu
+const CRITICAL_FLICKER_AMOUNT_MAX = 0.14;
+const CRITICAL_CHROMATIC_SHIFT_MAX = 3.5;
+const CRITICAL_PULSE_MS_FAR = 750; // pulso logo abaixo do limiar
+const CRITICAL_PULSE_MS_NEAR = 260; // pulso com vida quase zerada (mais urgente)
+const CRITICAL_FADE_MS = 300; // suaviza entrada/saída ao cruzar o limiar
+
+// arremate do "monitor desligando" na morte: um estouro de chiado +
+// aberração cromática + ondulação instável (o "estalo" elétrico do
+// desligar), sincronizado com as cortinas fechando e depois zerado junto
+// com o preto sólido — ver _burstDeathFx/_resetDeathCameraFx.
+const DEATH_STATIC_PEAK = 0.75;
+const DEATH_STATIC_ATTACK_MS = 70; // sobe bem rápido, quase instantâneo
+const DEATH_CHROMATIC_PEAK = 7;
+const DEATH_WAVE_AMP_PEAK = 0.02;
+const DEATH_WAVE_FREQ_PEAK = 22;
+const DEATH_FLICKER_AMOUNT_PEAK = 0.5;
+const DEATH_FX_DECAY_MS = DEATH_COLLAPSE_V_MS; // cai junto com as cortinas fechando
+const DEATH_SHAKE_MS = 90;
+const DEATH_SHAKE_INTENSITY = 0.006;
+
+// pulso de espessura na linha brilhante bem antes dela encolher até virar
+// um ponto — surto do feixe de elétrons descarregando, sutil mas dá peso.
+const DEATH_LINE_BOUNCE_SCALE_Y = 1.6;
+const DEATH_LINE_BOUNCE_MS = 70;
+
+// "ponto de fósforo": brilho residual (gradiente radial, textura gerada 1x)
+// que acende bem no centro quando a linha termina de encolher e apaga logo
+// em seguida — o toque final clássico de tubo CRT descarregando.
+const DEATH_AFTERGLOW_SIZE = 140;
+const DEATH_AFTERGLOW_FADE_MS = 320;
+
 // layout vertical do resto da HUD. Escudo não tem mais linha própria —
 const XP_Y = 16 + HP_PANEL_H + 6;
 
@@ -87,6 +127,7 @@ export default class HUD {
     this._buildGameOverText();
     this._buildWinText();
     this._buildLowHpVignette();
+    this._setupCriticalFx();
 
     // gameOverGroup/winGroup/deathOverlayGroup são containers à parte (ver
     // _buildGameOverText/_buildDeathOverlay), cada um com sua própria depth
@@ -285,12 +326,153 @@ export default class HUD {
       .setBlendMode(Phaser.BlendModes.ADD)
       .setAlpha(0);
 
+    // ponto de fósforo residual (ver constantes DEATH_AFTERGLOW_*) — nasce
+    // junto com o resto da sequência pra já entrar na primeira varredura
+    // de refreshIgnoreList() da pauseCam (ver PauseUI), igual às outras peças.
+    const glowKey = 'hud_death_afterglow';
+    if (!this.scene.textures.exists(glowKey)) {
+      const size = DEATH_AFTERGLOW_SIZE;
+      const canvasTexture = this.scene.textures.createCanvas(glowKey, size, size);
+      const ctx = canvasTexture.getContext();
+      const r = size / 2;
+      const grad = ctx.createRadialGradient(r, r, 0, r, r, r);
+      grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+      grad.addColorStop(0.35, 'rgba(150,230,255,0.55)');
+      grad.addColorStop(1, 'rgba(79,209,255,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+      canvasTexture.refresh();
+    }
+    this.deathAfterglow = this.scene.add
+      .image(w / 2, h / 2, glowKey)
+      .setScrollFactor(0)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0);
+
     this.deathOverlayGroup.add([
       this.deathOverlay,
       this.deathCurtainTop,
       this.deathCurtainBottom,
-      this.deathCollapseLine
+      this.deathCollapseLine,
+      this.deathAfterglow
     ]);
+  }
+
+  // Efeitos de câmera pilotados pela vida crítica (_updateCriticalFx) e
+  // pelo estouro da morte (_burstDeathFx): ondulação de CRT, chiado de
+  // estática, flicker e aberração cromática, todos com intensidade 0 por
+  // padrão — gameplay normal fica limpa, só a HUD liga isso, então fica
+  // tudo num lugar só. Precisa de WebGL; em Canvas o jogo roda igual, só
+  // sem esses efeitos extras (mesma guarda usada no menu/pausa).
+  _setupCriticalFx() {
+    this._criticalFxProxy = { value: 0 };
+    if (this.scene.renderer.type !== Phaser.WEBGL) return;
+
+    const cam = this.scene.cameras.main;
+    cam.setPostPipeline(['CrtWave', 'ChromaticAberration', 'Flicker', 'StaticNoise']);
+
+    this._crtWaveFx = cam.getPostPipeline('CrtWave');
+    this._crtWaveFx.setAmplitude(0).setFrequency(9).setSpeed(0.9);
+
+    this._chromaticFx = cam.getPostPipeline('ChromaticAberration');
+    this._chromaticFx.setMaxShift(0);
+
+    this._flickerFx = cam.getPostPipeline('Flicker');
+    this._flickerFx.setRate(4).setAmount(0);
+
+    this._staticFx = cam.getPostPipeline('StaticNoise');
+    this._staticFx.setIntensity(0);
+
+    this.scene.events.once('shutdown', () => cam.resetPostPipeline());
+  }
+
+  // ratio = vida atual/máxima (0..1). Mesmo esquema de entrada suave +
+  // pulso acelerado da vinheta (_updateLowHpVignette), só que abaixo de um
+  // limiar mais apertado e pilotando os pipelines de câmera em vez de uma
+  // imagem — "sinal enfraquecendo" em vez de "vinheta vermelha".
+  _updateCriticalFx(ratio) {
+    if (!this._staticFx) return; // sem WebGL, esses pipelines nem existem
+
+    this.scene.tweens.killTweensOf(this._criticalFxProxy);
+    const belowThreshold = ratio > 0 && ratio <= CRITICAL_HP_THRESHOLD;
+
+    if (!belowThreshold) {
+      this.scene.tweens.add({
+        targets: this._criticalFxProxy,
+        value: 0,
+        duration: CRITICAL_FADE_MS,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => this._applyCriticalFx(this._criticalFxProxy.value)
+      });
+      return;
+    }
+
+    // s = 0 no limiar (entrando), s = 1 quase morto — mesma ideia da
+    // vinheta: elevar s (não ratio/limiar direto) garante começo suave.
+    const s = 1 - ratio / CRITICAL_HP_THRESHOLD;
+    const intensity = Math.pow(s, 2);
+    const pulseAmp = intensity * 0.4;
+    const pulseMs = Phaser.Math.Linear(CRITICAL_PULSE_MS_FAR, CRITICAL_PULSE_MS_NEAR, intensity);
+
+    this._criticalFxProxy.value = intensity;
+    this._applyCriticalFx(intensity);
+    this.scene.tweens.add({
+      targets: this._criticalFxProxy,
+      value: Math.min(intensity + pulseAmp, 1),
+      duration: pulseMs,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => this._applyCriticalFx(this._criticalFxProxy.value)
+    });
+  }
+
+  // Espalha um valor 0..1 pelos uniforms dos pipelines de vida crítica —
+  // chiado, ondulação, flicker e aberração cromática sobem juntos,
+  // proporcionalmente ao mesmo valor.
+  _applyCriticalFx(v) {
+    this._staticFx.setIntensity(v * CRITICAL_STATIC_MAX);
+    this._crtWaveFx.setAmplitude(v * CRITICAL_WAVE_AMP_MAX);
+    this._flickerFx.setAmount(v * CRITICAL_FLICKER_AMOUNT_MAX);
+    this._chromaticFx.setMaxShift(v * CRITICAL_CHROMATIC_SHIFT_MAX);
+  }
+
+  // Estouro de chiado + aberração cromática + ondulação instável + flicker
+  // no instante da morte (o "estalo" elétrico do desligar) — sobe quase
+  // instantâneo e decai junto com as cortinas fechando (DEATH_FX_DECAY_MS).
+  _burstDeathFx() {
+    if (!this._staticFx) return; // sem WebGL
+
+    this._staticFx.setIntensity(DEATH_STATIC_PEAK);
+    this._chromaticFx.setMaxShift(DEATH_CHROMATIC_PEAK);
+    this._crtWaveFx.setAmplitude(DEATH_WAVE_AMP_PEAK).setFrequency(DEATH_WAVE_FREQ_PEAK);
+    this._flickerFx.setAmount(DEATH_FLICKER_AMOUNT_PEAK);
+
+    const proxy = { value: 1 };
+    this.scene.tweens.add({
+      targets: proxy,
+      value: 0,
+      delay: DEATH_STATIC_ATTACK_MS,
+      duration: Math.max(DEATH_FX_DECAY_MS - DEATH_STATIC_ATTACK_MS, 1),
+      ease: 'Cubic.easeIn',
+      onUpdate: () => {
+        this._staticFx.setIntensity(DEATH_STATIC_PEAK * proxy.value);
+        this._chromaticFx.setMaxShift(DEATH_CHROMATIC_PEAK * proxy.value);
+        this._crtWaveFx.setAmplitude(DEATH_WAVE_AMP_PEAK * proxy.value);
+        this._flickerFx.setAmount(DEATH_FLICKER_AMOUNT_PEAK * proxy.value);
+      }
+    });
+  }
+
+  // Zera todos os efeitos de câmera (crítico + morte) — chamado quando a
+  // tela já está preta sólida, pra não deixar chiado/ondulação vazando por
+  // baixo do "Você Morreu".
+  _resetDeathCameraFx() {
+    if (!this._staticFx) return;
+    this._staticFx.setIntensity(0);
+    this._chromaticFx.setMaxShift(0);
+    this._crtWaveFx.setAmplitude(0).setFrequency(9);
+    this._flickerFx.setAmount(0);
   }
 
   // ratio = vida atual/máxima (0..1). Some suavemente acima do threshold;
@@ -459,6 +641,7 @@ export default class HUD {
       this._drawHpFill(ratio);
       this.hpText.setText(`${Math.ceil(current)} / ${max}`);
       this._updateLowHpVignette(ratio);
+      this._updateCriticalFx(ratio);
     });
 
     // só existe pra quem pegou "Escudo Energético" — o overlay fica com
@@ -490,16 +673,23 @@ export default class HUD {
       // alpha, então o corte pro preto não dá aquele "flash" de volta ao normal
       this.scene.tweens.killTweensOf(this.lowHpVignette);
       this._lowHpActive = false;
+      this.scene.tweens.killTweensOf(this._criticalFxProxy);
 
       this.scene.sound.play('sfx_death_shutdown', { volume: 0.9 });
       MusicManager.stop(this.scene, DEATH_MUSIC_FADE_MS);
+      this.scene.cameras.main.shake(DEATH_SHAKE_MS, DEATH_SHAKE_INTENSITY);
 
       // monitor CRT desligando: cortinas fecham na vertical até sobrar só
-      // a linha fina brilhante, que aí encolhe na horizontal até um ponto
+      // a linha fina brilhante, que aí encolhe até um ponto — por cima
+      // disso, um estouro de chiado/aberração/ondulação (o "estalo"
+      // elétrico do desligar) que decai junto com as cortinas fechando.
       this.deathOverlay.setAlpha(0);
       this.deathCurtainTop.setScale(1, 0);
       this.deathCurtainBottom.setScale(1, 0);
       this.deathCollapseLine.setScale(1, 1).setAlpha(0);
+      this.deathAfterglow.setScale(1).setAlpha(0);
+
+      this._burstDeathFx();
 
       this.scene.tweens.add({
         targets: [this.deathCurtainTop, this.deathCurtainBottom],
@@ -513,14 +703,38 @@ export default class HUD {
         duration: DEATH_COLLAPSE_V_MS,
         ease: 'Cubic.easeIn',
         onComplete: () => {
-          // linha fina formada -> agora encolhe até virar um ponto e sumir
+          // linha fina formada -> pulso rápido de espessura (surto do
+          // feixe de elétrons descarregando) antes de encolher até um ponto
           this.scene.tweens.add({
             targets: this.deathCollapseLine,
-            scaleX: 0,
-            alpha: 0,
-            duration: DEATH_COLLAPSE_H_MS,
-            ease: 'Cubic.easeIn',
-            onComplete: () => this.deathOverlay.setAlpha(1) // trava preto sólido (segurança)
+            scaleY: DEATH_LINE_BOUNCE_SCALE_Y,
+            duration: DEATH_LINE_BOUNCE_MS,
+            yoyo: true,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+              this.scene.tweens.add({
+                targets: this.deathCollapseLine,
+                scaleX: 0,
+                alpha: 0,
+                duration: DEATH_COLLAPSE_H_MS,
+                ease: 'Cubic.easeIn',
+                onComplete: () => {
+                  this.deathOverlay.setAlpha(1); // trava preto sólido (segurança)
+                  this._resetDeathCameraFx();
+
+                  // ponto de fósforo residual: acende e apaga rápido por
+                  // cima do preto — o toque final do tubo descarregando
+                  this.deathAfterglow.setScale(1).setAlpha(0.9);
+                  this.scene.tweens.add({
+                    targets: this.deathAfterglow,
+                    alpha: 0,
+                    scale: 1.8,
+                    duration: DEATH_AFTERGLOW_FADE_MS,
+                    ease: 'Cubic.easeOut'
+                  });
+                }
+              });
+            }
           });
         }
       });
@@ -556,7 +770,11 @@ export default class HUD {
       this.deathCurtainTop.setScale(1, 0);
       this.deathCurtainBottom.setScale(1, 0);
       this.deathCollapseLine.setScale(1, 1).setAlpha(0);
+      this.scene.tweens.killTweensOf(this.deathAfterglow);
+      this.deathAfterglow.setScale(1).setAlpha(0);
       this.gameOverGroup.setAlpha(1);
+      this.scene.tweens.killTweensOf(this._criticalFxProxy);
+      this._resetDeathCameraFx();
     });
   }
 
