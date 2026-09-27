@@ -14,6 +14,7 @@ import SpawnDirector from '../roguelike/SpawnDirector.js';
 import HUD from '../ui/HUD.js';
 import LevelUpUI from '../ui/LevelUpUI.js';
 import PauseUI from '../ui/PauseUI.js';
+import ResultUI from '../ui/ResultUI.js';
 import DevConsole from '../systems/DevConsole.js';
 import TouchJoystick from '../systems/TouchJoystick.js';
 import SlowmoSystem from '../systems/SlowmoSystem.js';
@@ -288,6 +289,9 @@ export default class GameScene extends Phaser.Scene {
     this.levelUpUI = new LevelUpUI(this, this.runManager);
     // botão de pausa (PC + celular) + saída de fullscreen (só celular) —
     this.pauseUI = new PauseUI(this);
+    // tela de resultado (pontuação), aparece só depois do "Você Morreu"/
+    // vitória (ver ResultUI/HUD)
+    this.resultUI = new ResultUI(this);
     // console de hack (F9) — dá cartas por comando, ver src/systems/DevCons…
     this.devConsole = new DevConsole(this, this.runManager);
   }

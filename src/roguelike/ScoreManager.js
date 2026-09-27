@@ -23,7 +23,7 @@ export default class ScoreManager {
   // ponto — XP, cartas de upgrade e outras ações obrigatórias da run não
   // passam por aqui.
   registerKill(enemyId) {
-    const points = this.scoreValues[enemyId] ?? 0;
+    const points = this.scoreValues[enemyId]?.points ?? 0;
     this.rawScore += points;
     this.killsByType[enemyId] = (this.killsByType[enemyId] || 0) + 1;
     EventBus.emit('score-changed', {
