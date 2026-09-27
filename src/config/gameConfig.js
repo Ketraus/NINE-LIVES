@@ -31,9 +31,9 @@ export const gameConfig = {
   width,
   height: BASE_HEIGHT,
   backgroundColor: '#111318',
-  pixelArt: true,
+  pixelArt: false,
   render: {
-    roundPixels: true
+    roundPixels: false
   },
   // registra os pipelines custom (efeitos "retrô" do menu — ver src/fx/)
   pipeline: {

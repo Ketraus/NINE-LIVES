@@ -66,6 +66,15 @@ const AMBIENT_SFX_MAX_DELAY_MS = 240000; // 4min
 const MAP_FADE_IN_MS = 220;
 const HUD_FADE_IN_DELAY_MS = 80;
 const HUD_FADE_IN_MS = 180;
+const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
+  'player_idle', 'player_walk', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
+  'enemy', 'grunt_idle', 'grunt_walk', 'cyber_hound_idle', 'cyber_hound_walk', 'cyber_brute_idle', 'cyber_brute_walk',
+  'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
+  'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',
+  'minotaur_walk_rage', 'minotaur_idle_rage_noaxe', 'minotaur_walk_rage_noaxe', 'minotaur_axe_thrown',
+  'minotaur_axe_thrown_rage', 'gato_drone', 'gato_drone_catforce', 'asset_purification_idle', 'asset_purification_walk',
+  'xp_orb', 'medkit', 'hit_fx'
+];
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -75,6 +84,10 @@ export default class GameScene extends Phaser.Scene {
   create(data) {
     // limpa listeners de uma partida anterior (esta scene pode restartar
     EventBus.removeAllListeners();
+    this._setGameplayTextureFilters(Phaser.Textures.FilterMode.NEAREST);
+    this.events.once('shutdown', () => {
+      this._setGameplayTextureFilters(Phaser.Textures.FilterMode.LINEAR);
+    });
 
     // troca pra música da run (no-op se o arquivo ainda não foi
     MusicManager.play(this, 'music_game');
@@ -105,6 +118,13 @@ export default class GameScene extends Phaser.Scene {
     });
 
     EventBus.emit('run-restart');
+  }
+
+  _setGameplayTextureFilters(filterMode) {
+    GAMEPLAY_NEAREST_TEXTURE_KEYS.forEach((key) => {
+      const texture = this.textures.get(key);
+      texture?.source.forEach((source) => source.setFilter(filterMode));
+    });
   }
 
   update() {
