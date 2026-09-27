@@ -6,6 +6,7 @@ import EnemySpawner from '../entities/enemies/EnemySpawner.js';
 import WeaponManager from '../weapons/WeaponManager.js';
 import AbilityManager from '../abilities/AbilityManager.js';
 import DamageSystem from '../combat/DamageSystem.js';
+import DamageNumberManager from '../combat/DamageNumberManager.js';
 import RunState from '../roguelike/RunState.js';
 import RunManager from '../roguelike/RunManager.js';
 import SpawnDirector from '../roguelike/SpawnDirector.js';
@@ -29,6 +30,13 @@ import bossScheduleData from '../../data/bossSchedule.js';
 const XP_ORB_PICKUP_RANGE_HINT = 4; // margem extra no corpo físico do orb
 const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
+const MEDKIT_HEAL_AMOUNT = 20;
+const MEDKIT_BRUTE_DROP_CHANCE = 0.01;
+const MEDKIT_SCALE = 0.5;
+const MEDKIT_PULSE_SCALE = 1.04;
+const MEDKIT_PULSE_DURATION_MS = 850;
+const MEDKIT_DROP_OFFSET_MIN = 42;
+const MEDKIT_DROP_OFFSET_MAX = 56;
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 
 // Cor do orb de XP por faixa de valor — dá pra reconhecer de longe se
@@ -111,14 +119,16 @@ export default class GameScene extends Phaser.Scene {
 
   // "Ímã" de XP: todo orb dentro de XP_ORB_MAGNET_RANGE do jogador passa a
   _updateXpOrbMagnet() {
-    this.xpOrbGroup.children.each((orb) => {
-      const distance = Phaser.Math.Distance.Between(orb.x, orb.y, this.player.x, this.player.y);
-      if (distance <= XP_ORB_MAGNET_RANGE) {
-        this.physics.moveToObject(orb, this.player, XP_ORB_MAGNET_SPEED);
-      } else if (orb.body.velocity.x !== 0 || orb.body.velocity.y !== 0) {
-        // saiu do alcance (ex.: jogador se afastou rápido) -> para de voar
-        orb.setVelocity(0, 0);
-      }
+    [this.xpOrbGroup, this.medkitGroup].forEach((group) => {
+      group.children.each((pickup) => {
+        const distance = Phaser.Math.Distance.Between(pickup.x, pickup.y, this.player.x, this.player.y);
+        if (distance <= XP_ORB_MAGNET_RANGE) {
+          this.physics.moveToObject(pickup, this.player, XP_ORB_MAGNET_SPEED);
+        } else if (pickup.body.velocity.x !== 0 || pickup.body.velocity.y !== 0) {
+          // saiu do alcance (ex.: jogador se afastou rápido) -> para de voar
+          pickup.setVelocity(0, 0);
+        }
+      });
     });
   }
 
@@ -230,6 +240,7 @@ export default class GameScene extends Phaser.Scene {
 
   _buildPickups() {
     this.xpOrbGroup = this.physics.add.group();
+    this.medkitGroup = this.physics.add.group();
     this.runManager = new RunManager(this.runState, this.player, upgradesData);
   }
 
@@ -278,10 +289,21 @@ export default class GameScene extends Phaser.Scene {
       orb.destroy();
     });
 
+    this.physics.add.overlap(this.player, this.medkitGroup, (player, medkit) => {
+      const healed = player.healthSystem.heal(MEDKIT_HEAL_AMOUNT);
+      if (healed > 0) {
+        DamageNumberManager.show(this, player.x, player.y, healed, player, { kind: 'heal' });
+      }
+      medkit.destroy();
+    });
+
     // inimigo morre -> registra abate, dropa orb de xp e explode em FX
-    EventBus.on('enemy-died', ({ x, y, xpReward, color }) => {
+    EventBus.on('enemy-died', ({ enemyId, x, y, xpReward, color }) => {
       this.runManager.registerKill();
       this._spawnXpOrb(x, y, xpReward);
+      if (enemyId === 'elite' || (enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
+        this._spawnMedkit(x, y);
+      }
       this._spawnDeathFx(x, y, color);
     });
 
@@ -381,6 +403,27 @@ export default class GameScene extends Phaser.Scene {
     const radius = orb.width / 2 + XP_ORB_PICKUP_RANGE_HINT;
     orb.body.setCircle(radius, orb.width / 2 - radius, orb.height / 2 - radius);
     this.xpOrbGroup.add(orb);
+  }
+
+  _spawnMedkit(x, y) {
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const offset = Phaser.Math.Between(MEDKIT_DROP_OFFSET_MIN, MEDKIT_DROP_OFFSET_MAX);
+    const medkit = this.physics.add.image(
+      x + Math.cos(angle) * offset,
+      y + Math.sin(angle) * offset,
+      'medkit'
+    ).setDepth(5).setScale(MEDKIT_SCALE);
+    const radius = Math.min(medkit.width, medkit.height) * 0.42;
+    medkit.body.setCircle(radius, medkit.width / 2 - radius, medkit.height / 2 - radius);
+    this.medkitGroup.add(medkit);
+    this.tweens.add({
+      targets: medkit,
+      scale: MEDKIT_SCALE * MEDKIT_PULSE_SCALE,
+      duration: MEDKIT_PULSE_DURATION_MS,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
 
   // "Explosão" de morte do inimigo: um flash branco central + estilhaços

@@ -1747,7 +1747,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Elite: som de morte próprio em vez de nenhum som (os inimigos
     if (this.def.elite) this.scene.sound.play('sfx_elite_death', { volume: 0.6 });
     // `color` vai junto só pra quem quiser desenhar algo na cor do
-    EventBus.emit('enemy-died', { x: this.x, y: this.y, xpReward: this.def.xpReward, color: this.def.color });
+    EventBus.emit('enemy-died', { enemyId: this.def.id, x: this.x, y: this.y, xpReward: this.def.xpReward, color: this.def.color });
     this.destroy();
   }
 }
