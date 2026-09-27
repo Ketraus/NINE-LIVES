@@ -510,13 +510,11 @@ export default class PauseUI {
   // ESC (keydown-ESC no GameScene._buildInput) e o botão do canto chamam
   // exatamente este método — um único fluxo de abrir/fechar para os dois.
   toggle() {
-    // evita abrir o menu de pausa por cima da tela de level-up/evolução ou
-    if (!this.isOpen && (this.scene.isGameOver || this.scene.levelUpUI?.container.visible)) return;
     this.isOpen ? this.close() : this.open();
   }
 
   open() {
-    if (this.isOpen) return;
+    if (this.isOpen || this.scene.isGameOver || this.scene.levelUpUI?.container.visible) return;
     this.isOpen = true;
     this._refreshFullscreenButton();
     this.scene.physics.pause();
