@@ -9,6 +9,7 @@ import DamageSystem from '../combat/DamageSystem.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
 import RunState from '../roguelike/RunState.js';
 import RunManager from '../roguelike/RunManager.js';
+import ScoreManager from '../roguelike/ScoreManager.js';
 import SpawnDirector from '../roguelike/SpawnDirector.js';
 import HUD from '../ui/HUD.js';
 import LevelUpUI from '../ui/LevelUpUI.js';
@@ -26,6 +27,7 @@ import flockingConfigData from '../../data/flockingConfig.js';
 import sealerScheduleData from '../../data/sealerSchedule.js';
 import eliteScheduleData from '../../data/eliteSchedule.js';
 import bossScheduleData from '../../data/bossSchedule.js';
+import scoreValuesData from '../../data/scoreValues.js';
 
 const XP_ORB_PICKUP_RANGE_HINT = 4; // margem extra no corpo físico do orb
 const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
@@ -157,6 +159,7 @@ export default class GameScene extends Phaser.Scene {
     const seconds = Math.floor(this.spawnDirector.getElapsedMs() / 1000);
     if (seconds !== this._lastRunTimeSeconds) {
       this._lastRunTimeSeconds = seconds;
+      this.scoreManager.updateSurvivedTime(seconds);
       EventBus.emit('run-time-changed', { seconds });
     }
     if (seconds >= RUN_WIN_SECONDS) {
@@ -169,6 +172,7 @@ export default class GameScene extends Phaser.Scene {
     this.isGameOver = true;
     this.hasWon = true;
     this.spawnDirector.stop();
+    this.scoreManager.finalize(true);
     EventBus.emit('player-won');
   }
 
@@ -198,6 +202,8 @@ export default class GameScene extends Phaser.Scene {
     this.isPaused = false;
     // câmera lenta só-inimigos (evolução "Reflexos de Predador", punhos) —
     this.slowmoSystem = new SlowmoSystem();
+    // pontuação da partida (separada de XP/level — ver ScoreManager)
+    this.scoreManager = new ScoreManager(scoreValuesData, RUN_WIN_SECONDS);
   }
 
   _buildPlayer() {
@@ -319,6 +325,7 @@ export default class GameScene extends Phaser.Scene {
     // inimigo morre -> registra abate, dropa orb de xp e explode em FX
     EventBus.on('enemy-died', ({ enemyId, x, y, xpReward, color }) => {
       this.runManager.registerKill();
+      this.scoreManager.registerKill(enemyId);
       this._spawnXpOrb(x, y, xpReward);
       if (enemyId === 'elite' || (enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
         this._spawnMedkit(x, y);
@@ -329,6 +336,7 @@ export default class GameScene extends Phaser.Scene {
     EventBus.on('player-died', () => {
       this.isGameOver = true;
       this.spawnDirector.stop();
+      this.scoreManager.finalize(false);
     });
 
     EventBus.on('levelup-opened', () => {
