@@ -32,7 +32,7 @@ const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa 
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 const MEDKIT_HEAL_AMOUNT = 20;
 const MEDKIT_BRUTE_DROP_CHANCE = 0.01;
-const MEDKIT_SCALE = 0.5;
+const MEDKIT_SCALE = 0.6;
 const MEDKIT_PULSE_SCALE = 1.04;
 const MEDKIT_PULSE_DURATION_MS = 850;
 const MEDKIT_DROP_OFFSET_MIN = 42;
@@ -72,8 +72,7 @@ const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
   'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
   'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',
   'minotaur_walk_rage', 'minotaur_idle_rage_noaxe', 'minotaur_walk_rage_noaxe', 'minotaur_axe_thrown',
-  'minotaur_axe_thrown_rage', 'gato_drone', 'gato_drone_catforce', 'asset_purification_idle', 'asset_purification_walk',
-  'xp_orb', 'medkit', 'hit_fx'
+  'minotaur_axe_thrown_rage', 'xp_orb', 'hit_fx'
 ];
 
 export default class GameScene extends Phaser.Scene {
