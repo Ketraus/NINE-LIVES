@@ -1,272 +1,509 @@
 import EventBus from '../systems/EventBus.js';
-import scoreValuesData from '../../data/scoreValues.js';
+import { SURVIVAL_MULTIPLIER_MAX, COMPLETION_BONUS } from '../roguelike/ScoreManager.js';
 
-// Mesma paleta/fonte "placa de terminal" do menu principal e das outras
-// telas de UI (ver MainMenuScene/LevelUpUI/HUD) — só a fonte/cor do texto,
-// sem painel/borda em volta (pediu pra tirar a "moldura" e deixar só a
-// mensagem sobre o fundo escuro).
+// Tela de resultado: entra depois do "VOCÊ MORREU"/vitória (HUD emite
+// 'gameover-shown' / 'win-shown'). Uma etapa por vez, nada sobreposto:
+//   1. INIMIGOS DERROTADOS  -> tabela que se monta linha a linha, pontos base subindo
+//   2. BÔNUS DE SOBREVIVÊNCIA -> tempo + barra + multiplicador (x1.00 -> xN)
+//   3. PONTUAÇÃO FINAL      -> base x multiplicador (+ bônus), número final estoura
+//   4. RELATÓRIO            -> placar + tempo/nível/abates/dano + botões
+// Sem painel/moldura (pedido do jogador): o visual vem de tipografia, brilho e animação.
+
 const PIXEL_FONT = '"Press Start 2P", monospace';
-const TEXT_DIM = '#6b8894';
-const TEXT_MAIN = '#e8f6ff';
-const TEXT_ACCENT = '#7CFC9C';
+const COLOR = {
+  main: '#e8f6ff',
+  dim: '#6b8894',
+  green: '#7CFC9C',
+  cyan: '#4fd1ff',
+  gold: '#ffd166'
+};
+const HEX = { track: 0x14232a, line: 0x1c2e36, cyan: 0x4fd1ff, borderIdle: 0x3d5a66, borderHover: 0x8fd6ff };
 
-// não é mais um painel com borda — só define a largura de referência pro
-// wordWrap e o espaçamento vertical entre seção/item/total
-const PANEL_W = 320;
-const PANEL_H = 200;
+// A câmera própria da tela (uiCam) só enxerga um canto do mundo bem longe
+// de qualquer inimigo/projétil: nada do gameplay aparece por engano por cima.
+const FAR = 100000;
+const CANCELLED = new Error('result-cancelled');
 
-const PANEL_FADE_IN_MS = 400;
-// pausa depois que cada etapa termina de contar, antes da próxima começar
-const STEP_PAUSE_MS = 550;
-const ITEM_FADE_MS = 200;
-const KILL_COUNT_MS = 650; // contagem de pontos por tipo de inimigo abatido
-const MULT_COUNT_MS = 900; // contagem do multiplicador de sobrevivência
-const BONUS_COUNT_MS = 700; // contagem de bônus fixos (ex.: conclusão)
-const FINAL_COUNT_MS = 1200; // contagem final grande até a pontuação total
-const FINAL_PUNCH_SCALE = 1.15;
-const FINAL_PUNCH_MS = 220;
+const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
-// Tela de resultado pós-partida (morte ou vitória, 10:00 completos).
-// Reaproveita os dados já registrados pelo ScoreManager (ver
-// GameScene/ScoreManager) e revela a pontuação em etapas — inimigos
-// derrotados um por vez, depois bônus de sobrevivência, depois bônus de
-// conclusão (só se venceu) e por fim a pontuação final — sempre com o
-// mesmo painel minimalista, sem virar uma tabela cheia de números.
-//
-// Só começa depois que a tela de "Você Morreu"/vitória (HUD) já terminou
-// de aparecer (ver eventos 'gameover-shown'/'win-shown' emitidos por lá).
 export default class ResultUI {
   constructor(scene) {
     this.scene = scene;
+    this._token = 0; // invalida a sequência em andamento (reset/shutdown)
     this._started = false;
-    this._buildPanel();
+    this._lastTick = 0;
+    this.stage = null;
+
+    this._buildUI();
     this._bindEvents();
   }
 
-  // Sem painel/borda — só o dim atrás pra dar contraste, e os textos
-  // soltos por cima (mesmo princípio pedido pro "Você Morreu": nada de
-  // "interface", só a informação).
-  _buildPanel() {
-    const cx = this.scene.scale.width / 2;
-    const cy = this.scene.scale.height / 2;
+  _buildUI() {
+    const { width: W, height: H } = this.scene.scale;
+    this.W = W;
+    this.H = H;
+    this.cx = W / 2;
+    this.cy = H / 2;
 
-    this.container = this.scene.add.container(0, 0).setDepth(300).setVisible(false).setAlpha(0);
+    this.uiCam = this.scene.cameras.add(0, 0, W, H);
+    this.uiCam.setScroll(FAR, FAR);
 
-    const dim = this.scene.add
-      .rectangle(cx, cy, this.scene.scale.width, this.scene.scale.height, 0x000000, 0.35)
-      .setScrollFactor(0);
+    this.root = this.scene.add.container(FAR, FAR).setDepth(300).setVisible(false);
+    this.scene.cameras.cameras.forEach((cam) => {
+      if (cam !== this.uiCam) cam.ignore(this.root);
+    });
+    // a uiCam só pode desenhar o root: sem isso ela redesenhava HUD, pausa e
+    // cartas de level-up (tudo com scrollFactor 0) por cima da câmera principal
+    this._isolateUiCam();
 
-    // seção atual (ex.: "INIMIGOS DERROTADOS") — dim, no topo do painel
-    this.sectionText = this.scene.add
-      .text(cx, cy - PANEL_H / 2 + 24, '', { fontFamily: PIXEL_FONT, fontSize: '10px', color: TEXT_DIM })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
+    this.dim = this.scene.add.rectangle(0, 0, W, H, 0x000000, 1).setOrigin(0, 0).setAlpha(0);
+    this.root.add(this.dim);
+  }
 
-    // item atual da seção (nome+qtd do inimigo, multiplicador, bônus…)
-    this.itemText = this.scene.add
-      .text(cx, cy - 16, '', {
-        fontFamily: PIXEL_FONT,
-        fontSize: '13px',
-        color: TEXT_MAIN,
-        align: 'center',
-        wordWrap: { width: PANEL_W - 50 }
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-
-    // total corrente — sempre visível, sobe ao longo de todas as etapas
-    this.totalLabelText = this.scene.add
-      .text(cx, cy + 36, 'PONTUAÇÃO', { fontFamily: PIXEL_FONT, fontSize: '9px', color: TEXT_DIM })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-
-    this.totalText = this.scene.add
-      .text(cx, cy + 60, '0', { fontFamily: PIXEL_FONT, fontSize: '24px', color: TEXT_ACCENT })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-
-    this.container.add([dim, this.sectionText, this.itemText, this.totalLabelText, this.totalText]);
+  _isolateUiCam() {
+    this.uiCam.ignore(this.scene.children.list.filter((obj) => obj !== this.root));
   }
 
   _bindEvents() {
     EventBus.on('gameover-shown', () => this._start());
     EventBus.on('win-shown', () => this._start());
     EventBus.on('run-restart', () => this._reset());
+    this.scene.events.once('shutdown', () => {
+      this._token += 1;
+    });
   }
 
   _reset() {
-    this.scene.tweens.killTweensOf(this.container);
-    this.scene.tweens.killTweensOf(this.totalText);
-    this.container.setVisible(false).setAlpha(0);
-    this.sectionText.setText('');
-    this.itemText.setText('').setAlpha(1);
-    this.totalLabelText.setText('PONTUAÇÃO');
-    this.totalText.setText('0').setScale(1);
+    this._token += 1;
     this._started = false;
+    if (this.stage) {
+      this.stage.destroy();
+      this.stage = null;
+    }
+    this.dim.setAlpha(0);
+    this.root.setVisible(false);
   }
 
-  // Dispara uma única vez por run (morte e vitória nunca acontecem juntas,
-  // mas a guarda evita reprocessar se o evento chegar mais de uma vez).
   _start() {
     if (this._started) return;
-    const result = this.scene.scoreManager?.result;
-    if (!result) return;
-
     this._started = true;
-    this._result = result;
-    this._runningTotal = 0;
-
-    this.container.setVisible(true);
-    this.scene.tweens.add({
-      targets: this.container,
-      alpha: 1,
-      duration: PANEL_FADE_IN_MS,
-      onComplete: () => this._runSteps()
-    });
+    this._isolateUiCam(); // pega o que nasceu depois do construtor (joystick, console...)
+    this.root.setVisible(true);
+    this._run();
   }
 
-  _runSteps() {
-    const steps = this._buildKillSteps();
-    steps.push((next) => this._playSurvivalBonus(next));
-    if (this._result.completed) steps.push((next) => this._playCompletionBonus(next));
-    steps.push((next) => this._playFinalReveal(next));
-    this._runQueue(steps);
-  }
+  // ---------- sequência ----------
 
-  // Roda uma lista de passos (cada um recebe `next` e o chama quando
-  // termina) com uma pausa fixa entre eles. Ao fim da fila (placar final já
-  // revelado e parado sozinho na tela), emite 'result-complete' — é o sinal
-  // pra próxima e última informação (dica de reiniciar/escolher arma, ver
-  // HUD) entrar, sem disputar espaço com nada que ainda esteja em cena.
-  _runQueue(fns) {
-    const run = (i) => {
-      if (i >= fns.length) {
-        this.scene.time.delayedCall(STEP_PAUSE_MS, () => EventBus.emit('result-complete'));
-        return;
+  async _run() {
+    const token = this._token;
+    const result = this.scene.scoreManager?.result;
+    try {
+      await this._tween({ targets: this.dim, alpha: 0.88, duration: 420 });
+      if (result) {
+        await this._stageKills(result);
+        await this._stageBonus(result);
+        await this._stageFinal(result);
+        await this._stageReport(result);
+      } else {
+        this._newStage();
+        this._buildButtons();
       }
-      fns[i](() => this.scene.time.delayedCall(STEP_PAUSE_MS, () => run(i + 1)));
+    } catch (err) {
+      if (err === CANCELLED || token !== this._token) return;
+      // nunca deixa o jogador preso: qualquer erro cai direto nos botões
+      console.error('[ResultUI]', err);
+      if (this.stage) this.stage.destroy();
+      this._newStage();
+      this._buildButtons();
+    }
+    if (token === this._token) this._finish();
+  }
+
+  _finish() {
+    this.scene.resultComplete = true;
+    EventBus.emit('result-complete');
+  }
+
+  // Etapa 1 — tabela de abates
+  async _stageKills(result) {
+    this._newStage();
+    const { cx, W, H } = this;
+    const values = this.scene.scoreManager?.scoreValues || {};
+    const kills = result.killsByType || {};
+
+    // ordem de scoreValues (crescente por valor, termina no boss); ids
+    // desconhecidos entram no fim só por segurança
+    const order = Object.keys(values).filter((id) => kills[id] > 0);
+    Object.keys(kills).forEach((id) => {
+      if (kills[id] > 0 && !order.includes(id)) order.push(id);
+    });
+
+    const title = this._txt(cx, 58, 'INIMIGOS DERROTADOS', 16, COLOR.dim, { spacing: 1 });
+    await this._enter(title);
+
+    if (order.length === 0) {
+      const none = this._txt(cx, this.cy, 'NENHUM INIMIGO DERROTADO', 12, COLOR.dim);
+      await this._enter(none);
+      await this._wait(1200);
+      await this._clearStage();
+      return;
+    }
+
+    const top = 112;
+    const rowH = Math.min(38, (H - 116 - top) / order.length);
+    const xName = cx - 250;
+    const xCount = cx + 30;
+    const xPts = cx + 250;
+
+    const totalLabel = this._txt(cx, H - 100, 'PONTOS', 10, COLOR.dim);
+    const totalText = this._txt(cx, H - 62, '0', 32, COLOR.green, { glow: COLOR.green });
+    totalLabel.setAlpha(0);
+    totalText.setAlpha(0);
+    this.scene.tweens.add({ targets: [totalLabel, totalText], alpha: 1, duration: 300 });
+
+    let running = 0;
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i];
+      const count = kills[id];
+      const def = values[id] || {};
+      const pts = count * (def.points || 0);
+      const big = (def.points || 0) >= 150;
+      const y = top + rowH * i + rowH / 2;
+
+      const name = this._txt(xName, y, def.label || id, 14, big ? COLOR.gold : COLOR.main, { originX: 0 });
+      const cnt = this._txt(xCount, y, 'x0', 14, big ? COLOR.gold : COLOR.main, { originX: 1 });
+      const pt = this._txt(xPts, y, '+0', 14, big ? COLOR.gold : COLOR.green, { originX: 1 });
+      [name, cnt, pt].forEach((o) => o.setAlpha(0));
+
+      this.scene.tweens.add({ targets: [name, cnt, pt], alpha: 1, duration: 180 });
+      this.scene.tweens.add({ targets: name, x: { from: xName - 24, to: xName }, duration: 240, ease: 'Cubic.easeOut' });
+      this._sfx('sfx_hover', 0.3);
+
+      const from = running;
+      running += pts;
+      await Promise.all([
+        this._count(0, count, 380, (v) => {
+          cnt.setText(`x${fmt(v)}`);
+          this._tick();
+        }),
+        this._count(0, pts, 380, (v) => pt.setText(`+${fmt(v)}`)),
+        this._count(from, running, 380, (v) => totalText.setText(fmt(v)))
+      ]);
+
+      this.scene.tweens.add({ targets: totalText, scale: 1.12, duration: 90, yoyo: true });
+      if (big) {
+        this.uiCam.shake(160, 0.004);
+        this._sfx('sfx_card_select', 0.5);
+      }
+      await this._wait(big ? 520 : 140);
+    }
+
+    await this._wait(900);
+    await this._clearStage();
+  }
+
+  // Etapa 2 — multiplicador de sobrevivência
+  async _stageBonus(result) {
+    this._newStage();
+    const { cx, cy } = this;
+    const survived = result.survivedSeconds || 0;
+    const winSeconds = this.scene.scoreManager?.runWinSeconds || 600;
+    const ratio = Phaser.Math.Clamp(survived / winSeconds, 0, 1);
+    const mult = result.survivalMultiplier || 1;
+
+    const title = this._txt(cx, 58, 'BÔNUS DE SOBREVIVÊNCIA', 16, COLOR.dim, { spacing: 1 });
+    await this._enter(title);
+
+    const barW = 360;
+    const barY = cy - 10;
+    const timeLabel = this._txt(cx, cy - 104, 'TEMPO SOBREVIVIDO', 10, COLOR.dim);
+    const timeText = this._txt(cx, cy - 64, '00:00', 40, COLOR.main);
+    const track = this.scene.add.rectangle(cx, barY, barW, 8, HEX.track).setOrigin(0.5);
+    const fill = this.scene.add.rectangle(cx - barW / 2, barY, barW, 8, HEX.cyan).setOrigin(0, 0.5).setScale(0, 1);
+    this.stage.add([track, fill]);
+    const startLbl = this._txt(cx - barW / 2, barY + 20, '00:00', 9, COLOR.dim, { originX: 0 });
+    const endLbl = this._txt(cx + barW / 2, barY + 20, fmtTime(winSeconds), 9, COLOR.dim, { originX: 1 });
+    const multLabel = this._txt(cx, cy + 58, 'MULTIPLICADOR', 10, COLOR.dim);
+    const multText = this._txt(cx, cy + 104, 'x1.00', 48, COLOR.green, { glow: COLOR.green });
+
+    const parts = [timeLabel, timeText, track, fill, startLbl, endLbl, multLabel, multText];
+    parts.forEach((o) => o.setAlpha(0));
+    await this._tween({ targets: parts, alpha: 1, duration: 320 });
+
+    await Promise.all([
+      this._count(0, survived, 1100, (v) => timeText.setText(fmtTime(Math.round(v))), 'Cubic.easeInOut'),
+      this._count(0, ratio, 1100, (v) => (fill.scaleX = v), 'Cubic.easeInOut'),
+      this._count(1, mult, 1100, (v) => {
+        multText.setText(`x${v.toFixed(2)}`);
+        this._tick();
+      }, 'Cubic.easeInOut')
+    ]);
+
+    this.scene.tweens.add({ targets: multText, scale: { from: 1.25, to: 1 }, duration: 360, ease: 'Back.easeOut' });
+    this._sfx('sfx_card_select', 0.55);
+    await this._wait(500);
+
+    if (result.completed) {
+      const bonus = this._txt(cx, cy + 176, `+ ${fmt(result.completionBonus || 0)}  BÔNUS DE CONCLUSÃO`, 12, COLOR.gold, { glow: COLOR.gold });
+      await this._enter(bonus, 8, 300);
+      this.uiCam.shake(200, 0.005);
+    } else {
+      const note = this._txt(
+        cx, cy + 176,
+        `COMPLETE ${fmtTime(winSeconds)} PARA x${SURVIVAL_MULTIPLIER_MAX.toFixed(2)} E +${fmt(COMPLETION_BONUS)}`,
+        9, COLOR.dim
+      );
+      await this._enter(note, 6, 300);
+    }
+
+    await this._wait(1400);
+    await this._clearStage();
+  }
+
+  // Etapa 3 — pontuação final
+  async _stageFinal(result) {
+    this._newStage();
+    const { cx, cy } = this;
+    const raw = result.rawScore || 0;
+    const mult = result.survivalMultiplier || 1;
+    const bonus = result.completionBonus || 0;
+    const finalScore = result.finalScore || 0;
+
+    const title = this._txt(cx, 58, 'PONTUAÇÃO FINAL', 16, COLOR.dim, { spacing: 1 });
+    await this._enter(title);
+
+    const formula = `${fmt(raw)}  x  ${mult.toFixed(2)}` + (bonus > 0 ? `  +  ${fmt(bonus)}` : '');
+    const line = this._txt(cx, cy - 64, formula, 16, COLOR.main);
+    await this._enter(line);
+    await this._wait(350);
+
+    const number = this._txt(cx, cy + 14, fmt(raw), 56, COLOR.green, { glow: COLOR.green });
+    await this._enter(number, 0, 240);
+    await this._wait(200);
+
+    if (finalScore !== raw) {
+      await this._count(raw, finalScore, 1700, (v) => {
+        number.setText(fmt(v));
+        this._tick();
+      });
+    }
+
+    if (finalScore > 0) {
+      number.setColor(COLOR.main);
+      this.uiCam.shake(260, 0.006);
+      this.uiCam.flash(130, 200, 255, 220);
+      this._sfx('sfx_evolution_effect', 0.55);
+      this._burst(cx, cy + 14, 30);
+      this.scene.tweens.add({ targets: number, scale: { from: 1.3, to: 1 }, duration: 400, ease: 'Back.easeOut' });
+      this.scene.time.delayedCall(260, () => number.active && number.setColor(COLOR.green));
+    }
+
+    await this._wait(1700);
+    await this._clearStage();
+  }
+
+  // Etapa 4 — relatório + botões
+  async _stageReport(result) {
+    this._newStage();
+    const { cx } = this;
+    const totalKills = Object.values(result.killsByType || {}).reduce((a, b) => a + b, 0);
+
+    const label = this._txt(cx, 48, 'PONTUAÇÃO FINAL', 10, COLOR.dim, { spacing: 1 });
+    const score = this._txt(cx, 92, fmt(result.finalScore || 0), 40, COLOR.green, { glow: COLOR.green });
+    label.setAlpha(0);
+    score.setAlpha(0);
+    await this._tween({ targets: [label, score], alpha: 1, duration: 400 });
+
+    const stats = [
+      ['TEMPO', fmtTime(result.survivedSeconds || 0)],
+      ['NÍVEL', String(result.finalLevel || 1)],
+      ['ABATES', fmt(totalKills)],
+      ['DANO', fmt(result.totalDamage || 0)]
+    ];
+    const top = 150;
+    const rowH = 42;
+    for (let i = 0; i < stats.length; i++) {
+      const y = top + rowH * i;
+      const name = this._txt(cx - 190, y, stats[i][0], 12, COLOR.dim, { originX: 0 });
+      const value = this._txt(cx + 190, y, stats[i][1], 16, COLOR.main, { originX: 1 });
+      const rule = this.scene.add.rectangle(cx, y + rowH / 2, 380, 1, HEX.line);
+      this.stage.add(rule);
+      [name, value, rule].forEach((o) => o.setAlpha(0));
+      this.scene.tweens.add({ targets: [name, value, rule], alpha: 1, duration: 260 });
+      this.scene.tweens.add({ targets: value, x: { from: cx + 190 + 20, to: cx + 190 }, duration: 260, ease: 'Cubic.easeOut' });
+      this._sfx('sfx_hover', 0.25);
+      await this._wait(260);
+    }
+
+    await this._wait(200);
+    this._buildButtons();
+  }
+
+  _buildButtons() {
+    const { cx, H } = this;
+    const won = !!this.scene.hasWon;
+    let acted = false;
+    const once = (fn) => () => {
+      if (acted) return;
+      acted = true;
+      this._sfx('sfx_ui_click', 0.6);
+      fn();
     };
-    run(0);
+    const primary = once(() => this.scene._restartOrGoToWeaponSelect());
+    const toMenu = once(() => this.scene.scene.start('MainMenuScene'));
+
+    this._button(cx, H - 142, won ? 'ESCOLHER ARMA' : 'REINICIAR', primary);
+    this._button(cx, H - 90, 'MENU', toMenu);
+
+    if (!this.scene.sys.game.device.input.touch) {
+      const hint = this._txt(cx, H - 30, won ? 'OU PRESSIONE R PARA ESCOLHER OUTRA ARMA' : 'OU PRESSIONE R PARA REINICIAR', 8, COLOR.dim);
+      hint.setAlpha(0);
+      this.scene.tweens.add({ targets: hint, alpha: 1, duration: 400 });
+    }
+    this.scene.input.keyboard?.once('keydown-ENTER', primary);
   }
 
-  // Um passo por tipo de inimigo abatido, na ordem de data/scoreValues.js
-  // (crescente por valor, terminando no boss) — tipos com 0 abates não
-  // entram (ver pedido: só mostra o que de fato aconteceu na run).
-  _buildKillSteps() {
-    const kills = this._result.killsByType;
-    const steps = [];
-    Object.keys(scoreValuesData).forEach((id) => {
-      const count = kills[id] || 0;
-      if (count <= 0) return;
-      const def = scoreValuesData[id];
-      const points = count * def.points;
-      steps.push((next) => this._playKillStep(def.label, count, points, next));
+  _button(x, y, label, onSelect) {
+    const w = 240;
+    const h = 40;
+    const c = 8;
+    const box = this.scene.add.container(x, y).setAlpha(0);
+    const panel = this.scene.add.graphics();
+
+    const draw = (color, fillAlpha) => {
+      panel.clear();
+      panel.fillStyle(0x061014, fillAlpha);
+      panel.lineStyle(1, color, 1);
+      const pts = [
+        { x: -w / 2 + c, y: -h / 2 }, { x: w / 2 - c, y: -h / 2 },
+        { x: w / 2, y: -h / 2 + c }, { x: w / 2, y: h / 2 - c },
+        { x: w / 2 - c, y: h / 2 }, { x: -w / 2 + c, y: h / 2 },
+        { x: -w / 2, y: h / 2 - c }, { x: -w / 2, y: -h / 2 + c }
+      ];
+      panel.fillPoints(pts, true);
+      panel.strokePoints(pts, true);
+    };
+    draw(HEX.borderIdle, 0.55);
+
+    const arrow = this.scene.add.text(-w / 2 + 18, 0, '>', { fontFamily: PIXEL_FONT, fontSize: '12px', color: COLOR.main })
+      .setOrigin(0.5).setAlpha(0);
+    const text = this.scene.add.text(0, 0, label, { fontFamily: PIXEL_FONT, fontSize: '12px', color: '#8fb3bf' })
+      .setOrigin(0.5);
+    const hit = this.scene.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
+
+    hit.on('pointerover', () => {
+      draw(HEX.borderHover, 0.75);
+      text.setColor(COLOR.main);
+      arrow.setAlpha(1);
+      this.scene.tweens.add({ targets: arrow, alpha: 0.2, duration: 380, yoyo: true, repeat: -1 });
+      this._sfx('sfx_hover', 0.5);
     });
-    return steps;
+    hit.on('pointerout', () => {
+      draw(HEX.borderIdle, 0.55);
+      text.setColor('#8fb3bf');
+      this.scene.tweens.killTweensOf(arrow);
+      arrow.setAlpha(0);
+    });
+    hit.on('pointerdown', onSelect);
+
+    box.add([panel, arrow, text, hit]);
+    this.stage.add(box);
+    this.scene.tweens.add({ targets: box, alpha: 1, duration: 300 });
+    return box;
   }
 
-  _playKillStep(label, count, points, next) {
-    this._setSection('INIMIGOS DERROTADOS');
-    this._setItem(`${label}  x${count}`, () => {
-      const from = this._runningTotal;
-      const to = from + points;
-      this._countTotal(from, to, KILL_COUNT_MS, () => {
-        this._runningTotal = to;
-        next();
-      });
+  // ---------- helpers ----------
+
+  _newStage() {
+    this.stage = this.scene.add.container(0, 0);
+    this.root.add(this.stage);
+    return this.stage;
+  }
+
+  async _clearStage(ms = 280) {
+    const stage = this.stage;
+    if (!stage) return;
+    await this._tween({ targets: stage, alpha: 0, x: -18, duration: ms, ease: 'Cubic.easeIn' });
+    stage.destroy();
+    if (this.stage === stage) this.stage = null;
+  }
+
+  _txt(x, y, str, size, color, { originX = 0.5, glow = null, spacing = 0 } = {}) {
+    const t = this.scene.add
+      .text(x, y, str, { fontFamily: PIXEL_FONT, fontSize: `${size}px`, color, align: 'center' })
+      .setOrigin(originX, 0.5);
+    if (spacing) t.setLetterSpacing(spacing);
+    if (glow) t.setShadow(0, 0, glow, Math.round(size * 0.5), false, true);
+    this.stage.add(t);
+    return t;
+  }
+
+  _enter(obj, dy = 10, ms = 320) {
+    const y = obj.y;
+    obj.setAlpha(0).setY(y + dy);
+    return this._tween({ targets: obj, alpha: 1, y, duration: ms, ease: 'Cubic.easeOut' });
+  }
+
+  _wait(ms) {
+    const token = this._token;
+    return new Promise((resolve, reject) => {
+      this.scene.time.delayedCall(ms, () => (token === this._token ? resolve() : reject(CANCELLED)));
     });
   }
 
-  _playSurvivalBonus(next) {
-    this._setSection('BÔNUS DE SOBREVIVÊNCIA');
-    const mult = this._result.survivalMultiplier;
-    const from = this._runningTotal;
-    const to = Math.round(from * mult);
-
-    this._setItem('×1.00', () => {
-      const multProxy = { value: 1 };
+  _tween(config) {
+    const token = this._token;
+    return new Promise((resolve, reject) => {
       this.scene.tweens.add({
-        targets: multProxy,
-        value: mult,
-        duration: MULT_COUNT_MS,
+        ...config,
+        onComplete: () => (token === this._token ? resolve() : reject(CANCELLED))
+      });
+    });
+  }
+
+  // Conta de `from` até `to`. IMPORTANTE: o valor vem do objeto proxy — o
+  // primeiro argumento do onUpdate do Phaser é o Tween, não o alvo (era o
+  // bug que deixava a pontuação sempre em 0).
+  _count(from, to, duration, onValue, ease = 'Cubic.easeOut') {
+    const proxy = { v: from };
+    return this._tween({ targets: proxy, v: to, duration, ease, onUpdate: () => onValue(proxy.v) })
+      .then(() => onValue(to));
+  }
+
+  _tick() {
+    const now = this.scene.time.now;
+    if (now - this._lastTick < 60) return;
+    this._lastTick = now;
+    this._sfx('sfx_hover', 0.18);
+  }
+
+  _sfx(key, volume = 0.5) {
+    try {
+      if (this.scene.cache.audio.exists(key)) this.scene.sound.play(key, { volume });
+    } catch (_) {
+      // som nunca pode derrubar a sequência
+    }
+  }
+
+  _burst(x, y, count) {
+    const colors = [0x7cfc9c, 0x4fd1ff, 0xe8f6ff];
+    for (let i = 0; i < count; i++) {
+      const size = Phaser.Math.Between(3, 6);
+      const p = this.scene.add.rectangle(x, y, size, size, colors[i % colors.length]);
+      this.root.add(p);
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.Between(90, 260);
+      this.scene.tweens.add({
+        targets: p,
+        x: x + Math.cos(ang) * dist,
+        y: y + Math.sin(ang) * dist * 0.7,
+        alpha: 0,
+        angle: Phaser.Math.Between(-180, 180),
+        duration: Phaser.Math.Between(500, 900),
         ease: 'Cubic.easeOut',
-        onUpdate: () => this.itemText.setText(`×${multProxy.value.toFixed(2)}`)
+        onComplete: () => p.destroy()
       });
-      this._countTotal(from, to, MULT_COUNT_MS, () => {
-        this._runningTotal = to;
-        next();
-      });
-    });
-  }
-
-  _playCompletionBonus(next) {
-    this._setSection('BÔNUS DE CONCLUSÃO');
-    const bonus = this._result.completionBonus;
-    const from = this._runningTotal;
-    const to = from + bonus;
-
-    this._setItem(`+${bonus}`, () => {
-      this._countTotal(from, to, BONUS_COUNT_MS, () => {
-        this._runningTotal = to;
-        next();
-      });
-    });
-  }
-
-  _playFinalReveal(next) {
-    this._setSection('PONTUAÇÃO FINAL');
-    this._setItem('', () => {
-      this.totalLabelText.setText('TOTAL');
-      this._countTotal(0, this._result.finalScore, FINAL_COUNT_MS, () => {
-        this.scene.tweens.add({
-          targets: this.totalText,
-          scale: FINAL_PUNCH_SCALE,
-          duration: FINAL_PUNCH_MS,
-          yoyo: true,
-          ease: 'Sine.easeOut'
-        });
-        next();
-      });
-    });
-  }
-
-  // Troca o texto da seção com um crossfade curto — só reanima se o texto
-  // realmente mudou (senão fica piscando à toa entre itens da mesma seção).
-  _setSection(label) {
-    if (this.sectionText.text === label) return;
-    this.sectionText.setText(label).setAlpha(0);
-    this.scene.tweens.add({ targets: this.sectionText, alpha: 1, duration: ITEM_FADE_MS });
-  }
-
-  // Crossfade do item central: some o texto anterior, troca e reaparece,
-  // só então chama onShown (que dispara a contagem daquele passo).
-  _setItem(label, onShown) {
-    this.scene.tweens.add({
-      targets: this.itemText,
-      alpha: 0,
-      duration: ITEM_FADE_MS,
-      onComplete: () => {
-        this.itemText.setText(label);
-        this.scene.tweens.add({
-          targets: this.itemText,
-          alpha: 1,
-          duration: ITEM_FADE_MS,
-          onComplete: onShown
-        });
-      }
-    });
-  }
-
-  // Conta o número exibido no total de `from` até `to` (inteiros).
-  _countTotal(from, to, duration, onComplete) {
-    const proxy = { value: from };
-    this.scene.tweens.add({
-      targets: proxy,
-      value: to,
-      duration,
-      ease: 'Cubic.easeOut',
-      onUpdate: () => this.totalText.setText(String(Math.round(proxy.value))),
-      onComplete
-    });
+    }
   }
 }

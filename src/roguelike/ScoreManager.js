@@ -3,8 +3,8 @@ import EventBus from '../systems/EventBus.js';
 // Multiplicador de sobrevivência: cresce linear de 1x (0s) até este valor
 // no instante em que a run venceria (runWinSeconds) — prêmio por aguentar
 // mais tempo mesmo sem chegar lá. Bônus fixo extra só se completar de fato.
-const SURVIVAL_MULTIPLIER_MAX = 1.5;
-const COMPLETION_BONUS = 1000;
+export const SURVIVAL_MULTIPLIER_MAX = 1.5;
+export const COMPLETION_BONUS = 1000;
 
 // Dono da pontuação da partida (separado de RunState/RunManager, que
 // cuidam de XP/level/cartas — pontuação não afeta e não é afetada por
@@ -16,6 +16,7 @@ export default class ScoreManager {
     this.rawScore = 0;
     this.killsByType = {}; // { [enemyId]: quantidade morta }
     this.survivedSeconds = 0;
+    this.totalDamage = 0; // dano total causado pelo jogador (ver registerDamage)
     this.result = null; // só preenchido depois de finalize()
   }
 
@@ -32,6 +33,12 @@ export default class ScoreManager {
     });
   }
 
+  // Chamado por DamageSystem.applyWeaponHit a cada golpe do lado do jogador
+  // (arma, habilidades, aliados) que realmente tirou vida de um inimigo.
+  registerDamage(amount) {
+    this.totalDamage += amount;
+  }
+
   // Chamado a cada tick do relógio da run (ver GameScene._updateRunTimer)
   // pra saber quanto tempo foi sobrevivido na hora de finalizar.
   updateSurvivedTime(seconds) {
@@ -46,7 +53,7 @@ export default class ScoreManager {
   // Fim da run (morte ou vitória, ver GameScene) — calcula e guarda o
   // resultado final uma única vez. completed = true só quando bateu os
   // 10:00 (ver RUN_WIN_SECONDS em GameScene).
-  finalize(completed) {
+  finalize(completed, extras = {}) {
     if (this.result) return this.result; // já finalizado, não recalcula
 
     const survivalMultiplier = this._survivalMultiplier();
@@ -60,7 +67,9 @@ export default class ScoreManager {
       completed,
       completionBonus,
       finalScore,
-      killsByType: { ...this.killsByType }
+      killsByType: { ...this.killsByType },
+      finalLevel: extras.finalLevel ?? 1,
+      totalDamage: Math.round(this.totalDamage)
     };
 
     // UI (barra de pontuação subindo etc.) escuta isto depois — ainda não

@@ -173,7 +173,7 @@ export default class GameScene extends Phaser.Scene {
     this.isGameOver = true;
     this.hasWon = true;
     this.spawnDirector.stop();
-    this.scoreManager.finalize(true);
+    this.scoreManager.finalize(true, { finalLevel: this.runState.level });
     EventBus.emit('player-won');
   }
 
@@ -199,6 +199,7 @@ export default class GameScene extends Phaser.Scene {
   _buildRun() {
     this.runState = new RunState(this.weaponId);
     this.isGameOver = false;
+    this.resultComplete = false; // vira true quando a tela de resultado (ResultUI) termina
     this.hasWon = false;
     this.isPaused = false;
     // câmera lenta só-inimigos (evolução "Reflexos de Predador", punhos) —
@@ -340,7 +341,7 @@ export default class GameScene extends Phaser.Scene {
     EventBus.on('player-died', () => {
       this.isGameOver = true;
       this.spawnDirector.stop();
-      this.scoreManager.finalize(false);
+      this.scoreManager.finalize(false, { finalLevel: this.runState.level });
     });
 
     EventBus.on('levelup-opened', () => {
@@ -382,16 +383,14 @@ export default class GameScene extends Phaser.Scene {
 
   _buildInput() {
     this.input.keyboard.on('keydown-R', () => {
-      if (this.isGameOver) this._restartOrGoToWeaponSelect();
+      if (this.isGameOver && this.resultComplete) this._restartOrGoToWeaponSelect();
     });
 
     // ESC no PC alterna o menu de pausa — o botão (canto superior direito,
     this.input.keyboard.on('keydown-ESC', () => this.pauseUI.toggle());
 
-    // celular não tem tecla R — toque na tela reinicia também (funciona
-    this.input.on('pointerdown', () => {
-      if (this.isGameOver) this._restartOrGoToWeaponSelect();
-    });
+    // reiniciar (tecla R ou botões) só depois do relatório (ver ResultUI); no
+    // celular quem reinicia são os botões — toque solto na tela não faz nada
 
     // celular: ataque continua automático, jogador só controla movimento
     if (this.sys.game.device.input.touch) {

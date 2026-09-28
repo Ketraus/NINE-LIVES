@@ -125,10 +125,23 @@ const GAMEOVER_FX_RAMP_MS = 2600;
 // depois que o placar final do ResultUI termina (ver 'result-complete').
 const BIG_MESSAGE_FADE_IN_MS = 650;
 const BIG_MESSAGE_START_SCALE = 0.85;
-const BIG_MESSAGE_HOLD_MS = 900;
+const BIG_MESSAGE_HOLD_MS = 1500;
 const BIG_MESSAGE_FADE_OUT_MS = 350;
 const BIG_MESSAGE_EXIT_SCALE = 0.92;
-const RESULT_HINT_FADE_MS = 300;
+// impacto do "VOCÊ MORREU": entra grande e despenca no lugar (slam), tela
+// treme + clarão + estrondo, cópias RGB convergem, fica pulsando com glitch
+// e sai colapsando como monitor desligando (mesmo motivo da sequência de morte)
+const DEATH_SLAM_START_SCALE = 2.8;
+const DEATH_SLAM_MS = 150;
+const DEATH_SHAKE_IMPACT_MS = 380;
+const DEATH_SHAKE_IMPACT_INTENSITY = 0.018;
+const DEATH_HOLD_MS = 2200;
+const DEATH_GHOST_START_OFFSET = 46;
+const DEATH_GHOST_OFFSET = 4;
+const DEATH_WASH_ALPHA = 0.32;
+const DEATH_TITLE_COLOR = '#ffffff';
+const DEATH_GHOST_RED = '#ff2a45';
+const DEATH_GHOST_CYAN = '#4fd1ff';
 const GAMEOVER_BLOOM_THRESHOLD = 0.72;
 const GAMEOVER_BLOOM_RADIUS = 1.6;
 const GAMEOVER_BLOOM_INTENSITY = 0.18;
@@ -186,8 +199,6 @@ export default class HUD {
     this._applyZoomCompensation(this.uiContainer);
     this._applyZoomCompensation(this.gameOverGroup);
     this._applyZoomCompensation(this.winGroup);
-    this._applyZoomCompensation(this.gameOverHint);
-    this._applyZoomCompensation(this.winHint);
     this._applyZoomCompensation(this.deathOverlayGroup);
 
     this._bindEvents();
@@ -590,7 +601,7 @@ export default class HUD {
       });
     }
 
-    this._playDeathNoise();
+    // this._playDeathNoise(); // Ruído removido da tela de pontuação
   }
 
   // Ruído branco gerado na hora via Web Audio (sem asset): um
@@ -784,44 +795,48 @@ export default class HUD {
   // Só o título — nada de estatísticas, nada de dica ainda (ver
   // _playBigMessage: essa mensagem entra, existe sozinha e sai por
   // completo antes de qualquer outra coisa aparecer). A dica de reiniciar
-  // mora à parte (ver gameOverHint) e só entra depois do ResultUI acabar.
+  // (a dica de reiniciar agora mora no ResultUI, junto dos botões).
   // Só a mensagem, em branco, no meio da tela — sem painel/borda/moldura
   // (pediu explicitamente pra tirar a "interface no tema do jogo"; ver
   // _playBigMessage pra entrada/saída). Dica de reiniciar mora à parte
-  // (gameOverHint) e só entra depois do ResultUI acabar.
+  // ResultUI (botões + dica de R).
   _buildGameOverText() {
-    this.gameOverGroup = this.scene.add.container(0, 0).setDepth(200).setVisible(false);
-    const cx = this.scene.scale.width / 2;
-    const cy = this.scene.scale.height / 2;
+    this.gameOverGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(200).setVisible(false);
+    const W = this.scene.scale.width;
+    const H = this.scene.scale.height;
+    const cx = W / 2;
+    const cy = H / 2;
+    const size = Math.min(56, Math.floor((W * 0.82) / 11));
+    const style = (color) => ({ fontFamily: '"Press Start 2P", monospace', fontSize: `${size}px`, color });
 
-    const title = this.scene.add
-      .text(cx, cy, 'VOCÊ MORREU', { fontSize: '22px', color: '#ffffff' })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
+    // lavagem vermelho-escuro bem discreta atrás do texto (sem moldura/painel)
+    this.deathWash = this.scene.add.rectangle(cx, cy, W, H, 0x2a0208, 1).setScrollFactor(0).setAlpha(0);
 
-    this.gameOverMessage = this.scene.add.container(0, 0).setAlpha(0);
-    this.gameOverMessage.add([title]);
-    this.gameOverGroup.add(this.gameOverMessage);
+    // as duas cópias RGB (somadas) dão o "rasgo" de cor nas bordas do texto
+    this.deathGhostRed = this.scene.add.text(0, 0, 'VOCÊ MORREU', style(DEATH_GHOST_RED))
+      .setOrigin(0.5).setScrollFactor(0).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD).setLetterSpacing(2);
+    this.deathGhostCyan = this.scene.add.text(0, 0, 'VOCÊ MORREU', style(DEATH_GHOST_CYAN))
+      .setOrigin(0.5).setScrollFactor(0).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD).setLetterSpacing(2);
+    this.deathTitle = this.scene.add.text(0, 0, 'VOCÊ MORREU', style(DEATH_TITLE_COLOR))
+      .setOrigin(0.5).setScrollFactor(0).setAlpha(0).setLetterSpacing(2)
+      .setShadow(0, 0, '#ff1e3c', 22, false, true);
 
-    this.gameOverHint = this.scene.add
-      .text(cx, this.scene.scale.height - 40, 'Pressione R ou toque na tela para reiniciar', {
-        fontSize: '14px',
-        color: '#ffffff'
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(310)
-      .setAlpha(0);
+    // container centralizado no meio da tela: escala/colapso acontecem em
+    // volta do centro do texto (antes ele "escorregava" pro canto)
+    this.gameOverMessage = this.scene.add.container(cx, cy).setScrollFactor(0).setAlpha(0);
+    this.gameOverMessage.add([this.deathGhostRed, this.deathGhostCyan, this.deathTitle]);
+    this.gameOverGroup.add([this.deathWash, this.gameOverMessage]);
   }
 
-  // Mesmo esquema visual/sequência do game over (ver _buildGameOverText).
+  // Vitória: mesma sequência do _playBigMessage, agora centralizada no
+  // próprio container (escala em volta do centro do texto).
   _buildWinText() {
-    this.winGroup = this.scene.add.container(0, 0).setDepth(200).setVisible(false);
+    this.winGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(200).setVisible(false);
     const cx = this.scene.scale.width / 2;
     const cy = this.scene.scale.height / 2;
 
     const title = this.scene.add
-      .text(cx, cy, 'PARABÉNS, VOCÊ VENCEU O JOGO!', {
+      .text(0, 0, 'PARABÉNS, VOCÊ VENCEU O JOGO!', {
         fontSize: '20px',
         color: '#7CFC9C',
         align: 'center',
@@ -830,19 +845,9 @@ export default class HUD {
       .setOrigin(0.5)
       .setScrollFactor(0);
 
-    this.winMessage = this.scene.add.container(0, 0).setAlpha(0);
+    this.winMessage = this.scene.add.container(cx, cy).setScrollFactor(0).setAlpha(0);
     this.winMessage.add([title]);
     this.winGroup.add(this.winMessage);
-
-    this.winHint = this.scene.add
-      .text(cx, this.scene.scale.height - 40, 'Pressione R ou toque na tela para escolher outra arma', {
-        fontSize: '14px',
-        color: '#ffffff'
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(310)
-      .setAlpha(0);
   }
 
   // Uma "mensagem grande" (Você Morreu / vitória): fade+scale in devagar
@@ -878,6 +883,108 @@ export default class HUD {
         });
       }
     });
+  }
+
+  // "VOCÊ MORREU" com impacto: slam -> estrondo/tremor/clarão -> pulsa com
+  // glitch -> colapsa. onDone() só roda quando some por completo (é o que
+  // libera o ResultUI, ver 'gameover-shown').
+  _playDeathMessage(onDone) {
+    const scene = this.scene;
+    const cam = scene.cameras.main;
+    const { gameOverGroup: group, gameOverMessage: message, deathTitle: title, deathGhostRed: red, deathGhostCyan: cyan, deathWash: wash } = this;
+    const layers = [title, red, cyan];
+
+    this._resetDeathMessage();
+    group.setVisible(true);
+    message.setAlpha(1).setScale(1);
+    layers.forEach((l) => l.setScale(DEATH_SLAM_START_SCALE).setAlpha(0));
+    red.setX(-DEATH_GHOST_START_OFFSET);
+    cyan.setX(DEATH_GHOST_START_OFFSET);
+
+    // 1) despenca: cresce de fora pra dentro, acelerando até bater
+    scene.tweens.add({ targets: layers, scale: 1, duration: DEATH_SLAM_MS, ease: 'Expo.easeIn' });
+    scene.tweens.add({ targets: title, alpha: 1, duration: 70 });
+    scene.tweens.add({ targets: [red, cyan], alpha: 0.85, duration: 70 });
+
+    // 2) impacto
+    scene.time.delayedCall(DEATH_SLAM_MS, () => {
+      cam.shake(DEATH_SHAKE_IMPACT_MS, DEATH_SHAKE_IMPACT_INTENSITY);
+      cam.flash(150, 255, 255, 255);
+      if (scene.cache.audio.exists('sfx_elite_explosion')) scene.sound.play('sfx_elite_explosion', { volume: 0.8 });
+
+      scene.tweens.add({ targets: red, x: -DEATH_GHOST_OFFSET, duration: 280, ease: 'Cubic.easeOut' });
+      scene.tweens.add({ targets: cyan, x: DEATH_GHOST_OFFSET, duration: 280, ease: 'Cubic.easeOut' });
+      scene.tweens.add({ targets: wash, alpha: DEATH_WASH_ALPHA, duration: 500, ease: 'Sine.easeOut' });
+
+      // respiração lenta (texto + cópias juntos) e pulso da lavagem
+      scene.tweens.add({ targets: layers, scale: 1.035, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      scene.tweens.add({ targets: wash, alpha: DEATH_WASH_ALPHA * 0.6, delay: 500, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+
+      // glitch: de vez em quando o texto "pula" de lado e as cópias abrem
+      this._deathJitter = scene.time.addEvent({
+        delay: 120,
+        loop: true,
+        callback: () => {
+          if (Math.random() > 0.35) return;
+          const dx = Phaser.Math.Between(-7, 7);
+          title.setX(dx);
+          red.setX(-DEATH_GHOST_OFFSET + dx - Phaser.Math.Between(6, 16));
+          cyan.setX(DEATH_GHOST_OFFSET + dx + Phaser.Math.Between(6, 16));
+          scene.time.delayedCall(55, () => {
+            title.setX(0);
+            red.setX(-DEATH_GHOST_OFFSET);
+            cyan.setX(DEATH_GHOST_OFFSET);
+          });
+        }
+      });
+
+      // 3) sai: pisca 3x e colapsa na horizontal, igual monitor desligando
+      scene.time.delayedCall(DEATH_HOLD_MS, () => {
+        this._stopDeathJitter();
+        scene.tweens.killTweensOf([title, red, cyan, wash]);
+        layers.forEach((l) => l.setX(0).setScale(1));
+        scene.tweens.add({
+          targets: message,
+          alpha: 0.12,
+          duration: 45,
+          yoyo: true,
+          repeat: 2,
+          onComplete: () => {
+            scene.tweens.add({
+              targets: message,
+              scaleX: 1.6,
+              scaleY: 0.02,
+              alpha: 0,
+              duration: 240,
+              ease: 'Expo.easeIn',
+              onComplete: () => {
+                group.setVisible(false);
+                message.setAlpha(0).setScale(1);
+                onDone();
+              }
+            });
+          }
+        });
+        scene.tweens.add({ targets: wash, alpha: 0, duration: 320 });
+      });
+    });
+  }
+
+  _stopDeathJitter() {
+    if (this._deathJitter) {
+      this._deathJitter.remove();
+      this._deathJitter = null;
+    }
+  }
+
+  _resetDeathMessage() {
+    this._stopDeathJitter();
+    const parts = [this.deathTitle, this.deathGhostRed, this.deathGhostCyan, this.deathWash, this.gameOverMessage];
+    this.scene.tweens.killTweensOf(parts);
+    this.deathTitle.setPosition(0, 0).setScale(1).setAlpha(0);
+    this.deathGhostRed.setPosition(0, 0).setScale(1).setAlpha(0);
+    this.deathGhostCyan.setPosition(0, 0).setScale(1).setAlpha(0);
+    this.deathWash.setAlpha(0);
   }
 
   _bindEvents() {
@@ -994,8 +1101,7 @@ export default class HUD {
       this.scene.time.delayedCall(DEATH_SOUND_MS, () => {
         this.scene.time.delayedCall(DEATH_SILENCE_MS, () => {
           this._startGameOverFx();
-          this._pendingHint = this.gameOverHint;
-          this._playBigMessage(this.gameOverGroup, this.gameOverMessage, () => EventBus.emit('gameover-shown'));
+          this._playDeathMessage(() => EventBus.emit('gameover-shown'));
         });
       });
     });
@@ -1003,20 +1109,7 @@ export default class HUD {
     EventBus.on('player-won', () => {
       // "PARABÉNS..." entra, existe sozinha, sai por completo — só então o
       // relatório (ResultUI) começa a entrar (mesmo princípio do game over)
-      this._pendingHint = this.winHint;
       this._playBigMessage(this.winGroup, this.winMessage, () => EventBus.emit('win-shown'));
-    });
-
-    // Última etapa do relatório de resultado (ver ResultUI): o placar final
-    // já terminou de contar e ficou sozinho na tela por um instante — só
-    // agora a dica de reiniciar/escolher arma entra, embaixo, sem disputar
-    // espaço com nada que já esteja na tela.
-    EventBus.on('result-complete', () => {
-      const hint = this._pendingHint;
-      if (!hint) return;
-      this.scene.tweens.killTweensOf(hint);
-      hint.setAlpha(0);
-      this.scene.tweens.add({ targets: hint, alpha: 1, duration: RESULT_HINT_FADE_MS });
     });
 
     EventBus.on('run-restart', () => {
@@ -1024,13 +1117,9 @@ export default class HUD {
       this.scene.tweens.killTweensOf(this.winMessage);
       this.gameOverGroup.setVisible(false);
       this.winGroup.setVisible(false);
-      this.gameOverMessage.setAlpha(0).setScale(BIG_MESSAGE_START_SCALE);
+      this.gameOverMessage.setAlpha(0).setScale(1);
       this.winMessage.setAlpha(0).setScale(BIG_MESSAGE_START_SCALE);
-      this.scene.tweens.killTweensOf(this.gameOverHint);
-      this.scene.tweens.killTweensOf(this.winHint);
-      this.gameOverHint.setAlpha(0);
-      this.winHint.setAlpha(0);
-      this._pendingHint = null;
+      this._resetDeathMessage();
       this._kills = 0;
       this.killText.setText('Abates: 0');
       this.timeText.setText('00:00');
