@@ -24,7 +24,7 @@ const HEX = { track: 0x14232a, line: 0x1c2e36, cyan: 0x4fd1ff, borderIdle: 0x3d5
 const FAR = 100000;
 const CANCELLED = new Error('result-cancelled');
 
-const fmt = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+const fmt = (n) => String(Math.round(n));
 const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 export default class ResultUI {

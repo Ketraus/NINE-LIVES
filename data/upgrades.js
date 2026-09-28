@@ -340,11 +340,11 @@ export default [
         "abilityId": "tornadoWalk",
         // intervalo de tempo ANDANDO (não tempo real) pra gerar 1 tornado —
         // ver TornadoAbility._advanceWalkTimer
-        "cooldownMs": 2500,
+        "cooldownMs": 1250,
         "durationMs": 1500,
         "damage": 3,
         "tickIntervalMs": 400,
-        "radius": 34
+        "radius": 40
       }
     ]
   },
