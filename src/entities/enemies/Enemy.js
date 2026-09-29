@@ -1760,7 +1760,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       len = Math.hypot(dx, dy) || 1;
     }
     const bounds = this.scene.physics.world.bounds;
-    const lead = this.def.leapLeadDistance;
+    // Surpresa: o pouso tem que ficar FORA da câmera, à frente da fuga —
+    // distância mínima = meia diagonal da tela + raio do impacto + folga
+    // (sem chegar no ponto exato que o jogador consegue prever).
+    const view = this.scene.cameras.main.worldView;
+    const offscreen = Math.hypot(view.width, view.height) / 2 + this.def.leapImpactRadius + 60;
+    const lead = Math.max(this.def.leapLeadDistance, offscreen);
     this.leapTargetX = Phaser.Math.Clamp(target.x + (dx / len) * lead, bounds.x + 40, bounds.right - 40);
     this.leapTargetY = Phaser.Math.Clamp(target.y + (dy / len) * lead, bounds.y + 40, bounds.bottom - 40);
   }
@@ -1772,16 +1777,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       else this.leapLocked = true;
     }
 
-    // aviso no chão: círculo crescendo e pulsando; travado = mais forte/branco
-    const elapsed = Phaser.Math.Clamp((nowMs - this.leapAirStartAt) / this.def.leapAirMs, 0, 1);
-    const radius = this.def.leapImpactRadius * Phaser.Math.Linear(0.4, 1, elapsed);
-    const blink = 0.5 + 0.5 * Math.sin(nowMs / (this.leapLocked ? 45 : 90));
-    const g = this.bossTelegraphGraphics;
-    g.clear();
-    g.fillStyle(LEAP_COLOR, Phaser.Math.Linear(0.18, this.leapLocked ? 0.55 : 0.4, blink));
-    g.fillCircle(this.leapTargetX, this.leapTargetY, radius);
-    g.lineStyle(this.leapLocked ? 5 : 3, this.leapLocked ? 0xffffff : LEAP_COLOR, 0.95);
-    g.strokeCircle(this.leapTargetX, this.leapTargetY, radius);
+    // SEM aviso no chão de propósito: o jogador não sabe onde ele cai.
+    // (nada de telegraph — só o som/tremor do pouso avisam, tarde demais)
 
     // últimos leapFallMs: reaparece em cima e despenca até o ponto de pouso
     if (remaining <= this.def.leapFallMs) {

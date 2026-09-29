@@ -228,11 +228,11 @@ export default [
     // Depois disso, por leapAggroMs: velocidade x leapAggroSpeedMultiplier e
     // cooldowns x leapAggroCooldownMultiplier. Depois volta ao normal.
     "leapTriggerDistance": 800,
-    "leapFleeTimeMs": 1500,
+    "leapFleeTimeMs": 1100,
     "leapCooldownMs": 12000,
     "leapWindupMs": 700,
     "leapRiseMs": 380,
-    "leapAirMs": 1200,
+    "leapAirMs": 850,
     "leapFallMs": 320,
     "leapLockMs": 450,
     "leapLeadDistance": 220,
