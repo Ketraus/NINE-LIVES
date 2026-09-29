@@ -95,9 +95,9 @@ export default class DamageSystem {
   static _applyParalyze(target, source, nowMs) {
     const chance = source?.runState?.paralyzeOnHitChance;
     if (!chance || nowMs === undefined) return;
-    if (target.paralyzedUntil === undefined) return;
+    if (typeof target.applyParalyze !== 'function') return;
     if (Math.random() >= chance) return;
-    target.paralyzedUntil = nowMs + source.runState.paralyzeOnHitDurationMs;
+    target.applyParalyze(nowMs, source.runState.paralyzeOnHitDurationMs);
   }
 
   // Aplica Sangramento em `target` (carta "Hemorragia", evolução da

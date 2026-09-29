@@ -216,6 +216,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // cor de tint "de status" (paralisia/sangramento) atualmente aplicada —
     this._currentStatusTint = def.color;
 
+    // Imunidade a status/CC (knockback, paralisia, sangramento, slow-mo e
+    // qualquer efeito futuro) — ver canReceiveStatus(). Todo boss é imune
+    // por padrão; def.statusImmune (data/enemies.js) sobrescreve pra
+    // qualquer tipo de inimigo (true = imune, false = boss vulnerável).
+    this.statusImmune = def.statusImmune ?? !!def.boss;
+
     // Exploder (def.explodes = true, ver data/enemies.js): máquina de
     this.explodeState = 'chasing';
     this.explodePrepUntil = 0;
@@ -323,13 +329,39 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     super.destroy(fromScene);
   }
 
+  // GATEWAY ÚNICO de imunidade a status/CC. Todo efeito que vem de fora e
+  // altera o comportamento do inimigo (knockback, paralisia, sangramento,
+  // slow...) precisa perguntar isto antes de aplicar — hoje applyKnockback,
+  // applyBleed e applyParalyze já perguntam. Efeito novo: crie um
+  // applyXxx() no Enemy, comece com `if (!this.canReceiveStatus()) return;`
+  // e, se ele deixar estado no inimigo, zere esse estado em
+  // _syncStatusImmunity(). Isso NÃO afeta dano direto (applyWeaponHit).
+  canReceiveStatus() {
+    return !this.statusImmune;
+  }
+
+  // Rede de segurança: se algum campo de status sobrou no inimigo imune
+  // (ex.: código novo que escreveu direto, sem passar pelo gateway), zera
+  // tudo e volta o tint pro normal. Barato: só age se houver resquício.
+  _syncStatusImmunity() {
+    if (!this.statusImmune) return;
+    if (!this.knockbackUntil && !this.paralyzedUntil && !this.bleedUntil) return;
+    this.knockbackUntil = 0;
+    this.paralyzedUntil = 0;
+    this.bleedUntil = 0;
+    this.bleedTickDamage = 0;
+    this._currentStatusTint = null; // força o setTint em _refreshStatusTint
+    this._refreshStatusTint(this.scene.time.now);
+  }
+
   // Decide e aplica o tint "de status" certo pro instante atual, com
   _refreshStatusTint(nowMs) {
-    const desired = nowMs < this.paralyzedUntil
-      ? PARALYZE_TINT
-      : nowMs < this.bleedUntil
-        ? BLEED_TINT
-        : this.def.color;
+    let desired = this.def.color;
+    // imune: nunca pinta tint de status, mesmo que algum campo tenha sobrado
+    if (!this.statusImmune) {
+      if (nowMs < this.paralyzedUntil) desired = PARALYZE_TINT;
+      else if (nowMs < this.bleedUntil) desired = BLEED_TINT;
+    }
     if (desired !== this._currentStatusTint) {
       this._currentStatusTint = desired;
       this.setTint(desired);
@@ -474,6 +506,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   chase(target, nowMs = 0, speedMultiplier = 1, moveDir = null) {
     if (!this.active || this.healthSystem.isDead()) return;
 
+    // Imune a status/CC: o slow-mo global (SlowmoSystem) é um slow como
+    // outro qualquer, então também é ignorado — e qualquer resquício de
+    // efeito que tenha entrado por fora do gateway é limpo aqui.
+    this._syncStatusImmunity();
+    if (this.statusImmune) speedMultiplier = 1;
+
     // Fuga em massa (evento do Boss/Minotauro): assume o movimento por
     if (this.fleeing) { this._updateFlee(nowMs); return; }
 
@@ -523,15 +561,26 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Aplica (ou reaplica) Sangramento — carta "Hemorragia", evolução da
   applyBleed(tickDamage, nowMs, durationMs, tickIntervalMs) {
     if (!this.active || this.healthSystem.isDead()) return;
+    if (!this.canReceiveStatus()) return;
     this.bleedTickDamage = tickDamage;
     this.bleedTickIntervalMs = tickIntervalMs;
     this.bleedUntil = nowMs + durationMs;
     this.nextBleedTickAt = nowMs + tickIntervalMs;
   }
 
+  // Aplica (ou reaplica) Paralisia — carta "Overcharge". Único caminho
+  // pra paralisar (DamageSystem._applyParalyze chama isto em vez de
+  // escrever paralyzedUntil direto), pra imunidade valer sempre.
+  applyParalyze(nowMs, durationMs) {
+    if (!this.active || this.healthSystem.isDead()) return;
+    if (!this.canReceiveStatus()) return;
+    this.paralyzedUntil = nowMs + durationMs;
+  }
+
   // Chamado todo frame pelo EnemySpawner.updateAll (junto de chase()).
   updateBleed(nowMs) {
     if (!this.active || this.healthSystem.isDead()) return;
+    this._syncStatusImmunity();
     this._refreshStatusTint(nowMs);
     if (nowMs >= this.bleedUntil) return;
     if (nowMs < this.nextBleedTickAt) return;
@@ -547,6 +596,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Empurra o inimigo na direção (dirX, dirY) — vetor já normalizado —
   applyKnockback(dirX, dirY, force, nowMs, durationMs = 130) {
     if (!this.active || this.healthSystem.isDead()) return;
+    if (!this.canReceiveStatus()) return; // imune: não empurra NEM trava a velocity
     const resistance = this.def.knockbackResistance ?? 1;
     this._moveTo(dirX * force * resistance, dirY * force * resistance);
     this.knockbackUntil = nowMs + durationMs;
