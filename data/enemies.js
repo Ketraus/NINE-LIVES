@@ -227,7 +227,7 @@ export default [
     "shadowOffsetX": 0,
     // Boss é bem mais pesado que o Elite (knockbackResistance 0.15) —
     // quase não sente empurrão nenhum.
-    "knockbackResistance": 0.05,
+    "knockbackResistance": 0.00,
     // Investida (1ª das duas habilidades, sorteada 50/50 com o Machado
     // Arremessado abaixo — ver Enemy._updateBossAbility):
     // para, mostra a linha de aviso por chargeTelegraphMs + chargePauseMs
