@@ -282,6 +282,18 @@ export default [
     "axeThrowReturnDamage": 35,
     "axeThrowReturnRadius": 60,
     "axeThrowCooldownMs": 6000,
+    // Sobreposição de ameaças (ver Enemy._updateAxeTrack/_rollOverlapAttack):
+    // com o machado fora da mão ele NÃO fica preso esperando — aproxima,
+    // pisa (reativo, como sempre) e pode investir. Corte e novo arremesso
+    // ficam bloqueados até o machado voltar. axeOverlapDelayMs = espera
+    // depois do arremesso antes de liberar a Investida; axeOverlapChargeChance
+    // = chance de investir a cada tentativa; axeOverlapRetryMs = intervalo
+    // entre tentativas que não saíram. Sem machado não há Corte no fim da
+    // investida (axeOverlapChargeSwing: true devolve o Corte).
+    "axeOverlapDelayMs": 1500,
+    "axeOverlapChargeChance": 0.7,
+    "axeOverlapRetryMs": 1200,
+    "axeOverlapChargeSwing": false,
     // Corte Destrutivo (3ª habilidade, sorteada 1/3 com a Investida e o
     // Machado — ver Enemy._updateBossAbility): "carrega -> apita ->
     // XABLAU". cleaveTelegraphMs é de propósito BEM mais longo que os

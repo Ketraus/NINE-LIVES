@@ -263,6 +263,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.chargeFootsteps = null;
       // Machado Arremessado: ver _startAxeThrow e afins. axeSprite é o
       this.axeSprite = null;
+      // Trilha do machado (outbound/stuck/raise/return, ou null) — roda EM
+      // PARALELO ao bossState (corpo), ver _updateAxeTrack.
+      this.axePhase = null;
       this.axeTargetX = 0;
       this.axeTargetY = 0;
       // Corte Destrutivo: ver _startCleave e afins.
@@ -1017,21 +1020,23 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // Estado das TRÊS habilidades do Minotauro (só roda quando def.boss =
   _updateBossAbility(target, nowMs) {
+    // Machado fora da mão: a trilha dele (voo, cravado, explosão, volta)
+    // avança em paralelo e NÃO prende o corpo — enquanto ela roda, o
+    // Minotauro segue livre pra aproximar, pisar ou investir.
+    if (this.axePhase) this._updateAxeTrack(target, nowMs);
+
     if (this.bossState === 'charge_telegraph') { this._updateChargeTelegraph(nowMs); return true; }
     if (this.bossState === 'charge_dash') { this._updateChargeDash(target, nowMs); return true; }
     if (this.bossState === 'charge_swing_telegraph') { this._updateChargeSwingTelegraph(target, nowMs); return true; }
     if (this.bossState === 'charge_vulnerable') { this._updateChargeVulnerable(nowMs); return true; }
     if (this.bossState === 'axe_telegraph') { this._updateAxeTelegraph(nowMs); return true; }
-    // A partir daqui (machado já fora da mão, ver _launchAxe/_setDisarmed)
-    if (this.bossState === 'axe_outbound') { this._updateAxeOutbound(target, nowMs); return false; }
-    if (this.bossState === 'axe_stuck') { this._updateAxeStuck(target, nowMs); return false; }
-    if (this.bossState === 'axe_raise') { this._updateAxeRaise(nowMs); return false; }
-    if (this.bossState === 'axe_return') { this._updateAxeReturn(target, nowMs); return false; }
     if (this.bossState === 'cleave_telegraph') { this._updateCleaveTelegraph(nowMs); return true; }
     if (this.bossState === 'cleave_pause') { this._updateCleavePause(target, nowMs); return true; }
     if (this.bossState === 'cleave_recover') { this._updateCleaveRecover(nowMs); return true; }
     if (this.bossState === 'stomp_raise') { this._updateStompRaise(target, nowMs); return true; }
     // Pisão: checado ANTES do cooldown compartilhado — é reativo (dispara
+    // sozinho quando o jogador chega perto) e agora também vale com o
+    // machado fora da mão.
     if (nowMs >= this.stompReadyAt) {
       const distToTarget = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
       if (distToTarget <= this.def.stompTriggerRadius) {
@@ -1040,6 +1045,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       }
     }
     if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
+    if (this.axePhase) return this._rollOverlapAttack(target, nowMs);
     // Sorteio 1/3 cada fora do rage. Em rage, os pesos viram
     const chargeWeight = this.isEnraged ? this.def.rageChargeWeight ?? 1 / 3 : 1 / 3;
     const axeWeight = this.isEnraged ? this.def.rageAxeWeight ?? 1 / 3 : 1 / 3;
@@ -1048,6 +1054,28 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     else if (roll < chargeWeight + axeWeight) this._startAxeThrow(target, nowMs);
     else this._startCleave(target, nowMs);
     return true;
+  }
+
+  // Avança a trilha do machado (uma fase por frame, igual antes) — ver
+  // axePhase. Roda a partir de _updateBossAbility, sem mexer no bossState.
+  _updateAxeTrack(target, nowMs) {
+    if (this.axePhase === 'outbound') this._updateAxeOutbound(target, nowMs);
+    else if (this.axePhase === 'stuck') this._updateAxeStuck(target, nowMs);
+    else if (this.axePhase === 'raise') this._updateAxeRaise(nowMs);
+    else if (this.axePhase === 'return') this._updateAxeReturn(target, nowMs);
+  }
+
+  // Sorteio de ataque COM o machado fora da mão. Corte e novo arremesso
+  // dependem do machado, então o único ataque compatível é a Investida
+  // (o Pisão já é reativo, ver _updateBossAbility). Se não sair, tenta de
+  // novo daqui a def.axeOverlapRetryMs — enquanto isso ele só aproxima.
+  _rollOverlapAttack(target, nowMs) {
+    if (Math.random() < this.def.axeOverlapChargeChance) {
+      this._startCharge(target, nowMs);
+      return true;
+    }
+    this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.axeOverlapRetryMs);
+    return false;
   }
 
   // Para, trava a direção da investida NO INSTANTE ATUAL do jogador (o
@@ -1099,7 +1127,16 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.scene.cameras.main.shake(CHARGE_IMPACT_SHAKE_MS, CHARGE_IMPACT_SHAKE_INTENSITY);
       }
     }
-    if (nowMs >= this.bossChargeDashUntil) this._startSwing(nowMs);
+    if (nowMs >= this.bossChargeDashUntil) {
+      // Sem machado na mão não há Corte pra dar ao fim da investida (a menos
+      // que def.axeOverlapChargeSwing ligue isso) — vai direto pro cansaço.
+      if (this.axePhase && !this.def.axeOverlapChargeSwing) {
+        this._stopChargeFootsteps();
+        this._endCharge(nowMs);
+      } else {
+        this._startSwing(nowMs);
+      }
+    }
   }
 
   // Corte (evolução da Investida): IMEDIATAMENTE ao fim da investida,
@@ -1215,7 +1252,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // ponto travado, girando. Sprite trocada por textura normal/rage (ver
   // axeSprite acima) conforme isEnraged, a cada arremesso.
   _launchAxe(nowMs) {
-    this.bossState = 'axe_outbound';
+    // corpo liberado: o machado segue na trilha própria (axePhase) e o
+    // Minotauro volta a agir — o primeiro ataque extra só libera depois de
+    // def.axeOverlapDelayMs, pra não emendar no instante do arremesso
+    this.bossState = 'chasing';
+    this.axePhase = 'outbound';
+    this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.axeOverlapDelayMs);
     this.bossTelegraphGraphics.clear();
     this.axeOriginX = this.x;
     this.axeOriginY = this.y;
@@ -1243,7 +1285,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // Passos 5-6: CRAVA no chão exatamente no ponto travado (para de girar)
   _stickAxe(target, nowMs) {
-    this.bossState = 'axe_stuck';
+    this.axePhase = 'stuck';
     this.axeSprite.setPosition(this.axeTargetX, this.axeTargetY).setRotation(0);
     this.scene.cameras.main.shake(AXE_IMPACT_SHAKE_MS, AXE_IMPACT_SHAKE_INTENSITY);
     // terra + impacto tocam juntos no instante em que crava (impacto mais alto que a terra)
@@ -1380,7 +1422,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // Passo 9: Minotauro "levanta a mão" — um pulo curto de escala nele
   _startAxeRaise(nowMs) {
-    this.bossState = 'axe_raise';
+    this.axePhase = 'raise';
     this.axeRaiseUntil = nowMs + this.def.axeThrowRaiseMs;
     this.scene.tweens.add({
       targets: this,
@@ -1398,7 +1440,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // Passos 10-11: puxa o machado de volta do ponto cravado até a posição
   _startAxePullback(nowMs) {
-    this.bossState = 'axe_return';
+    this.axePhase = 'return';
     this.axeReturnStartMs = nowMs;
     this.axeReturnEndAt = nowMs + this.def.axeThrowReturnFlightMs;
     this.axeReturnHasHit = false;
@@ -1425,8 +1467,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   _endAxeThrow(nowMs) {
     this.axeSprite?.setVisible(false);
     this._setDisarmed(false); // pegou o machado de volta — volta pro sprite com ele
-    this.bossState = 'chasing';
-    this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.axeThrowCooldownMs);
+    // NÃO mexe no bossState: o corpo pode estar no meio de uma investida ou
+    // pisão (ver _updateAxeTrack). Só fecha a trilha e segura o cooldown.
+    this.axePhase = null;
+    this.bossChargeReadyAt = Math.max(this.bossChargeReadyAt, nowMs + this._bossCooldown(this.def.axeThrowCooldownMs));
   }
 
   // Flash curto (círculo que nasce pequeno/opaco e cresce até sumir)
@@ -1683,10 +1727,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
 
     // Boss/Minotauro no meio de uma habilidade (Investida, Machado ou
-    if (this.bossState && this.bossState !== 'chasing') {
+    if ((this.bossState && this.bossState !== 'chasing') || this.axePhase) {
       this.bossTelegraphGraphics?.clear();
       this.axeSprite?.setVisible(false);
       this._setDisarmed(false); // interrompeu no meio do arremesso — não pode fugir sem o machado
+      this.axePhase = null;
       this.bossState = 'chasing';
     }
 
