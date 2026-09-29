@@ -209,6 +209,17 @@ export default [
     "rageChargeWeight": 0.43,
     "rageAxeWeight": 0.43,
     "rageDamageMultiplier": 1.15,
+    // Chuva de Meteoros (ver Enemy._updateMeteorRain): começa meteorFirstDelayMs
+    // depois do rage e segue até o boss morrer. Um meteoro a cada
+    // meteorIntervalMs (+/- meteorIntervalJitterMs); o aviso no chão dura
+    // meteorFallMs, o impacto dá meteorDamage (x rageDamageMultiplier) num
+    // raio meteorImpactRadius.
+    "meteorFirstDelayMs": 1200,
+    "meteorIntervalMs": 900,
+    "meteorIntervalJitterMs": 300,
+    "meteorFallMs": 1000,
+    "meteorImpactRadius": 75,
+    "meteorDamage": 20,
     "hp": 3000,
     "speed": 65,
     "contactDamage": 0,

@@ -70,6 +70,14 @@ const AXE_STUCK_PULSE_SCALE = 0.16;
 const AXE_STUCK_PULSE_SCALE_URGENT = 0.3;
 // amarelo (impacto) e laranja-avermelhado (explosão) — bem diferentes do
 const AXE_TELEGRAPH_COLOR = 0xffcc00;
+// Chuva de Meteoros (habilidade do rage, ver _updateMeteorRain e afins)
+const METEOR_WARN_COLOR = 0xff2200;
+const METEOR_ROCK_COLOR = 0xff6a00;
+const METEOR_CORE_COLOR = 0xffe08a;
+const METEOR_FALL_OFFSET_X = -220; // de onde o meteoro "nasce" em relação ao ponto de impacto
+const METEOR_FALL_OFFSET_Y = -720;
+const METEOR_SHAKE_MS = 140;
+const METEOR_SHAKE_INTENSITY = 0.008;
 const AXE_EXPLOSION_COLOR = 0xff4400;
 
 // Corte Destrutivo (3ª habilidade do Minotauro, sorteada 1/3 com a
@@ -281,6 +289,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       // Pisão: cooldown PRÓPRIO, separado de bossChargeReadyAt — pode
       this.stompReadyAt = scene.time.now + Phaser.Math.Between(1500, 2500);
       this.stompRaiseUntil = 0;
+      // Chuva de Meteoros: liga em _triggerRage e roda até o boss morrer
+      // (ver _updateMeteorRain). meteors = meteoros em andamento.
+      this.meteorRainActive = false;
+      this.meteorNextAt = 0;
+      this.meteors = [];
     }
   }
 
@@ -326,6 +339,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // despawn por fuga, etc.) — sem isso ela ficaria órfã na tela.
   destroy(fromScene) {
     this.shadow?.destroy();
+    this._clearMeteors();
     super.destroy(fromScene);
   }
 
@@ -427,6 +441,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this._refreshBossVisual();
     this.scene.cameras.main.shake(250, 0.015);
     this.scene.sound.play('sfx_cyberus_wakeup', { volume: 0.5 });
+    // Chuva de Meteoros: começa junto com a fúria e não para mais
+    this.meteorRainActive = true;
+    this.meteorNextAt = this.scene.time.now + this.def.meteorFirstDelayMs;
   }
 
   // "Minotauro puto" (ver _triggerRage acima): a partir do rage, todo
@@ -511,6 +528,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // efeito que tenha entrado por fora do gateway é limpo aqui.
     this._syncStatusImmunity();
     if (this.statusImmune) speedMultiplier = 1;
+
+    // Chuva de Meteoros roda EM PARALELO a qualquer estado do corpo
+    if (this.def.boss) this._updateMeteorRain(target, nowMs);
 
     // Fuga em massa (evento do Boss/Minotauro): assume o movimento por
     if (this.fleeing) { this._updateFlee(nowMs); return; }
@@ -1521,6 +1541,89 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // pisão (ver _updateAxeTrack). Só fecha a trilha e segura o cooldown.
     this.axePhase = null;
     this.bossChargeReadyAt = Math.max(this.bossChargeReadyAt, nowMs + this._bossCooldown(this.def.axeThrowCooldownMs));
+  }
+
+  // Chuva de Meteoros (rage): a cada meteorIntervalMs (com variação) sorteia
+  // um ponto de impacto, marca no chão (aviso vermelho pulsando) e faz uma
+  // pedra cair até lá. Ao chegar, dá dano em área. Não prende o corpo do
+  // boss nem mexe no bossState — roda em paralelo a tudo (ver chase()).
+  _updateMeteorRain(target, nowMs) {
+    if (!this.meteorRainActive) return;
+
+    if (nowMs >= this.meteorNextAt && target.active && !target.healthSystem?.isDead()) {
+      this._spawnMeteor(target, nowMs);
+      const jitter = Phaser.Math.Between(-this.def.meteorIntervalJitterMs, this.def.meteorIntervalJitterMs);
+      this.meteorNextAt = nowMs + this.def.meteorIntervalMs + jitter;
+    }
+
+    for (let i = this.meteors.length - 1; i >= 0; i--) {
+      const m = this.meteors[i];
+      const t = Phaser.Math.Clamp((nowMs - m.startAt) / (m.impactAt - m.startAt), 0, 1);
+
+      // aviso: cresce até o raio final e pisca
+      const blink = 0.5 + 0.5 * Math.sin(nowMs / 60);
+      m.warn.setScale(Phaser.Math.Linear(0.35, 1, t));
+      m.warn.setAlpha(Phaser.Math.Linear(0.25, 0.6, blink));
+
+      // pedra: cai em diagonal (ease-in, acelera perto do chão)
+      const fall = t * t;
+      m.rock.setPosition(
+        m.x + METEOR_FALL_OFFSET_X * (1 - fall),
+        m.y + METEOR_FALL_OFFSET_Y * (1 - fall)
+      );
+
+      if (nowMs >= m.impactAt) {
+        this._impactMeteor(m, target, nowMs);
+        this.meteors.splice(i, 1);
+      }
+    }
+  }
+
+  _spawnMeteor(target, nowMs) {
+    // ~65% caem em cima do jogador (com um desvio, pra dar pra correr);
+    // o resto cai mais longe, pra cobrir a arena e forçar movimento
+    const nearPlayer = Math.random() < 0.65;
+    const spread = nearPlayer ? 90 : 420;
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const dist = Phaser.Math.FloatBetween(nearPlayer ? 0 : 120, spread);
+    let x = target.x + Math.cos(angle) * dist;
+    let y = target.y + Math.sin(angle) * dist;
+    const bounds = this.scene.physics.world.bounds;
+    x = Phaser.Math.Clamp(x, bounds.x + 20, bounds.right - 20);
+    y = Phaser.Math.Clamp(y, bounds.y + 20, bounds.bottom - 20);
+
+    const radius = this.def.meteorImpactRadius;
+    const warn = this.scene.add
+      .circle(x, y, radius, METEOR_WARN_COLOR, 0.35)
+      .setStrokeStyle(3, METEOR_WARN_COLOR, 0.9)
+      .setDepth(4)
+      .setScale(0.35);
+    const rock = this.scene.add.container(0, 0, [
+      this.scene.add.circle(0, 0, 16, METEOR_ROCK_COLOR, 1),
+      this.scene.add.circle(0, 0, 8, METEOR_CORE_COLOR, 1)
+    ]).setDepth(15);
+    rock.setPosition(x + METEOR_FALL_OFFSET_X, y + METEOR_FALL_OFFSET_Y);
+
+    this.meteors.push({ x, y, warn, rock, startAt: nowMs, impactAt: nowMs + this.def.meteorFallMs });
+  }
+
+  _impactMeteor(m, target, nowMs) {
+    m.warn.destroy();
+    m.rock.destroy();
+    this.scene.cameras.main.shake(METEOR_SHAKE_MS, METEOR_SHAKE_INTENSITY);
+    this.scene.sound.play('sfx_axe_explosion', { volume: 0.35 });
+    this._flashCircle(m.x, m.y, this.def.meteorImpactRadius, METEOR_ROCK_COLOR);
+    const dist = Phaser.Math.Distance.Between(m.x, m.y, target.x, target.y);
+    if (dist <= this.def.meteorImpactRadius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.meteorDamage), this, nowMs);
+    }
+  }
+
+  // Apaga meteoros ainda no ar (morte/fuga do boss — ver destroy()).
+  _clearMeteors() {
+    this.meteors?.forEach((m) => { m.warn.destroy(); m.rock.destroy(); });
+    if (this.meteors) this.meteors.length = 0;
+    this.meteorRainActive = false;
   }
 
   // Flash curto (círculo que nasce pequeno/opaco e cresce até sumir)
