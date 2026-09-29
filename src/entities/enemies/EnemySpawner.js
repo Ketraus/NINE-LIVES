@@ -1,5 +1,28 @@
 import Enemy from './Enemy.js';
+import Grunt from './Grunt.js';
+import Runner from './Runner.js';
+import Brute from './Brute.js';
+import Exploder from './Exploder.js';
+import Elite from './Elite.js';
+import Sealer from './Sealer.js';
+import Minotaur from './Minotaur.js';
 import SwarmSystem from './SwarmSystem.js';
+
+// Escolhe a classe do inimigo pelo def (data/enemies.js). As habilidades especiais
+// seguem as mesmas flags de antes (boss/elite/sealer/explodes); os inimigos comuns
+// caem pelo id. Qualquer def desconhecido cai no Enemy base (comportamento padrão).
+function pickEnemyClass(def) {
+  if (def.boss) return Minotaur;
+  if (def.elite) return Elite;
+  if (def.sealer) return Sealer;
+  if (def.explodes) return Exploder;
+  switch (def.id) {
+    case 'grunt': return Grunt;
+    case 'cyber_hound': return Runner;
+    case 'cyber_brute': return Brute;
+    default: return Enemy;
+  }
+}
 
 const DEFAULT_MAX_ALIVE = 14; // trava inicial da quantidade simultânea, até o SpawnDirector assumir o…
 // Quanto além da borda da câmera o inimigo precisa nascer pra garantir…
@@ -175,7 +198,8 @@ export default class EnemySpawner {
 
   // Cria de fato um Enemy num ponto e registra ele no grupo/colisor —
   _createAt(def, pos) {
-    const enemy = new Enemy(this.scene, pos.x, pos.y, def);
+    const EnemyClass = pickEnemyClass(def);
+    const enemy = new EnemyClass(this.scene, pos.x, pos.y, def);
     this.group.add(enemy);
     this.mapManager.addCollider(enemy);
     // Elite: som + vibrada de entrada, tocam no instante em que ele nasce
