@@ -9,6 +9,7 @@ export default class DamageSystem {
   // Dano de contato com cooldown por-alvo (evita tirar vida todo frame
   static applyContactDamage(attacker, target, damage, cooldownMs, nowMs) {
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
+    if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (target.invulnerableUntil && nowMs < target.invulnerableUntil) return false;
 
@@ -41,6 +42,7 @@ export default class DamageSystem {
   // Dano direto de um ataque de arma (sem cooldown próprio — quem
   static applyWeaponHit(target, damage, source, nowMs, feedback = {}) {
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
+    if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (this._rollDodge(target)) return false;
     const isCritical = !!source?.runState && Math.random() < (source.runState.criticalChance || 0);

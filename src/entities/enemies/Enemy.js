@@ -78,6 +78,15 @@ const METEOR_FALL_OFFSET_X = -220; // de onde o meteoro "nasce" em relação ao 
 const METEOR_FALL_OFFSET_Y = -720;
 const METEOR_SHAKE_MS = 140;
 const METEOR_SHAKE_INTENSITY = 0.008;
+// Salto de Perseguição (ver _shouldLeap e afins)
+const LEAP_COLOR = 0xff2200;
+const LEAP_RISE_HEIGHT = 900; // quanto ele sobe (px) até sair da câmera
+const LEAP_FALL_HEIGHT = 900; // de que altura ele despenca no pouso
+const LEAP_LANDING_SHAKE_MS = 420;
+const LEAP_LANDING_SHAKE_INTENSITY = 0.035;
+const LEAP_TAKEOFF_SHAKE_MS = 200;
+const LEAP_TAKEOFF_SHAKE_INTENSITY = 0.015;
+const LEAP_AGGRO_AURA_RADIUS = 95;
 const AXE_EXPLOSION_COLOR = 0xff4400;
 
 // Corte Destrutivo (3ª habilidade do Minotauro, sorteada 1/3 com a
@@ -294,6 +303,23 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.meteorRainActive = false;
       this.meteorNextAt = 0;
       this.meteors = [];
+      // Salto de Perseguição: quando o jogador foge longe demais por tempo
+      // demais, ele some da câmera, cai NA FRENTE do jogador e fica agressivo
+      // por um curto período (ver _shouldLeap/_startLeap e afins).
+      this.leapFleeSince = null; // desde quando o jogador está além de leapTriggerDistance
+      this.leapReadyAt = 0;
+      this.leapAggroUntil = 0; // até aqui: mais rápido e com cooldowns menores
+      this.leapPhaseUntil = 0;
+      this.leapGroundX = 0;
+      this.leapGroundY = 0;
+      this.leapTargetX = 0;
+      this.leapTargetY = 0;
+      this.leapAirStartAt = 0;
+      this.leapAirUntil = 0;
+      this.leapLocked = false;
+      this.leapAura = null;
+      // true enquanto está no ar: ninguém consegue acertar (ver DamageSystem)
+      this.untargetable = false;
     }
   }
 
@@ -340,6 +366,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   destroy(fromScene) {
     this.shadow?.destroy();
     this._clearMeteors();
+    this._clearLeap();
     super.destroy(fromScene);
   }
 
@@ -448,10 +475,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   // "Minotauro puto" (ver _triggerRage acima): a partir do rage, todo
   _bossCooldown(baseMs) {
-    if (this.isEnraged && this.def.rageCooldownMultiplier) {
-      return baseMs * this.def.rageCooldownMultiplier;
-    }
-    return baseMs;
+    let ms = baseMs;
+    if (this.isEnraged && this.def.rageCooldownMultiplier) ms *= this.def.rageCooldownMultiplier;
+    // agressividade pós-salto: cooldowns menores só enquanto durar
+    if (this._isLeapAggro()) ms *= this.def.leapAggroCooldownMultiplier;
+    return ms;
+  }
+
+  _isLeapAggro() {
+    return this.scene.time.now < this.leapAggroUntil;
   }
 
   // Mesma ideia acima, mas pro dano dos ataques (def.rageDamageMultiplier)
@@ -530,7 +562,13 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.statusImmune) speedMultiplier = 1;
 
     // Chuva de Meteoros roda EM PARALELO a qualquer estado do corpo
-    if (this.def.boss) this._updateMeteorRain(target, nowMs);
+    if (this.def.boss) {
+      this._updateMeteorRain(target, nowMs);
+      this._updateLeapAggroFx(nowMs);
+      // agressividade pós-salto: só um multiplicador temporário, nada é
+      // alterado de forma permanente — passou leapAggroUntil, volta ao normal
+      if (this._isLeapAggro()) speedMultiplier *= this.def.leapAggroSpeedMultiplier;
+    }
 
     // Fuga em massa (evento do Boss/Minotauro): assume o movimento por
     if (this.fleeing) { this._updateFlee(nowMs); return; }
@@ -1104,6 +1142,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.bossState === 'cleave_pause') { this._updateCleavePause(target, nowMs); return true; }
     if (this.bossState === 'cleave_recover') { this._updateCleaveRecover(nowMs); return true; }
     if (this.bossState === 'stomp_raise') { this._updateStompRaise(target, nowMs); return true; }
+    if (this.bossState === 'leap_crouch') { this._updateLeapCrouch(nowMs); return true; }
+    if (this.bossState === 'leap_rise') { this._updateLeapRise(nowMs); return true; }
+    if (this.bossState === 'leap_air') { this._updateLeapAir(target, nowMs); return true; }
+    if (this.bossState === 'leap_recover') { this._updateLeapRecover(nowMs); return true; }
+    // Salto de Perseguição: jogador fugindo longe demais por tempo demais
+    if (this._shouldLeap(target, nowMs)) { this._startLeap(nowMs); return true; }
     // Pisão: checado ANTES do cooldown compartilhado — é reativo (dispara
     // sozinho quando o jogador chega perto) e agora também vale com o
     // machado fora da mão.
@@ -1624,6 +1668,230 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.meteors?.forEach((m) => { m.warn.destroy(); m.rock.destroy(); });
     if (this.meteors) this.meteors.length = 0;
     this.meteorRainActive = false;
+  }
+
+  // ---------- Salto de Perseguição ----------
+  // Se o jogador fica além de leapTriggerDistance por leapFleeTimeMs
+  // seguidos, o boss agacha (aviso), salta pra fora da câmera, e cai NA
+  // FRENTE do jogador (na direção em que ele corre) com um pouso pesado.
+  // Depois fica agressivo por leapAggroMs (mais rápido, cooldowns menores)
+  // e volta ao normal sozinho — só existem timestamps, nada permanente.
+  _shouldLeap(target, nowMs) {
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist < this.def.leapTriggerDistance) {
+      this.leapFleeSince = null; // jogador voltou pra perto: zera a contagem
+      return false;
+    }
+    if (this.leapFleeSince == null) this.leapFleeSince = nowMs;
+    if (nowMs - this.leapFleeSince < this.def.leapFleeTimeMs) return false;
+    if (nowMs < this.leapReadyAt) return false;
+    if (this.axePhase) return false; // machado fora da mão: espera ele voltar
+    if (!target.active || target.healthSystem?.isDead()) return false;
+    return true;
+  }
+
+  // Passo 1: agacha e ruge (jogador vê que vem coisa)
+  _startLeap(nowMs) {
+    this.bossState = 'leap_crouch';
+    this._moveTo(0, 0);
+    this.leapFleeSince = null;
+    this.leapPhaseUntil = nowMs + this.def.leapWindupMs;
+    if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    this.scene.sound.play('sfx_minotaur_charge', { volume: 0.8 });
+  }
+
+  _updateLeapCrouch(nowMs) {
+    this._moveTo(0, 0);
+    const p = Phaser.Math.Clamp(1 - (this.leapPhaseUntil - nowMs) / this.def.leapWindupMs, 0, 1);
+    this.setScale(this.baseScale * (1 + 0.15 * p), this.baseScale * (1 - 0.2 * p));
+    // anel vermelho se fechando em volta dele (carregando o salto)
+    const g = this.bossTelegraphGraphics;
+    g.clear();
+    g.lineStyle(4, LEAP_COLOR, 0.35 + 0.5 * p);
+    g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, p));
+    if (nowMs >= this.leapPhaseUntil) this._startLeapRise(nowMs);
+  }
+
+  // Passo 2: decola — sobe esticando até sair da câmera
+  _startLeapRise(nowMs) {
+    this.bossState = 'leap_rise';
+    this.bossTelegraphGraphics.clear();
+    this.leapGroundX = this.x;
+    this.leapGroundY = this.y;
+    this.leapPhaseUntil = nowMs + this.def.leapRiseMs;
+    this._moveTo(0, 0);
+    this.body.enable = false; // sem colisão/overlap enquanto está no ar
+    this.shadow?.setVisible(false);
+    this.scene.cameras.main.shake(LEAP_TAKEOFF_SHAKE_MS, LEAP_TAKEOFF_SHAKE_INTENSITY);
+    this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
+    this._flashCircle(this.leapGroundX, this.leapGroundY, 100, LEAP_COLOR);
+  }
+
+  _updateLeapRise(nowMs) {
+    const t = Phaser.Math.Clamp(1 - (this.leapPhaseUntil - nowMs) / this.def.leapRiseMs, 0, 1);
+    this.setPosition(this.leapGroundX, this.leapGroundY - LEAP_RISE_HEIGHT * t * t);
+    this.setScale(this.baseScale * (1 - 0.15 * t), this.baseScale * (1 + 0.25 * t));
+    if (t >= 1) this._startLeapAir(nowMs);
+  }
+
+  // Passo 3: fora da câmera. O ponto de pouso acompanha o jogador (sempre
+  // na frente dele) e TRAVA nos últimos leapLockMs, pra dar tempo de desviar.
+  _startLeapAir(nowMs) {
+    this.bossState = 'leap_air';
+    this.setVisible(false);
+    this.untargetable = true;
+    this.setScale(this.baseScale, this.baseScale);
+    this.leapAirStartAt = nowMs;
+    this.leapAirUntil = nowMs + this.def.leapAirMs;
+    this.leapLocked = false;
+    this._computeLeapLanding(this.scene.player ?? { x: this.x, y: this.y });
+  }
+
+  // Ponto de pouso: à frente do jogador, na direção em que ele está
+  // correndo (parado: na direção pra onde está virado).
+  _computeLeapLanding(target) {
+    let dx = target.body?.velocity?.x || 0;
+    let dy = target.body?.velocity?.y || 0;
+    let len = Math.hypot(dx, dy);
+    if (len < 10) {
+      const aim = target.getAimDirection?.();
+      dx = aim?.x || 0;
+      dy = aim?.y || 1;
+      len = Math.hypot(dx, dy) || 1;
+    }
+    const bounds = this.scene.physics.world.bounds;
+    const lead = this.def.leapLeadDistance;
+    this.leapTargetX = Phaser.Math.Clamp(target.x + (dx / len) * lead, bounds.x + 40, bounds.right - 40);
+    this.leapTargetY = Phaser.Math.Clamp(target.y + (dy / len) * lead, bounds.y + 40, bounds.bottom - 40);
+  }
+
+  _updateLeapAir(target, nowMs) {
+    const remaining = this.leapAirUntil - nowMs;
+    if (!this.leapLocked) {
+      if (remaining > this.def.leapLockMs) this._computeLeapLanding(target);
+      else this.leapLocked = true;
+    }
+
+    // aviso no chão: círculo crescendo e pulsando; travado = mais forte/branco
+    const elapsed = Phaser.Math.Clamp((nowMs - this.leapAirStartAt) / this.def.leapAirMs, 0, 1);
+    const radius = this.def.leapImpactRadius * Phaser.Math.Linear(0.4, 1, elapsed);
+    const blink = 0.5 + 0.5 * Math.sin(nowMs / (this.leapLocked ? 45 : 90));
+    const g = this.bossTelegraphGraphics;
+    g.clear();
+    g.fillStyle(LEAP_COLOR, Phaser.Math.Linear(0.18, this.leapLocked ? 0.55 : 0.4, blink));
+    g.fillCircle(this.leapTargetX, this.leapTargetY, radius);
+    g.lineStyle(this.leapLocked ? 5 : 3, this.leapLocked ? 0xffffff : LEAP_COLOR, 0.95);
+    g.strokeCircle(this.leapTargetX, this.leapTargetY, radius);
+
+    // últimos leapFallMs: reaparece em cima e despenca até o ponto de pouso
+    if (remaining <= this.def.leapFallMs) {
+      const f = Phaser.Math.Clamp(1 - remaining / this.def.leapFallMs, 0, 1);
+      if (!this.visible) this.setVisible(true);
+      this.setPosition(this.leapTargetX, this.leapTargetY - LEAP_FALL_HEIGHT * (1 - f * f));
+      this.setScale(this.baseScale * (1 - 0.1 * f), this.baseScale * (1 + 0.2 * f));
+    } else {
+      this.setPosition(this.leapTargetX, this.leapTargetY - LEAP_FALL_HEIGHT);
+    }
+
+    if (remaining <= 0) this._landLeap(target, nowMs);
+  }
+
+  // Passo 4: POUSO — tremida forte, flash, onda de choque, dano em área e
+  // empurrão forte no jogador se ele estiver dentro do raio.
+  _landLeap(target, nowMs) {
+    const lx = this.leapTargetX;
+    const ly = this.leapTargetY;
+    this.setPosition(lx, ly);
+    this.body.reset(lx, ly);
+    this.body.enable = true;
+    this.setVisible(true);
+    this.setScale(this.baseScale * 1.15, this.baseScale * 0.85); // amassado no impacto
+    this.shadow?.setVisible(true);
+    this.untargetable = false;
+    this.bossTelegraphGraphics.clear();
+
+    const radius = this.def.leapImpactRadius;
+    const cam = this.scene.cameras.main;
+    cam.shake(LEAP_LANDING_SHAKE_MS, LEAP_LANDING_SHAKE_INTENSITY);
+    cam.flash(160, 255, 140, 60);
+    this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
+    this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.9 });
+    this._flashCircle(lx, ly, radius, LEAP_COLOR);
+    this._showAxeExplosionFx(lx, ly, radius);
+    const ring = this.scene.add
+      .circle(lx, ly, radius, 0xffffff, 0)
+      .setStrokeStyle(6, 0xffddaa, 0.9)
+      .setDepth(20)
+      .setScale(0.2);
+    this.scene.tweens.add({
+      targets: ring,
+      scale: 1.6,
+      alpha: 0,
+      duration: 420,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy()
+    });
+
+    const dx = target.x - lx;
+    const dy = target.y - ly;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= radius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.leapDamage), this, nowMs);
+      const len = dist || 1;
+      const dirX = dist ? dx / len : 0;
+      const dirY = dist ? dy / len : 1;
+      target.applyKnockback?.(dirX, dirY, this.def.leapKnockbackForce, nowMs, this.def.leapKnockbackDurationMs);
+    }
+
+    // "Ele ficou puto porque eu fugi": ruge e entra em agressividade
+    this.scene.sound.play('sfx_minotaur_cleave_roar', { volume: 0.9 });
+    this.leapAggroUntil = nowMs + this.def.leapAggroMs;
+    this.leapReadyAt = nowMs + this.def.leapCooldownMs;
+    this.leapPhaseUntil = nowMs + this.def.leapRecoverMs;
+    this.bossState = 'leap_recover';
+    this._moveTo(0, 0);
+  }
+
+  _updateLeapRecover(nowMs) {
+    this._moveTo(0, 0);
+    const t = Phaser.Math.Clamp(1 - (this.leapPhaseUntil - nowMs) / this.def.leapRecoverMs, 0, 1);
+    this.setScale(
+      this.baseScale * Phaser.Math.Linear(1.15, 1, t),
+      this.baseScale * Phaser.Math.Linear(0.85, 1, t)
+    );
+    if (nowMs >= this.leapPhaseUntil) {
+      this.setScale(this.baseScale, this.baseScale);
+      this.bossState = 'chasing';
+      // primeiro ataque logo em seguida (a agressividade também encurta os
+      // cooldowns via _bossCooldown enquanto durar)
+      this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.leapAggroFirstAttackMs);
+      this.stompReadyAt = Math.min(this.stompReadyAt, nowMs);
+    }
+  }
+
+  // Aura vermelha pulsando em volta dele enquanto está agressivo — é o
+  // sinal visual de "está puto". Some sozinha quando a agressividade acaba.
+  _updateLeapAggroFx(nowMs) {
+    if (!this._isLeapAggro()) {
+      if (this.leapAura) { this.leapAura.destroy(); this.leapAura = null; }
+      return;
+    }
+    if (!this.leapAura) {
+      this.leapAura = this.scene.add
+        .circle(this.x, this.y, LEAP_AGGRO_AURA_RADIUS, LEAP_COLOR, 0.2)
+        .setStrokeStyle(3, LEAP_COLOR, 0.8)
+        .setDepth(8);
+    }
+    this.leapAura.setPosition(this.x, this.y);
+    this.leapAura.setVisible(this.visible);
+    this.leapAura.setAlpha(0.55 + 0.35 * Math.sin(nowMs / 70));
+  }
+
+  // Limpa o que o salto criou fora do sprite (morte/fuga do boss — ver destroy()).
+  _clearLeap() {
+    this.leapAura?.destroy();
+    this.leapAura = null;
+    this.untargetable = false;
   }
 
   // Flash curto (círculo que nasce pequeno/opaco e cresce até sumir)

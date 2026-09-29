@@ -220,6 +220,31 @@ export default [
     "meteorFallMs": 1000,
     "meteorImpactRadius": 75,
     "meteorDamage": 20,
+    // Salto de Perseguição (ver Enemy._shouldLeap e afins): se o jogador fica
+    // além de leapTriggerDistance por leapFleeTimeMs seguidos, ele agacha
+    // (leapWindupMs), sobe pra fora da câmera (leapRiseMs), fica leapAirMs no
+    // ar (o aviso no chão trava nos últimos leapLockMs) e cai à frente do
+    // jogador (leapLeadDistance) com impacto em raio leapImpactRadius.
+    // Depois disso, por leapAggroMs: velocidade x leapAggroSpeedMultiplier e
+    // cooldowns x leapAggroCooldownMultiplier. Depois volta ao normal.
+    "leapTriggerDistance": 800,
+    "leapFleeTimeMs": 1500,
+    "leapCooldownMs": 12000,
+    "leapWindupMs": 700,
+    "leapRiseMs": 380,
+    "leapAirMs": 1200,
+    "leapFallMs": 320,
+    "leapLockMs": 450,
+    "leapLeadDistance": 220,
+    "leapImpactRadius": 170,
+    "leapDamage": 50,
+    "leapKnockbackForce": 1000,
+    "leapKnockbackDurationMs": 280,
+    "leapRecoverMs": 400,
+    "leapAggroMs": 4000,
+    "leapAggroSpeedMultiplier": 1.8,
+    "leapAggroCooldownMultiplier": 0.5,
+    "leapAggroFirstAttackMs": 700,
     "hp": 3000,
     "speed": 65,
     "contactDamage": 0,
