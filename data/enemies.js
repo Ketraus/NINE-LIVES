@@ -159,8 +159,8 @@ export default [
     "flocking": { "seek": 0, "cohesion": 0, "separation": 0.2, "density": 0 },
     "sealer": true,
     "scale": 1.6,
-    "arenaStartRadius": 650,
-    "arenaMinRadius": 110,
+    "arenaStartRadius": 750,
+    "arenaMinRadius": 150,
     "arenaShrinkDurationMs": 60000,
     "arenaCrushDamagePerSecond": 10
   },
