@@ -167,6 +167,8 @@ export default class Minotaur extends Enemy {
     // agressividade pós-salto: só um multiplicador temporário, nada é
     // alterado de forma permanente — passou leapAggroUntil, volta ao normal
     if (this._isLeapAggro()) speedMultiplier *= this.def.leapAggroSpeedMultiplier;
+    // jogador fora de alcance (longe ou fugindo): avança mais rápido pra não ser abandonado
+    if (this._isTargetOutOfReach(target)) speedMultiplier *= this.def.pursuitSpeedMultiplier;
     return speedMultiplier;
   }
 
@@ -295,6 +297,11 @@ export default class Minotaur extends Enemy {
         return true;
       }
     }
+    // Jogador longe ou fugindo: NÃO inicia ataque novo (nem Investida, nem Machado,
+    // nem Corte) — só avança (chase). Ataques já em andamento terminam normalmente
+    // (os estados acima) e aí ele reavalia a distância. Não mexe nos cooldowns:
+    // quando o jogador volta pro alcance, o que estiver pronto sai.
+    if (this._isTargetOutOfReach(target)) return false;
     if (nowMs < this.bossChargeReadyAt) return false; // ainda na horda, flocking normal
     if (this.axePhase) return this._rollOverlapAttack(target, nowMs);
     // Sorteio 1/3 cada fora do rage. Em rage, os pesos viram
@@ -807,15 +814,53 @@ export default class Minotaur extends Enemy {
     this.meteorRainActive = false;
   }
 
+  // ---------- Perseguição (jogador fugindo) ----------
+  // Velocidade (px/s) do jogador NA direção contrária ao boss: positivo = se
+  // afastando, negativo = vindo pra cima.
+  _targetRadialSpeed(target) {
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const v = target.body?.velocity;
+    return v ? (v.x * dx + v.y * dy) / len : 0;
+  }
+
+  // true se o PRÓPRIO Minotauro está fora do retângulo visível da câmera (+ margem).
+  // A câmera segue o jogador, então "o jogador saiu da câmera" na prática é "o
+  // boss ficou pra trás e sumiu da tela".
+  _isSelfOffscreen(margin = 0) {
+    const view = this.scene.cameras.main.worldView;
+    return (
+      this.x < view.x - margin ||
+      this.x > view.x + view.width + margin ||
+      this.y < view.y - margin ||
+      this.y > view.y + view.height + margin
+    );
+  }
+
+  // "Fora de alcance": além de attackEffectiveRange, ou além de attackFleeingRange
+  // enquanto se afasta. Nesse caso o boss só persegue (ver _updateBossAbility).
+  _isTargetOutOfReach(target) {
+    if (!target.active) return false;
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (dist > this.def.attackEffectiveRange) return true;
+    return dist > this.def.attackFleeingRange && this._targetRadialSpeed(target) > this.def.fleeingSpeedThreshold;
+  }
+
   // ---------- Salto de Perseguição ----------
-  // Se o jogador fica além de leapTriggerDistance por leapFleeTimeMs
-  // seguidos, o boss agacha (aviso), salta pra fora da câmera, e cai NA
+  // Se o jogador foge além da tela (boss fora da câmera, ou passa de leapTriggerDistance) e segue fugindo
+  // por leapFleeTimeMs seguidos, o boss agacha (aviso), salta pra fora da câmera, e cai NA
   // FRENTE do jogador (na direção em que ele corre) com um pouso pesado.
   // Depois fica agressivo por leapAggroMs (mais rápido, cooldowns menores)
   // e volta ao normal sozinho — só existem timestamps, nada permanente.
   _shouldLeap(target, nowMs) {
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
-    if (dist < this.def.leapTriggerDistance) {
+    // Gatilho: o boss saiu da câmera (jogador fugiu além da tela) ou o jogador
+    // passou de leapTriggerDistance (rede de segurança pra câmera muito aberta) E
+    // ele continua fugindo — se está voltando pra cima do boss, a contagem zera.
+    const outOfView = this._isSelfOffscreen(this.def.leapOffscreenMargin);
+    const returning = this._targetRadialSpeed(target) < -this.def.fleeingSpeedThreshold;
+    if ((!outOfView && dist < this.def.leapTriggerDistance) || returning) {
       this.leapFleeSince = null; // jogador voltou pra perto: zera a contagem
       return false;
     }

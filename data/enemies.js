@@ -245,6 +245,19 @@ export default [
     "leapAggroSpeedMultiplier": 1.8,
     "leapAggroCooldownMultiplier": 0.5,
     "leapAggroFirstAttackMs": 700,
+    // --- Perseguição: o jogador pode fugir pra se reposicionar, mas não pode
+    // simplesmente abandonar o Minotauro (ver Minotaur._isTargetOutOfReach) ---
+    // Além desta distância (px) ele NÃO inicia ataques novos: só avança.
+    "attackEffectiveRange": 520,
+    // Se o jogador está se afastando (ver fleeingSpeedThreshold), o limite cai pra
+    // esta distância — ele para de atacar e persegue já quando o jogador foge.
+    "attackFleeingRange": 300,
+    // velocidade (px/s) de afastamento a partir da qual o jogador conta como "fugindo"
+    "fleeingSpeedThreshold": 40,
+    // bônus de velocidade enquanto o jogador está fora de alcance (1 = sem bônus)
+    "pursuitSpeedMultiplier": 1.25,
+    // margem (px) além da borda da câmera pra contar o boss como "fora da tela" (Salto)
+    "leapOffscreenMargin": 0,
     "hp": 3000,
     "speed": 65,
     "contactDamage": 0,
