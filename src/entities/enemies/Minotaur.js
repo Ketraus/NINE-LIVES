@@ -144,6 +144,15 @@ export default class Minotaur extends Enemy {
     this.leapAura = null;
     // true enquanto está no ar: ninguém consegue acertar (ver DamageSystem)
     this.untargetable = false;
+    // Entrada (ver EnemySpawner._findBossSpawnPosition): ele nasce na frente do
+    // jogador, então fica parado durante o flash/pop de escala e só libera os
+    // ataques depois de entranceGraceMs — nada de atacar logo de cara.
+    const spawnNow = scene.time.now;
+    const graceEnd = spawnNow + def.entranceGraceMs;
+    this.entranceIdleUntil = spawnNow + def.entranceIdleMs;
+    this.bossChargeReadyAt = Math.max(this.bossChargeReadyAt, graceEnd);
+    this.stompReadyAt = Math.max(this.stompReadyAt, graceEnd);
+    this.leapReadyAt = Math.max(this.leapReadyAt, graceEnd);
   }
 
   // Rage: entra em fúria quando a vida cai abaixo de def.rageHpThreshold (ver _triggerRage).
@@ -174,6 +183,12 @@ export default class Minotaur extends Enemy {
 
   _specialChase(target, nowMs) {
     // Boss/Minotauro: mesma lógica do Elite acima — só assume o
+    // Entrada: parado durante o flash/pop (ver entranceIdleMs); depois anda, mas
+    // sem atacar até acabar entranceGraceMs (os cooldowns são iniciados no construtor).
+    if (nowMs < this.entranceIdleUntil) {
+      this.setVelocity(0, 0);
+      return true;
+    }
     return this._updateBossAbility(target, nowMs);
   }
 

@@ -38,6 +38,11 @@ const BOSS_ENTRANCE_SCALE_START_FACTOR = 0.25; // fração do tamanho final em q
 const BOSS_ENTRANCE_SCALE_DURATION_MS = 420;
 const BOSS_ENTRANCE_RING_MAX_RADIUS = 260;
 const BOSS_ENTRANCE_RING_DURATION_MS = 500;
+// Onde o Boss nasce (ver _findBossSpawnPosition): NA FRENTE do jogador, dentro da câmera.
+const BOSS_SPAWN_MIN_DISTANCE = 220; // nunca mais perto que isso do jogador (o boss é grande)
+const BOSS_SPAWN_VIEW_FRACTION = 0.6; // fração do caminho até a borda da câmera
+const BOSS_SPAWN_CLEARANCE = 70; // raio livre de parede ao redor do ponto
+const BOSS_SPAWN_ANGLE_OFFSETS_DEG = [0, 30, -30, 60, -60, 90, -90, 135, -135, 180]; // tentativas
 
 // Fatias de 360° ao redor do jogador usadas pra decidir "de que lado" c…
 const SPAWN_SECTOR_COUNT = 8;
@@ -103,7 +108,9 @@ export default class EnemySpawner {
 
     const def = weights ? this._pickWeighted(weights) : this._pickUniform(nowMs);
     if (!def) return null;
-    const pos = def.sealer ? this._findSealerSpawnPosition(def) : this._findSpawnPosition(baseAngle);
+    const pos = def.sealer ? this._findSealerSpawnPosition(def)
+      : def.boss ? this._findBossSpawnPosition()
+      : this._findSpawnPosition(baseAngle);
     return this._createAt(def, pos);
   }
 
@@ -249,7 +256,9 @@ export default class EnemySpawner {
     if (def.sealer && this.hasActiveSealer()) return 0; // já tem um vivo — cheat também respeita a regra
     const n = Math.max(1, Math.floor(count));
     for (let i = 0; i < n; i++) {
-      this._createAt(def, def.sealer ? this._findSealerSpawnPosition(def) : this._findSpawnPosition());
+      this._createAt(def, def.sealer ? this._findSealerSpawnPosition(def)
+        : def.boss ? this._findBossSpawnPosition()
+        : this._findSpawnPosition());
     }
     return n;
   }
@@ -265,6 +274,50 @@ export default class EnemySpawner {
       x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * safeDist, margin, bounds.width - margin),
       y: Phaser.Math.Clamp(this.player.y + Math.sin(angle) * safeDist, margin, bounds.height - margin)
     };
+  }
+
+  // Posição de spawn exclusiva do Boss: NA FRENTE do jogador (direção em que ele anda)
+  // e DENTRO da câmera, onde o flash de entrada aparece. Se a frente estiver bloqueada
+  // (borda do mapa ou parede), tenta ângulos ao redor até achar um ponto livre.
+  _findBossSpawnPosition() {
+    const bounds = this.mapManager.getWorldBounds();
+    const margin = 96;
+    const view = this._currentCameraView();
+    const aim = this.player.getAimDirection?.() ?? { x: 0, y: 1 };
+    const baseAngle = Math.atan2(aim.y, aim.x);
+    const px = this.player.x;
+    const py = this.player.y;
+
+    let fallback = null;
+    for (const offsetDeg of BOSS_SPAWN_ANGLE_OFFSETS_DEG) {
+      const angle = baseAngle + Phaser.Math.DegToRad(offsetDeg);
+      const dx = Math.cos(angle);
+      const dy = Math.sin(angle);
+      // distância do jogador até a borda da câmera nessa direção
+      const tx = dx > 1e-4 ? (view.right - px) / dx : dx < -1e-4 ? (px - view.x) / -dx : Infinity;
+      const ty = dy > 1e-4 ? (view.bottom - py) / dy : dy < -1e-4 ? (py - view.y) / -dy : Infinity;
+      const edge = Math.max(0, Math.min(tx, ty));
+      const maxDist = Math.max(edge * 0.85, BOSS_SPAWN_MIN_DISTANCE);
+      const dist = Phaser.Math.Clamp(edge * BOSS_SPAWN_VIEW_FRACTION, BOSS_SPAWN_MIN_DISTANCE, maxDist);
+      const x = px + dx * dist;
+      const y = py + dy * dist;
+
+      const insideMap = x >= margin && x <= bounds.width - margin && y >= margin && y <= bounds.height - margin;
+      if (insideMap && !this._isBlockedByWall(x, y, BOSS_SPAWN_CLEARANCE)) return { x, y };
+      if (!fallback && insideMap) fallback = { x, y };
+    }
+    if (fallback) return fallback;
+    return this._findSpawnPosition(); // mapa minúsculo: cai no spawn normal
+  }
+
+  // true se há tile de parede no ponto ou a `radius` px dele (4 direções)
+  _isBlockedByWall(x, y, radius) {
+    const layer = this.mapManager.wallsLayer;
+    if (!layer) return false;
+    return [[0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius]].some(([ox, oy]) => {
+      const tile = layer.getTileAtWorldXY(x + ox, y + oy);
+      return tile != null && tile.index > 0;
+    });
   }
 
   // Evento do Boss (ver SpawnDirector._checkBossSchedule): manda todo

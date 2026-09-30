@@ -258,6 +258,11 @@ export default [
     "pursuitSpeedMultiplier": 1.25,
     // margem (px) além da borda da câmera pra contar o boss como "fora da tela" (Salto)
     "leapOffscreenMargin": 0,
+    // --- Entrada: depois do flash de nascimento ele fica parado (entranceIdleMs) e só
+    // começa a atacar depois de entranceGraceMs (Investida, Machado, Corte, Pisão, Salto).
+    // Contam a partir do instante do spawn.
+    "entranceIdleMs": 1200,
+    "entranceGraceMs": 3500,
     "hp": 3000,
     "speed": 65,
     "contactDamage": 0,
