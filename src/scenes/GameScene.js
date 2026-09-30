@@ -30,7 +30,6 @@ import eliteScheduleData from '../../data/eliteSchedule.js';
 import bossScheduleData from '../../data/bossSchedule.js';
 import scoreValuesData from '../../data/scoreValues.js';
 
-const XP_ORB_PICKUP_RANGE_HINT = 4; // margem extra no corpo físico do orb
 const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 const MEDKIT_HEAL_AMOUNT = 20;
@@ -42,23 +41,31 @@ const MEDKIT_DROP_OFFSET_MIN = 42;
 const MEDKIT_DROP_OFFSET_MAX = 56;
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 
-// Cor do orb de XP por faixa de valor — dá pra reconhecer de longe se
-// vale a pena correr atrás. Faixas batem com data/enemies.js: verde
+// Sprite do cristal de XP por faixa de valor — dá pra reconhecer de longe
+// se vale a pena correr atrás. Faixas batem com data/enemies.js: verde
 // (grunt 8, cyber_hound 4), azul (cyber_brute 20, exploder 26), vermelho
 // (sealer 60, elite 120) e roxo (só o Minotauro/boss, 500, dropa).
-const XP_ORB_TIERS = [
-  { min: 0, color: 0x5cd65c }, // verde — inimigos comuns
-  { min: 10, color: 0x4fa8ff }, // azul — intermediários
-  { min: 60, color: 0xff4f4f }, // vermelho — pesados (Sealer/Elite)
-  { min: 200, color: 0xb26bff } // roxo — só o boss dropa isso
+// scale: quanto mais raro, maior (PNG é 64x64, gema ocupa ~31x60 — em 0.3 fica ~18px de altura)
+// glow: brilho máximo do pulso aditivo (quanto mais raro, mais forte)
+const XP_GEM_TIERS = [
+  { min: 0, texture: 'xp_verde', scale: 0.3, glow: 0.22 }, // verde — inimigos comuns
+  { min: 10, texture: 'xp_azul', scale: 0.36, glow: 0.3 }, // azul — intermediários
+  { min: 60, texture: 'xp_vermelho', scale: 0.44, glow: 0.38 }, // vermelho — pesados (Sealer/Elite)
+  { min: 200, texture: 'xp_roxo', scale: 0.62, glow: 0.5 } // roxo — só o boss dropa isso
 ];
+const XP_GEM_BASE_SCALE = 0.3; // escala do verde: referência pro raio de coleta
+const XP_GEM_PICKUP_RADIUS = 10; // raio de coleta (px do mundo) do verde; cresce junto com a escala
+const XP_GEM_GLOW_SCALE = 1.25; // halo aditivo um pouco maior que a gema
+const XP_GEM_PULSE_MIN_MS = 650;
+const XP_GEM_PULSE_MAX_MS = 950;
+const XP_GEM_MIN_ALPHA = 0.85; // a própria gema oscila entre isso e 1
 
-function _xpOrbColorFor(xpReward) {
-  let color = XP_ORB_TIERS[0].color;
-  for (const tier of XP_ORB_TIERS) {
-    if (xpReward >= tier.min) color = tier.color;
+function _xpGemTierFor(xpReward) {
+  let found = XP_GEM_TIERS[0];
+  for (const tier of XP_GEM_TIERS) {
+    if (xpReward >= tier.min) found = tier;
   }
-  return color;
+  return found;
 }
 
 // som ambiente assustador, sorteado, raro — nada de específico o dispara
@@ -75,7 +82,7 @@ const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
   'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
   'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',
   'minotaur_walk_rage', 'minotaur_idle_rage_noaxe', 'minotaur_walk_rage_noaxe', 'minotaur_axe_thrown',
-  'minotaur_axe_thrown_rage', 'xp_orb', 'hit_fx'
+  'minotaur_axe_thrown_rage', 'xp_verde', 'xp_azul', 'xp_vermelho', 'xp_roxo', 'hit_fx'
 ];
 
 export default class GameScene extends Phaser.Scene {
@@ -137,6 +144,14 @@ export default class GameScene extends Phaser.Scene {
     this.enemySpawner.updateAll(this.time.now);
     this.abilityManager.update(this.time.now);
     this._updateXpOrbMagnet();
+    this._updateXpGlows();
+  }
+
+  // o halo não tem física: só copia a posição da gema (que pode estar sendo puxada pelo ímã)
+  _updateXpGlows() {
+    this.xpOrbGroup.getChildren().forEach((orb) => {
+      orb.getData('glow')?.setPosition(orb.x, orb.y);
+    });
   }
 
   // "Ímã" de XP: todo orb dentro de XP_ORB_MAGNET_RANGE do jogador passa a
@@ -427,12 +442,39 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _spawnXpOrb(x, y, xpReward) {
-    const orb = this.physics.add.image(x, y, 'xp_orb').setDepth(5);
-    orb.setTintFill(_xpOrbColorFor(xpReward)); // cor sólida por faixa (ver XP_ORB_TIERS) — não depende da cor original do PNG
+    const tier = _xpGemTierFor(xpReward);
+    const orb = this.physics.add.image(x, y, tier.texture).setDepth(5).setScale(tier.scale);
     orb.setData('xpReward', xpReward);
-    const radius = orb.width / 2 + XP_ORB_PICKUP_RANGE_HINT;
+    // raio/offset do body circular são em pixels da textura (o Phaser multiplica pela escala)
+    const worldRadius = XP_GEM_PICKUP_RADIUS * (tier.scale / XP_GEM_BASE_SCALE);
+    const radius = worldRadius / tier.scale;
     orb.body.setCircle(radius, orb.width / 2 - radius, orb.height / 2 - radius);
     this.xpOrbGroup.add(orb);
+
+    // brilho: cópia aditiva atrás da gema, pulsando; cada gema começa numa fase diferente
+    const glow = this.add.image(x, y, tier.texture)
+      .setDepth(4)
+      .setScale(tier.scale * XP_GEM_GLOW_SCALE)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setAlpha(0);
+    orb.setData('glow', glow);
+    const pulse = this.tweens.add({
+      targets: glow,
+      alpha: tier.glow,
+      duration: Phaser.Math.Between(XP_GEM_PULSE_MIN_MS, XP_GEM_PULSE_MAX_MS),
+      delay: Phaser.Math.Between(0, XP_GEM_PULSE_MAX_MS),
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        // a gema acompanha o pulso: mais brilho no halo = gema mais "cheia"
+        orb.setAlpha(XP_GEM_MIN_ALPHA + (1 - XP_GEM_MIN_ALPHA) * (glow.alpha / tier.glow));
+      }
+    });
+    orb.once('destroy', () => {
+      pulse.stop();
+      glow.destroy();
+    });
   }
 
   _spawnMedkit(x, y) {

@@ -107,7 +107,11 @@ export default class PreloadScene extends Phaser.Scene {
     // sprite do machado arremessado (normal e rage) — ver Enemy.js _launchAxe
     this.load.image('minotaur_axe_thrown', 'assets/sprites/minotaur_axe_thrown.png');
     this.load.image('minotaur_axe_thrown_rage', 'assets/sprites/minotaur_axe_thrown_rage.png');
-    this.load.image('xp_orb', 'assets/sprites/xp_orb.png');
+    // cristais de XP por faixa (ver XP_GEM_TIERS no GameScene)
+    this.load.image('xp_verde', 'assets/sprites/xp_verde.png');
+    this.load.image('xp_azul', 'assets/sprites/xp_azul.png');
+    this.load.image('xp_vermelho', 'assets/sprites/xp_vermelho.png');
+    this.load.image('xp_roxo', 'assets/sprites/xp_roxo.png');
     this.load.image('medkit', 'assets/sprites/medkit.png');
     this.load.image('gato_drone', 'assets/sprites/gato_drone.png');
     this.load.image('gato_drone_catforce', 'assets/sprites/gato_drone_catforce.png');
