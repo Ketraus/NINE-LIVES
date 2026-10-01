@@ -107,6 +107,7 @@ export default class GameScene extends Phaser.Scene {
 
     // guarda pra poder repassar no restart (tecla R) sem perder a arma esco…
     this.weaponId = data?.weaponId || this.weaponId || null;
+    this.multiplayerRoom = data?.multiplayerRoom || null;
 
     this._buildMap();
     this._buildRun();
@@ -198,11 +199,11 @@ export default class GameScene extends Phaser.Scene {
   // Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
   _restartOrGoToWeaponSelect() {
     if (this.hasWon) {
-      this.scene.start('WeaponSelectScene');
+      this.scene.start('WeaponSelectScene', { multiplayerRoom: this.multiplayerRoom });
       return;
     }
     // repassa a arma explicitamente: scene.restart() sozinho não
-    this.scene.restart({ weaponId: this.weaponId });
+    this.scene.restart({ weaponId: this.weaponId, multiplayerRoom: this.multiplayerRoom });
   }
 
   // ---------- construção ----------
@@ -246,7 +247,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _buildMultiplayer() {
-    this.multiplayer = new MultiplayerManager(this, this.player);
+    this.multiplayer = new MultiplayerManager(this, this.player, this.multiplayerRoom);
     this.events.once('shutdown', () => {
       this.multiplayer?.destroy();
       this.multiplayer = null;

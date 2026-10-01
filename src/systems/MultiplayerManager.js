@@ -3,6 +3,7 @@ import { BASE_VISUAL_SCALE } from '../entities/Player.js';
 
 const POSITION_INTERVAL_MS = 100;
 const PLAYER_TIMEOUT_MS = 5000;
+const DEFAULT_BROKER_URL = 'wss://ninelives.feira-de-jogos.dev.br/mqtt';
 const SPRITE_ANIMATIONS = {
   katana: { idle: 'player-katana-idle', walk: 'player-katana-walk' },
   fists: { idle: 'player-paws-idle', walk: 'player-paws-walk' },
@@ -14,18 +15,19 @@ function createPlayerId() {
 }
 
 export default class MultiplayerManager {
-  constructor(scene, player) {
+  constructor(scene, player, roomId = null) {
     this.scene = scene;
     this.player = player;
     this.remotePlayers = new Map();
     this.lastSentAt = 0;
 
     const params = new URLSearchParams(window.location.search);
-    const brokerUrl = params.get('mqttUrl');
+    const room = roomId || params.get('room');
+    const brokerUrl = params.get('mqttUrl') || (room ? DEFAULT_BROKER_URL : null);
     if (!brokerUrl) return;
 
     this.playerId = createPlayerId();
-    this.room = encodeURIComponent(params.get('room') || 'test');
+    this.room = encodeURIComponent(room || 'test');
     this.topicPrefix = `nine-lives/${this.room}/players`;
     this.positionTopic = `${this.topicPrefix}/${this.playerId}/position`;
 

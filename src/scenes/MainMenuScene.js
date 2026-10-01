@@ -52,14 +52,23 @@ export default class MainMenuScene extends Phaser.Scene {
       this._start()
     );
 
-    const settingsButton = this._buildTerminalButton(width / 2, height * 0.6 + 56, 220, 40, 'SETTINGS', () => {
+    const multiplayerButton = this._buildTerminalButton(
+      width / 2,
+      height * 0.6 + 56,
+      300,
+      40,
+      'MULTIPLAYER TESTE',
+      () => this._start('teste')
+    );
+
+    const settingsButton = this._buildTerminalButton(width / 2, height * 0.6 + 112, 220, 40, 'SETTINGS', () => {
       if (this._transitioning) return;
       this._transitioning = true;
       this.sound.play('sfx_ui_click', { volume: 0.6 });
       this._goToSettings();
     });
 
-    this.menuLayer.add([bg, title, button, settingsButton]);
+    this.menuLayer.add([bg, title, button, multiplayerButton, settingsButton]);
 
     this._setupRetroFx();
 
@@ -190,9 +199,10 @@ export default class MainMenuScene extends Phaser.Scene {
     g.strokePoints(points, true);
   }
 
-  _start() {
+  _start(multiplayerRoom = null) {
     if (this._transitioning) return;
     this._transitioning = true;
+    this.nextSceneData = multiplayerRoom ? { multiplayerRoom } : {};
 
     // celular: aproveita esse mesmo toque (gesto do usuário, exigido pela
     if (this.sys.game.device.input.touch && this.scale.fullscreen.available && !this.scale.isFullscreen) {
@@ -230,7 +240,7 @@ export default class MainMenuScene extends Phaser.Scene {
       const cam = this.cameras.main;
       cam.fadeOut(EXIT_BLACK_MS, 0, 0, 0);
       cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-        this.scene.start('WeaponSelectScene');
+        this.scene.start('WeaponSelectScene', this.nextSceneData);
       });
     });
   }

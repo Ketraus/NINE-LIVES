@@ -48,11 +48,12 @@ export default class WeaponSelectScene extends Phaser.Scene {
     super('WeaponSelectScene');
   }
 
-  create() {
+  create(data) {
     const { width, height } = this.scale;
     const cx = width / 2;
 
     this._transitioning = false;
+    this.multiplayerRoom = data?.multiplayerRoom || null;
     this.cardGroups = [];
 
     // chega em preto (ver MainMenuScene._playExitTransition) e clareia —
@@ -359,7 +360,10 @@ export default class WeaponSelectScene extends Phaser.Scene {
       cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
         // silêncio puro antes de carregar — o "sistema processando"
         this.time.delayedCall(SILENCE_MS, () => {
-          this.scene.start('GameScene', { weaponId: weapon.id });
+          this.scene.start('GameScene', {
+            weaponId: weapon.id,
+            multiplayerRoom: this.multiplayerRoom
+          });
         });
       });
     });

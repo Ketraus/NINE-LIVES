@@ -17,7 +17,9 @@
 
 ## Multiplayer experimental
 
-O protótipo sincroniza posição, direção e animação dos jogadores por MQTT sobre WebSocket. Configure um broker com endpoint `ws://` ou `wss://` e abra o jogo com a URL do broker e uma sala em comum:
+O protótipo sincroniza posição, direção e animação dos jogadores por MQTT sobre WebSocket. Para testar no servidor Nine Lives, clique em **MULTIPLAYER TESTE** no menu inicial em dois computadores; ambos entram na sala `teste`.
+
+Também é possível escolher uma sala pela URL, informando um broker com endpoint `ws://` ou `wss://`:
 
 `index.html?mqttUrl=wss%3A%2F%2FSEU-BROKER%3A8084%2Fmqtt&room=teste`
 
