@@ -15,6 +15,16 @@
 
 ---
 
+## Multiplayer experimental
+
+O protótipo sincroniza posição, direção e animação dos jogadores por MQTT sobre WebSocket. Configure um broker com endpoint `ws://` ou `wss://` e abra o jogo com a URL do broker e uma sala em comum:
+
+`index.html?mqttUrl=wss%3A%2F%2FSEU-BROKER%3A8084%2Fmqtt&room=teste`
+
+Cada navegador precisa usar o mesmo `room`. O jogo solo continua funcionando quando `mqttUrl` não é informado. Este primeiro protótipo não implementa autenticação, matchmaking, colisão entre jogadores nem validação do lado do servidor.
+
+---
+
 ## Escolha de arma
 
 `WeaponSelectScene` mostra as armas de `data/weapons.js` como cartas clicáveis. Quando você escolhe uma, o jogo guarda e começa a run. Se morrer, você volta com a mesma arma (não precisa escolher de novo).

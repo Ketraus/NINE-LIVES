@@ -18,6 +18,7 @@ import ResultUI from '../ui/ResultUI.js';
 import DevConsole from '../systems/DevConsole.js';
 import TouchJoystick from '../systems/TouchJoystick.js';
 import SlowmoSystem from '../systems/SlowmoSystem.js';
+import MultiplayerManager from '../systems/MultiplayerManager.js';
 
 import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
@@ -110,6 +111,7 @@ export default class GameScene extends Phaser.Scene {
     this._buildMap();
     this._buildRun();
     this._buildPlayer();
+    this._buildMultiplayer();
     this._buildEnemies();
     this._buildWeapon();
     this._buildAbilities();
@@ -136,8 +138,9 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  update() {
+  update(time, delta) {
     this._updateRunTimer();
+    this.multiplayer?.update(time, delta);
 
     if (this.isGameOver || this.isPaused) return;
     this.player.update();
@@ -240,6 +243,14 @@ export default class GameScene extends Phaser.Scene {
     // startFollow() só define o alvo; o scroll real da câmera (e portanto
     this.cameras.main.centerOn(spawn.x, spawn.y);
     this.mapManager.addCollider(this.player);
+  }
+
+  _buildMultiplayer() {
+    this.multiplayer = new MultiplayerManager(this, this.player);
+    this.events.once('shutdown', () => {
+      this.multiplayer?.destroy();
+      this.multiplayer = null;
+    });
   }
 
   // Reagenda a cada disparo (delay sorteado de novo toda vez), mesmo
