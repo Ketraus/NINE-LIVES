@@ -7,6 +7,7 @@ import Elite from './Elite.js';
 import Sealer from './Sealer.js';
 import Minotaur from './Minotaur.js';
 import SwarmSystem from './SwarmSystem.js';
+import DamageSystem from '../../combat/DamageSystem.js';
 
 // Escolhe a classe do inimigo pelo def (data/enemies.js). As habilidades especiais
 // seguem as mesmas flags de antes (boss/elite/sealer/explodes); os inimigos comuns
@@ -386,19 +387,39 @@ export default class EnemySpawner {
   updateAll(nowMs) {
     const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
     const active = this.group.getChildren().filter((e) => e.active);
+    const targets = (this.scene.multiplayer?.getEnemyTargets() ?? [this.player])
+      .filter((target) => target.active && !target.healthSystem?.isDead());
     this.swarmSystem.rebuild(active);
     const view = this._currentCameraView();
     const abandonmentDistance = Math.hypot(view.width, view.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW + ABANDONED_DISTANCE_MARGIN;
 
     active.forEach((enemy) => {
+      if (targets.length === 0) return;
+      const target = targets.reduce((nearest, candidate) => {
+        const candidateDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, candidate.x, candidate.y);
+        const nearestDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, nearest.x, nearest.y);
+        return candidateDistance < nearestDistance ? candidate : nearest;
+      });
       if (this.frozen) {
         enemy.setVelocity(0, 0);
       } else {
-        const moveDir = this.swarmSystem.computeMoveDir(enemy, this.player);
-        enemy.chase(this.player, nowMs, speedMultiplier, moveDir);
+        const moveDir = this.swarmSystem.computeMoveDir(enemy, target);
+        enemy.chase(target, nowMs, speedMultiplier, moveDir);
         enemy.updateFacing();
         enemy.updateAnimState();
-        if (enemy.updateAbandonment(this.player, nowMs, abandonmentDistance)) return;
+        if (enemy.updateAbandonment(target, nowMs, abandonmentDistance)) return;
+      }
+      if (target !== this.player) {
+        const contactRange = (enemy.body?.radius || 20) + (target.body?.radius || 30);
+        if (Phaser.Math.Distance.Between(enemy.x, enemy.y, target.x, target.y) <= contactRange) {
+          DamageSystem.applyContactDamage(
+            enemy,
+            target,
+            enemy.def.contactDamage,
+            enemy.def.contactCooldownMs,
+            nowMs
+          );
+        }
       }
       enemy.updateBleed(nowMs);
     });

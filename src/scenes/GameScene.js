@@ -345,6 +345,7 @@ export default class GameScene extends Phaser.Scene {
   _buildCollisions() {
     // inimigo encosta no jogador -> dano de contato (+ contra-ataque de
     this.physics.add.overlap(this.player, this.enemySpawner.group, (player, enemy) => {
+      if (enemy.networkReplica && this.multiplayer?.isMultiplayer && !this.multiplayer.isRoomHost) return;
       const hit = DamageSystem.applyContactDamage(
         enemy,
         player,
@@ -373,15 +374,8 @@ export default class GameScene extends Phaser.Scene {
     });
 
     // inimigo morre -> registra abate, dropa orb de xp e explode em FX
-    EventBus.on('enemy-died', ({ enemyId, x, y, xpReward, color }) => {
-      this.runManager.registerKill();
-      this.scoreManager.registerKill(enemyId);
-      this._spawnXpOrb(x, y, xpReward);
-      if (enemyId === 'elite' || (enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
-        this._spawnMedkit(x, y);
-      }
-      this._spawnDeathFx(x, y, color);
-    });
+    EventBus.on('enemy-died', (death) => this._handleEnemyDeath(death, true));
+    EventBus.on('network-enemy-died', (death) => this._handleEnemyDeath(death, false));
 
     EventBus.on('player-died', () => {
       this.isGameOver = true;
@@ -413,6 +407,18 @@ export default class GameScene extends Phaser.Scene {
       this.spawnDirector.resume();
       this._setGameplayVisualsPaused(false);
     });
+  }
+
+  _handleEnemyDeath(death, broadcast) {
+    const { enemyId, x, y, xpReward, color } = death;
+    if (broadcast) this.multiplayer?.broadcastEnemyDeath(death);
+    this.runManager.registerKill();
+    this.scoreManager.registerKill(enemyId);
+    this._spawnXpOrb(x, y, xpReward);
+    if (enemyId === 'elite' || (enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
+      this._spawnMedkit(x, y);
+    }
+    this._spawnDeathFx(x, y, color);
   }
 
   _setGameplayVisualsPaused(paused) {
@@ -460,7 +466,10 @@ export default class GameScene extends Phaser.Scene {
       this.pauseUI.open();
     };
     const handleVisibilityChange = () => {
-      if (this.multiplayer?.isMultiplayer) return;
+      if (this.multiplayer?.isMultiplayer) {
+        if (document.hidden && this.multiplayer.isRoomHost) this.multiplayer.pauseForHiddenHost();
+        return;
+      }
       if (document.hidden) {
         handleBlur();
         this.sys.game.loop.sleep();

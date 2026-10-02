@@ -507,7 +507,15 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Efeito extra de morte de cada tipo (ex.: som do Elite) — ver _onDie.
     this._onDie();
     // `color` vai junto só pra quem quiser desenhar algo na cor do
-    EventBus.emit('enemy-died', { enemyId: this.def.id, x: this.x, y: this.y, xpReward: this.def.xpReward, color: this.def.color });
+    EventBus.emit('enemy-died', {
+      enemyId: this.def.id,
+      networkId: this.networkId,
+      killerPlayerId: this.killerPlayerId || null,
+      x: this.x,
+      y: this.y,
+      xpReward: this.def.xpReward,
+      color: this.def.color
+    });
     this.destroy();
   }
 }

@@ -1,10 +1,13 @@
 import MqttClient from './MqttClient.js';
 import { BASE_VISUAL_SCALE } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
+import EventBus from './EventBus.js';
 
 const POSITION_INTERVAL_MS = 100;
 const ENEMY_SNAPSHOT_INTERVAL_MS = 200;
+const ENEMY_HIT_INTERVAL_MS = 100;
 const MAX_SYNCED_ENEMIES = 150;
+const MAX_DAMAGE_PER_MESSAGE = 5000;
 const ATTACK_MIN_INTERVAL_MS = 60;
 const PLAYER_TIMEOUT_MS = 5000;
 const DEFAULT_BROKER_URL = 'wss://ninelives.feira-de-jogos.dev.br/mqtt';
@@ -27,6 +30,13 @@ export default class MultiplayerManager {
     this.lastEnemySnapshotAt = 0;
     this.lastEnemySnapshotSequence = 0;
     this.remoteEnemies = new Map();
+    this.pendingEnemyDamage = new Map();
+    this.lastEnemyHitSequence = 0;
+    this.lastEnemyHitSentAt = 0;
+    this.lastPlayerDamageSequence = 0;
+    this.lastReceivedPlayerDamageSequence = 0;
+    this.lastEnemyDeathSequence = 0;
+    this.receivedEnemyDeaths = new Set();
     this.lastAttackSentAt = -Infinity;
     this.attackSequence = 0;
     this.isRoomHost = Boolean(isRoomHost);
@@ -45,11 +55,16 @@ export default class MultiplayerManager {
 
     this.playerId = createPlayerId();
     if (this.isRoomHost) this.hostPlayerId = this.playerId;
+    if (this.isRoomHost) this.runEpoch = createPlayerId();
     this.room = encodeURIComponent(room || 'test');
     this.topicPrefix = `nine-lives/${this.room}/players`;
     this.positionTopic = `${this.topicPrefix}/${this.playerId}/position`;
     this.attackTopic = `${this.topicPrefix}/${this.playerId}/attack`;
     this.enemyStateTopic = `nine-lives/${this.room}/enemies/state`;
+    this.enemyDeathTopic = `nine-lives/${this.room}/enemies/death`;
+    this.enemyHitPrefix = `nine-lives/${this.room}/enemy-hits`;
+    this.enemyHitTopic = `${this.enemyHitPrefix}/${this.playerId}`;
+    this.playerDamageTopic = `${this.topicPrefix}/${this.playerId}/damage`;
 
     try {
       this.mqtt = new MqttClient(brokerUrl, {
@@ -67,7 +82,13 @@ export default class MultiplayerManager {
       Promise.all([
         this.mqtt.subscribe(`${this.topicPrefix}/+/position`),
         this.mqtt.subscribe(`${this.topicPrefix}/+/attack`),
-        ...(this.isRoomHost ? [] : [this.mqtt.subscribe(this.enemyStateTopic)])
+        ...(this.isRoomHost
+          ? [this.mqtt.subscribe(`${this.topicPrefix}/+/damage`), this.mqtt.subscribe(`${this.enemyHitPrefix}/+`)]
+          : [
+            this.mqtt.subscribe(this.enemyStateTopic),
+            this.mqtt.subscribe(this.enemyDeathTopic),
+            this.mqtt.subscribe(this.playerDamageTopic)
+          ])
       ]).catch((error) => {
         console.error('[Multiplayer] Falha ao assinar tópico:', error);
       });
@@ -85,6 +106,10 @@ export default class MultiplayerManager {
       this.lastEnemySnapshotAt = now;
       this._publishEnemySnapshot();
     }
+    if (!this.isRoomHost && this.mqtt?.connected && this.pendingEnemyDamage.size > 0 &&
+      now - this.lastEnemyHitSentAt >= ENEMY_HIT_INTERVAL_MS) {
+      this._flushEnemyDamage(now);
+    }
     if (this.mqtt?.connected && now - this.lastSentAt >= POSITION_INTERVAL_MS) {
       this.lastSentAt = now;
       this.mqtt.publish(this.positionTopic, {
@@ -97,9 +122,18 @@ export default class MultiplayerManager {
         weaponId: this.player.runState.weaponId,
         hp: this.player.healthSystem.current,
         maxHp: this.player.healthSystem.maxHp,
+        vx: this.player.body.velocity.x,
+        vy: this.player.body.velocity.y,
+        dodgeChance: this.player.runState.dodgeChance || 0,
+        damageReductionFraction: this.player.runState.damageReductionFraction || 0,
+        shieldCurrent: this.player.shieldSystem?.current || 0,
+        shieldMax: this.player.shieldSystem?.maxShield || 0,
+        aimX: this.player.getAimDirection().x,
+        aimY: this.player.getAimDirection().y,
         level: this.player.runState.level,
         pauseRequested: this.pauseRequested,
         isHost: this.isRoomHost,
+        runEpoch: this.isRoomHost ? this.runEpoch : undefined,
         runTimeMs: this.isRoomHost ? (this.scene.spawnDirector?.getElapsedMs() ?? 0) : undefined,
         runPaused: this.isRoomHost && this.scene.isPaused
       });
@@ -125,6 +159,124 @@ export default class MultiplayerManager {
       );
     });
     this._syncPauseVote();
+    this._syncHostPause();
+  }
+
+  queueEnemyDamage(networkId, damage) {
+    if (this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(networkId) ||
+      !Number.isFinite(damage) || damage <= 0) return;
+    this.pendingEnemyDamage.set(
+      networkId,
+      Math.min(MAX_DAMAGE_PER_MESSAGE, (this.pendingEnemyDamage.get(networkId) || 0) + damage)
+    );
+  }
+
+  _flushEnemyDamage(now) {
+    const hits = [...this.pendingEnemyDamage.entries()]
+      .slice(0, MAX_SYNCED_ENEMIES)
+      .map(([networkId, damage]) => [networkId, Math.round(damage * 10) / 10]);
+    this.pendingEnemyDamage.clear();
+    this.lastEnemyHitSentAt = now;
+    this.mqtt.publish(this.enemyHitTopic, {
+      id: this.playerId,
+      seq: ++this.lastEnemyHitSequence,
+      hits
+    });
+  }
+
+  _onEnemyHits(playerId, message) {
+    if (!this.isRoomHost || message.id !== playerId || !Number.isInteger(message.seq) ||
+      !Array.isArray(message.hits)) return;
+    const remote = this.remotePlayers.get(playerId);
+    if (!remote || message.seq <= (remote.lastEnemyHitSequence || 0)) return;
+    remote.lastEnemyHitSequence = message.seq;
+
+    message.hits.slice(0, MAX_SYNCED_ENEMIES).forEach((hit) => {
+      if (!Array.isArray(hit) || !Number.isInteger(hit[0]) || !Number.isFinite(hit[1])) return;
+      const enemy = this.scene.enemySpawner?.group.getChildren()
+        .find((candidate) => candidate.active && candidate.networkId === hit[0]);
+      const damage = Phaser.Math.Clamp(hit[1], 0, MAX_DAMAGE_PER_MESSAGE);
+      if (!enemy || damage <= 0) return;
+      enemy.killerPlayerId = playerId;
+      enemy.healthSystem.takeDamage(damage);
+    });
+  }
+
+  _sendPlayerDamage(playerId, amount) {
+    if (!this.isRoomHost || !this.mqtt?.connected || amount <= 0) return;
+    this.mqtt.publish(`${this.topicPrefix}/${playerId}/damage`, {
+      seq: ++this.lastPlayerDamageSequence,
+      amount: Math.min(MAX_DAMAGE_PER_MESSAGE, amount)
+    });
+  }
+
+  broadcastEnemyDeath(death) {
+    if (!this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(death.networkId)) return;
+    this.mqtt.publish(this.enemyDeathTopic, {
+      ...death,
+      epoch: this.runEpoch,
+      seq: ++this.lastEnemyDeathSequence,
+    });
+  }
+
+  _syncRunEpoch(epoch) {
+    if (typeof epoch !== 'string' || epoch.length > 32 || epoch === this.runEpoch) return;
+    this.runEpoch = epoch;
+    this.lastEnemySnapshotSequence = 0;
+    this.lastReceivedPlayerDamageSequence = 0;
+    this.receivedEnemyDeaths.clear();
+    this.remoteEnemies.forEach((enemy) => enemy._leave());
+    this.remoteEnemies.clear();
+  }
+
+  getEnemyTargets() {
+    const now = Date.now();
+    return [this.player, ...[...this.remotePlayers.values()]
+      .filter((remote) => remote.combatant?.active && now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS)
+      .map((remote) => remote.combatant)];
+  }
+
+  _createRemoteCombatant(remote, playerId) {
+    const manager = this;
+    const healthSystem = {
+      get current() { return remote.hp; },
+      get maxHp() { return remote.maxHp; },
+      isDead() { return remote.hp <= 0; },
+      takeDamage(amount) {
+        if (!Number.isFinite(amount) || amount <= 0 || remote.hp <= 0) return 0;
+        const appliedDamage = Math.min(remote.hp, amount);
+        remote.hp -= appliedDamage;
+        remote.invulnerableUntil = manager.scene.time.now + 350;
+        manager._sendPlayerDamage(playerId, appliedDamage);
+        return appliedDamage;
+      }
+    };
+    const shieldSystem = {
+      absorb(damage) {
+        const absorbed = Math.min(remote.shieldCurrent || 0, Math.max(0, damage));
+        remote.shieldCurrent = Math.max(0, (remote.shieldCurrent || 0) - absorbed);
+        return damage - absorbed;
+      }
+    };
+
+    return {
+      get x() { return remote.targetX; },
+      get y() { return remote.targetY; },
+      get active() { return remote.hp > 0 && Date.now() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS; },
+      get invulnerableUntil() { return remote.invulnerableUntil || 0; },
+      set invulnerableUntil(value) { remote.invulnerableUntil = value; },
+      invulnerableMs: 350,
+      body: {
+        radius: 30,
+        get velocity() { return { x: remote.vx || 0, y: remote.vy || 0 }; }
+      },
+      scene: manager.scene,
+      healthSystem,
+      shieldSystem,
+      runState: { dodgeChance: 0, damageReductionFraction: 0 },
+      getAimDirection() { return { x: remote.aimX || 0, y: remote.aimY || 1 }; },
+      applyKnockback() {}
+    };
   }
 
   _publishEnemySnapshot() {
@@ -145,6 +297,7 @@ export default class MultiplayerManager {
       ]);
     this.mqtt.publish(this.enemyStateTopic, {
       seq: ++this.lastEnemySnapshotSequence,
+      epoch: this.runEpoch,
       enemies
     });
   }
@@ -160,6 +313,7 @@ export default class MultiplayerManager {
       if (!Number.isInteger(networkId) || networkId <= 0 ||
         !Number.isInteger(defIndex) || !defs[defIndex] ||
         ![x, y, hpTenths].every(Number.isFinite)) return;
+      if (this.receivedEnemyDeaths.has(networkId)) return;
 
       seen.add(networkId);
       let enemy = this.remoteEnemies.get(networkId);
@@ -202,9 +356,20 @@ export default class MultiplayerManager {
   togglePauseVote() {
     if (!this.mqtt || this.scene.isGameOver || this.scene.hasWon ||
       this.scene.levelUpUI?.container.visible) return false;
+    if (this.isRoomHost && this.visibilityPauseApplied) {
+      this.visibilityPauseApplied = false;
+      this.scene.pauseUI?.close();
+      return true;
+    }
     this.pauseRequested = this.pauseApplied ? false : !this.pauseRequested;
     this._syncPauseVote();
     return true;
+  }
+
+  pauseForHiddenHost() {
+    if (!this.isRoomHost || this.scene.isGameOver || this.scene.hasWon) return;
+    this.visibilityPauseApplied = true;
+    this.scene.pauseUI?.open();
   }
 
   attachRunClock(spawnDirector) {
@@ -239,6 +404,17 @@ export default class MultiplayerManager {
     this.scene.pauseUI?.setWaitingForPlayer(this.pauseRequested && !this.pauseApplied);
   }
 
+  _syncHostPause() {
+    if (this.isRoomHost || !this.scene.pauseUI) return;
+    if (this.hostRunPaused && !this.hostPauseApplied) {
+      this.scene.pauseUI.open();
+      this.hostPauseApplied = this.scene.pauseUI.isOpen === true;
+    } else if (!this.hostRunPaused && this.hostPauseApplied) {
+      this.hostPauseApplied = false;
+      this.scene.pauseUI.close();
+    }
+  }
+
   _drawRemoteStatus(remote) {
     const { sprite, healthBar, levelLabel, hp, maxHp, level } = remote;
     const barWidth = 38;
@@ -261,10 +437,21 @@ export default class MultiplayerManager {
   }
 
   _onMessage(topic, payload) {
+    if (this.isRoomHost && topic.startsWith(`${this.enemyHitPrefix}/`)) {
+      const playerId = topic.slice(`${this.enemyHitPrefix}/`.length);
+      try {
+        const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
+        this._onEnemyHits(playerId, JSON.parse(text));
+      } catch (error) {
+        console.warn('[Multiplayer] Lote de dano inválido:', error.message);
+      }
+      return;
+    }
     if (topic === this.enemyStateTopic && !this.isRoomHost) {
       try {
         const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
         const snapshot = JSON.parse(text);
+        this._syncRunEpoch(snapshot.epoch);
         if (!Number.isInteger(snapshot.seq) || snapshot.seq <= this.lastEnemySnapshotSequence) return;
         this.lastEnemySnapshotSequence = snapshot.seq;
         this._applyEnemySnapshot(snapshot);
@@ -273,22 +460,50 @@ export default class MultiplayerManager {
       }
       return;
     }
+    if (topic === this.enemyDeathTopic && !this.isRoomHost) {
+      try {
+        const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
+        const death = JSON.parse(text);
+        this._syncRunEpoch(death.epoch);
+        if (!Number.isInteger(death.seq) || !Number.isInteger(death.networkId) ||
+          this.receivedEnemyDeaths.has(death.networkId)) return;
+        this.receivedEnemyDeaths.add(death.networkId);
+        const enemy = this.remoteEnemies.get(death.networkId);
+        enemy?._leave();
+        this.remoteEnemies.delete(death.networkId);
+        EventBus.emit('network-enemy-died', death);
+      } catch (error) {
+        console.warn('[Multiplayer] Morte de inimigo inválida:', error.message);
+      }
+      return;
+    }
     if (!topic.startsWith(`${this.topicPrefix}/`)) return;
     const [playerId, messageType] = topic.slice(`${this.topicPrefix}/`.length).split('/');
-    if (messageType !== 'position' && messageType !== 'attack') return;
-    if (!playerId || playerId === this.playerId) return;
+    if (!playerId) return;
 
     try {
       const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
       const state = JSON.parse(text);
+      if (messageType === 'damage' && playerId === this.playerId && !this.isRoomHost) {
+        if (!Number.isInteger(state.seq) || state.seq <= this.lastReceivedPlayerDamageSequence ||
+          !Number.isFinite(state.amount)) return;
+        this.lastReceivedPlayerDamageSequence = state.seq;
+        this.player.takeDamage(Phaser.Math.Clamp(state.amount, 0, MAX_DAMAGE_PER_MESSAGE));
+        return;
+      }
+      if (playerId === this.playerId) return;
       if (messageType === 'attack') {
         this._onAttack(playerId, state);
         return;
       }
-      if (state.id !== playerId || !Number.isFinite(state.x) || !Number.isFinite(state.y)) return;
+      if (messageType !== 'position' || state.id !== playerId ||
+        !Number.isFinite(state.x) || !Number.isFinite(state.y)) return;
+      const previousHost = this.remotePlayers.get(this.hostPlayerId);
+      const previousHostExpired = !previousHost || Date.now() - previousHost.lastSeenAt > PLAYER_TIMEOUT_MS;
       if (!this.isRoomHost && state.isHost === true &&
-        (!this.hostPlayerId || this.hostPlayerId === playerId)) {
+        (!this.hostPlayerId || this.hostPlayerId === playerId || previousHostExpired)) {
         this.hostPlayerId = playerId;
+        this._syncRunEpoch(state.runEpoch);
         if (Number.isFinite(state.runTimeMs)) {
           this.hostRunTimeMs = Math.max(0, state.runTimeMs);
           this.hostRunTimeReceivedAt = Date.now();
@@ -328,12 +543,23 @@ export default class MultiplayerManager {
           lastSeenAt: this.scene.time.now
         };
         this.remotePlayers.set(playerId, remote);
+        remote.combatant = this._createRemoteCombatant(remote, playerId);
       }
 
       remote.targetX = state.x;
       remote.targetY = state.y;
       remote.hp = hp;
       remote.maxHp = maxHp;
+      remote.vx = Number.isFinite(state.vx) ? state.vx : 0;
+      remote.vy = Number.isFinite(state.vy) ? state.vy : 0;
+      remote.aimX = Number.isFinite(state.aimX) ? state.aimX : 0;
+      remote.aimY = Number.isFinite(state.aimY) ? state.aimY : 1;
+      remote.shieldCurrent = Number.isFinite(state.shieldCurrent) ? Math.max(0, state.shieldCurrent) : 0;
+      remote.shieldMax = Number.isFinite(state.shieldMax) ? Math.max(0, state.shieldMax) : 0;
+      remote.combatant.runState.dodgeChance = Number.isFinite(state.dodgeChance) ? state.dodgeChance : 0;
+      remote.combatant.runState.damageReductionFraction = Number.isFinite(state.damageReductionFraction)
+        ? Phaser.Math.Clamp(state.damageReductionFraction, 0, 0.95)
+        : 0;
       remote.level = level;
       remote.pauseRequested = state.pauseRequested === true;
       remote.isHost = state.isHost === true;

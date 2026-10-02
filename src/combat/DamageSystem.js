@@ -54,6 +54,19 @@ export default class DamageSystem {
     const finalDamage = this._applyShield(target, this._applyDamageReduction(target, damage), nowMs ?? 0);
     const hitX = target.x;
     const hitY = target.y;
+    const multiplayer = targetScene?.multiplayer;
+    if (target.networkReplica && multiplayer?.isMultiplayer && multiplayer.mqtt?.connected &&
+      !multiplayer.isRoomHost) {
+      multiplayer.queueEnemyDamage(target.networkId, finalDamage);
+      targetScene.scoreManager?.registerDamage?.(finalDamage);
+      DamageNumberManager.show(targetScene, hitX, hitY, finalDamage, target, { ...feedback, isCritical });
+      target.playHitReaction?.();
+      targetScene.sound?.play(this._hitSfxKey(target), { volume: 0.5 });
+      this._applyLifesteal(source, finalDamage);
+      this._applyParalyze(target, source, nowMs);
+      this._applyBleed(target, source, finalDamage, nowMs);
+      return true;
+    }
     const appliedDamage = target.healthSystem.takeDamage(finalDamage);
     if (appliedDamage > 0 && target.def && !source?.def) {
       target.abandonedSince = null;
