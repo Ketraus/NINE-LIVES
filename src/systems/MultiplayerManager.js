@@ -34,6 +34,7 @@ export default class MultiplayerManager {
 
     const params = new URLSearchParams(window.location.search);
     const room = roomId || params.get('room');
+    this.isMultiplayer = Boolean(room);
     const brokerUrl = params.get('mqttUrl') || (room ? DEFAULT_BROKER_URL : null);
     if (!brokerUrl) return;
 

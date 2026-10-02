@@ -452,11 +452,11 @@ export default class GameScene extends Phaser.Scene {
   // tanto blur de janela quanto document.visibilitychange, num só lugar.
   _buildAutoPauseOnBlur() {
     const handleBlur = () => {
-      if (this.multiplayerRoom || this.isGameOver || this.hasWon) return;
+      if (this.multiplayer?.isMultiplayer || this.isGameOver || this.hasWon) return;
       this.pauseUI.open();
     };
     const handleVisibilityChange = () => {
-      if (this.multiplayerRoom) return;
+      if (this.multiplayer?.isMultiplayer) return;
       if (document.hidden) {
         handleBlur();
         this.sys.game.loop.sleep();
