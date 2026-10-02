@@ -66,7 +66,10 @@ export default class MultiplayerManager {
         flipX: this.player.flipX,
         moving: !this.scene.isPaused && !this.scene.isGameOver &&
           this.player.body.velocity.lengthSq() > 0,
-        weaponId: this.player.runState.weaponId
+        weaponId: this.player.runState.weaponId,
+        hp: this.player.healthSystem.current,
+        maxHp: this.player.healthSystem.maxHp,
+        level: this.player.runState.level
       });
     }
 
@@ -79,7 +82,29 @@ export default class MultiplayerManager {
       const blend = Math.min(1, delta / POSITION_INTERVAL_MS);
       remote.sprite.x = Phaser.Math.Linear(remote.sprite.x, remote.targetX, blend);
       remote.sprite.y = Phaser.Math.Linear(remote.sprite.y, remote.targetY, blend);
+      this._drawRemoteStatus(remote);
     });
+  }
+
+  _drawRemoteStatus(remote) {
+    const { sprite, healthBar, levelLabel, hp, maxHp, level } = remote;
+    const barWidth = 38;
+    const barHeight = 4;
+    const barY = sprite.y - sprite.displayHeight / 2 - 8;
+    const ratio = Phaser.Math.Clamp(hp / maxHp, 0, 1);
+
+    levelLabel.setPosition(sprite.x, barY - 5);
+    const levelText = `LV ${level}`;
+    if (levelLabel.text !== levelText) levelLabel.setText(levelText);
+    healthBar.setPosition(sprite.x, barY);
+    if (remote.displayedHp === hp && remote.displayedMaxHp === maxHp) return;
+
+    healthBar.clear();
+    healthBar.fillStyle(0x101418, 0.9).fillRect(-barWidth / 2, 0, barWidth, barHeight);
+    healthBar.fillStyle(ratio > 0.3 ? 0x80e35d : 0xf05b62, 1)
+      .fillRect(-barWidth / 2, 0, barWidth * ratio, barHeight);
+    remote.displayedHp = hp;
+    remote.displayedMaxHp = maxHp;
   }
 
   _onMessage(topic, payload) {
@@ -91,6 +116,9 @@ export default class MultiplayerManager {
       const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
       const state = JSON.parse(text);
       if (state.id !== playerId || !Number.isFinite(state.x) || !Number.isFinite(state.y)) return;
+      const maxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : 100;
+      const hp = Number.isFinite(state.hp) ? Phaser.Math.Clamp(state.hp, 0, maxHp) : maxHp;
+      const level = Number.isFinite(state.level) ? Math.max(1, Math.floor(state.level)) : 1;
 
       let remote = this.remotePlayers.get(playerId);
       if (!remote) {
@@ -98,12 +126,34 @@ export default class MultiplayerManager {
         const sprite = this.scene.add.sprite(state.x, state.y, 'player_idle')
           .setScale(BASE_VISUAL_SCALE)
           .setDepth(10);
-        remote = { sprite, spriteSet, targetX: state.x, targetY: state.y, lastSeenAt: this.scene.time.now };
+        const healthBar = this.scene.add.graphics().setDepth(11);
+        const levelLabel = this.scene.add.text(state.x, state.y, '', {
+          fontFamily: '"Press Start 2P", monospace',
+          fontSize: '6px',
+          color: '#e8f6ff',
+          stroke: '#101418',
+          strokeThickness: 2
+        }).setOrigin(0.5).setDepth(11);
+        remote = {
+          sprite,
+          spriteSet,
+          targetX: state.x,
+          targetY: state.y,
+          hp,
+          maxHp,
+          level,
+          healthBar,
+          levelLabel,
+          lastSeenAt: this.scene.time.now
+        };
         this.remotePlayers.set(playerId, remote);
       }
 
       remote.targetX = state.x;
       remote.targetY = state.y;
+      remote.hp = hp;
+      remote.maxHp = maxHp;
+      remote.level = level;
       remote.lastSeenAt = this.scene.time.now;
       remote.sprite.setFlipX(Boolean(state.flipX));
       const animation = state.moving ? remote.spriteSet.walk : remote.spriteSet.idle;
@@ -121,6 +171,10 @@ export default class MultiplayerManager {
       this.mqtt.end();
     }
     this.remotePlayers.forEach(({ sprite }) => sprite.destroy());
+    this.remotePlayers.forEach(({ healthBar, levelLabel }) => {
+      healthBar.destroy();
+      levelLabel.destroy();
+    });
     this.remotePlayers.clear();
   }
 }
