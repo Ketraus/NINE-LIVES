@@ -65,9 +65,10 @@ export default class SpawnDirector {
     return this.scene.sys.game.loop.time;
   }
 
-  start() {
+  start(enableSpawning = true) {
     this.startTime = this._now();
     this.enemySpawner.setMaxAlive(this.spawnCurves.capCurve[0].v);
+    if (!enableSpawning) return;
     this._scheduleNextBatch();
     this._spawnBatch(); // primeira leva imediata, mapa não fica vazio
   }

@@ -3,6 +3,8 @@ import { BASE_VISUAL_SCALE } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 
 const POSITION_INTERVAL_MS = 100;
+const ENEMY_SNAPSHOT_INTERVAL_MS = 200;
+const MAX_SYNCED_ENEMIES = 150;
 const ATTACK_MIN_INTERVAL_MS = 60;
 const PLAYER_TIMEOUT_MS = 5000;
 const DEFAULT_BROKER_URL = 'wss://ninelives.feira-de-jogos.dev.br/mqtt';
@@ -22,6 +24,9 @@ export default class MultiplayerManager {
     this.player = player;
     this.remotePlayers = new Map();
     this.lastSentAt = 0;
+    this.lastEnemySnapshotAt = 0;
+    this.lastEnemySnapshotSequence = 0;
+    this.remoteEnemies = new Map();
     this.lastAttackSentAt = -Infinity;
     this.attackSequence = 0;
     this.isRoomHost = Boolean(isRoomHost);
@@ -44,6 +49,7 @@ export default class MultiplayerManager {
     this.topicPrefix = `nine-lives/${this.room}/players`;
     this.positionTopic = `${this.topicPrefix}/${this.playerId}/position`;
     this.attackTopic = `${this.topicPrefix}/${this.playerId}/attack`;
+    this.enemyStateTopic = `nine-lives/${this.room}/enemies/state`;
 
     try {
       this.mqtt = new MqttClient(brokerUrl, {
@@ -60,7 +66,8 @@ export default class MultiplayerManager {
     this.onConnect = () => {
       Promise.all([
         this.mqtt.subscribe(`${this.topicPrefix}/+/position`),
-        this.mqtt.subscribe(`${this.topicPrefix}/+/attack`)
+        this.mqtt.subscribe(`${this.topicPrefix}/+/attack`),
+        ...(this.isRoomHost ? [] : [this.mqtt.subscribe(this.enemyStateTopic)])
       ]).catch((error) => {
         console.error('[Multiplayer] Falha ao assinar tópico:', error);
       });
@@ -74,6 +81,10 @@ export default class MultiplayerManager {
 
   update(_time, delta) {
     const now = Date.now();
+    if (this.isRoomHost && this.mqtt?.connected && now - this.lastEnemySnapshotAt >= ENEMY_SNAPSHOT_INTERVAL_MS) {
+      this.lastEnemySnapshotAt = now;
+      this._publishEnemySnapshot();
+    }
     if (this.mqtt?.connected && now - this.lastSentAt >= POSITION_INTERVAL_MS) {
       this.lastSentAt = now;
       this.mqtt.publish(this.positionTopic, {
@@ -105,7 +116,74 @@ export default class MultiplayerManager {
       remote.sprite.y = Phaser.Math.Linear(remote.sprite.y, remote.targetY, blend);
       this._drawRemoteStatus(remote);
     });
+    this.remoteEnemies.forEach((enemy) => {
+      if (!enemy.active || !Number.isFinite(enemy.targetX)) return;
+      const blend = Math.min(1, delta / ENEMY_SNAPSHOT_INTERVAL_MS);
+      enemy.setPosition(
+        Phaser.Math.Linear(enemy.x, enemy.targetX, blend),
+        Phaser.Math.Linear(enemy.y, enemy.targetY, blend)
+      );
+    });
     this._syncPauseVote();
+  }
+
+  _publishEnemySnapshot() {
+    const spawner = this.scene.enemySpawner;
+    if (!spawner) return;
+    const defs = spawner.enemyDefs;
+    const enemies = spawner.group.getChildren()
+      .filter((enemy) => enemy.active && Number.isInteger(enemy.networkId))
+      .slice(0, MAX_SYNCED_ENEMIES)
+      .map((enemy) => [
+        enemy.networkId,
+        defs.findIndex((def) => def.id === enemy.def.id),
+        Math.round(enemy.x),
+        Math.round(enemy.y),
+        Math.round(enemy.healthSystem.current * 10),
+        enemy.flipX ? 1 : 0,
+        enemy.body?.velocity.lengthSq() > 0 ? 1 : 0
+      ]);
+    this.mqtt.publish(this.enemyStateTopic, {
+      seq: ++this.lastEnemySnapshotSequence,
+      enemies
+    });
+  }
+
+  _applyEnemySnapshot(snapshot) {
+    if (!this.scene.enemySpawner || !Array.isArray(snapshot.enemies)) return;
+    const defs = this.scene.enemySpawner.enemyDefs;
+    const seen = new Set();
+
+    snapshot.enemies.slice(0, MAX_SYNCED_ENEMIES).forEach((entry) => {
+      if (!Array.isArray(entry) || entry.length < 7) return;
+      const [networkId, defIndex, x, y, hpTenths, flipX, moving] = entry;
+      if (!Number.isInteger(networkId) || networkId <= 0 ||
+        !Number.isInteger(defIndex) || !defs[defIndex] ||
+        ![x, y, hpTenths].every(Number.isFinite)) return;
+
+      seen.add(networkId);
+      let enemy = this.remoteEnemies.get(networkId);
+      if (!enemy?.active) {
+        enemy = this.scene.enemySpawner.spawnReplicated(defs[defIndex].id, networkId, x, y);
+        if (!enemy) return;
+        this.remoteEnemies.set(networkId, enemy);
+        enemy.targetX = x;
+        enemy.targetY = y;
+      }
+      enemy.targetX = x;
+      enemy.targetY = y;
+      enemy.healthSystem.current = Phaser.Math.Clamp(hpTenths / 10, 0, enemy.healthSystem.maxHp);
+      enemy.healthSystem.dead = false;
+      enemy.setFlipX(flipX === 1);
+      enemy._wantsToMove = moving === 1;
+      enemy.updateAnimState();
+    });
+
+    this.remoteEnemies.forEach((enemy, networkId) => {
+      if (seen.has(networkId)) return;
+      enemy._leave();
+      this.remoteEnemies.delete(networkId);
+    });
   }
 
   sendAttack(attack) {
@@ -183,6 +261,18 @@ export default class MultiplayerManager {
   }
 
   _onMessage(topic, payload) {
+    if (topic === this.enemyStateTopic && !this.isRoomHost) {
+      try {
+        const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
+        const snapshot = JSON.parse(text);
+        if (!Number.isInteger(snapshot.seq) || snapshot.seq <= this.lastEnemySnapshotSequence) return;
+        this.lastEnemySnapshotSequence = snapshot.seq;
+        this._applyEnemySnapshot(snapshot);
+      } catch (error) {
+        console.warn('[Multiplayer] Snapshot de inimigos inválido:', error.message);
+      }
+      return;
+    }
     if (!topic.startsWith(`${this.topicPrefix}/`)) return;
     const [playerId, messageType] = topic.slice(`${this.topicPrefix}/`.length).split('/');
     if (messageType !== 'position' && messageType !== 'attack') return;
@@ -379,5 +469,7 @@ export default class MultiplayerManager {
     }
     this.remotePlayers.forEach((remote) => this._destroyRemote(remote));
     this.remotePlayers.clear();
+    this.remoteEnemies.forEach((enemy) => enemy._leave());
+    this.remoteEnemies.clear();
   }
 }

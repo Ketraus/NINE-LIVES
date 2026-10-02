@@ -146,7 +146,9 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.isGameOver || this.isPaused) return;
     this.player.update();
-    this.enemySpawner.updateAll(this.time.now);
+    if (!this.multiplayer?.isMultiplayer || this.multiplayer.isRoomHost || !this.multiplayer.mqtt) {
+      this.enemySpawner.updateAll(this.time.now);
+    }
     this.abilityManager.update(this.time.now);
     this._updateXpOrbMagnet();
     this._updateXpGlows();
@@ -286,7 +288,9 @@ export default class GameScene extends Phaser.Scene {
     // SpawnDirector cronometra a run e decide quando/quantos inimigos pedir;
     this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData, spawnCurvesData, sealerScheduleData, eliteScheduleData, bossScheduleData);
     this._lastRunTimeSeconds = -1;
-    this.spawnDirector.start();
+    this.spawnDirector.start(
+      !this.multiplayer?.isMultiplayer || this.multiplayer.isRoomHost || !this.multiplayer.mqtt
+    );
     this.multiplayer?.attachRunClock(this.spawnDirector);
   }
 

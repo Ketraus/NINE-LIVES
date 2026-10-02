@@ -64,6 +64,7 @@ export default class EnemySpawner {
     this.player = player;
     this.enemyDefs = enemyDefs;
     this.maxAlive = DEFAULT_MAX_ALIVE;
+    this.nextNetworkId = 1;
     this.swarmSystem = new SwarmSystem(flockingConfig);
 
     this.group = scene.physics.add.group({ runChildUpdate: false });
@@ -204,9 +205,12 @@ export default class EnemySpawner {
   }
 
   // Cria de fato um Enemy num ponto e registra ele no grupo/colisor —
-  _createAt(def, pos) {
+  _createAt(def, pos, networkId = null, networkReplica = false) {
     const EnemyClass = pickEnemyClass(def);
     const enemy = new EnemyClass(this.scene, pos.x, pos.y, def);
+    enemy.networkId = networkId ?? this.nextNetworkId++;
+    enemy.networkReplica = networkReplica;
+    this.nextNetworkId = Math.max(this.nextNetworkId, enemy.networkId + 1);
     this.group.add(enemy);
     this.mapManager.addCollider(enemy);
     // Elite: som + vibrada de entrada, tocam no instante em que ele nasce
@@ -217,6 +221,12 @@ export default class EnemySpawner {
     // Boss: pop de escala + onda de choque (ver _playBossEntranceFx) — o
     if (def.boss) this._playBossEntranceFx(enemy);
     return enemy;
+  }
+
+  spawnReplicated(defId, networkId, x, y) {
+    const def = this.enemyDefs.find((entry) => entry.id === defId);
+    if (!def || !Number.isInteger(networkId) || networkId <= 0) return null;
+    return this._createAt(def, { x, y }, networkId, true);
   }
 
   // Pop de escala (nasce pequeno, estoura pro tamanho final) + anel de
