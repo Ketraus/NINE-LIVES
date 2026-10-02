@@ -1,7 +1,9 @@
 import MqttClient from './MqttClient.js';
 import { BASE_VISUAL_SCALE } from '../entities/Player.js';
+import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 
 const POSITION_INTERVAL_MS = 100;
+const ATTACK_MIN_INTERVAL_MS = 60;
 const PLAYER_TIMEOUT_MS = 5000;
 const DEFAULT_BROKER_URL = 'wss://ninelives.feira-de-jogos.dev.br/mqtt';
 const SPRITE_ANIMATIONS = {
@@ -20,6 +22,8 @@ export default class MultiplayerManager {
     this.player = player;
     this.remotePlayers = new Map();
     this.lastSentAt = 0;
+    this.lastAttackSentAt = -Infinity;
+    this.attackSequence = 0;
 
     const params = new URLSearchParams(window.location.search);
     const room = roomId || params.get('room');
@@ -30,6 +34,7 @@ export default class MultiplayerManager {
     this.room = encodeURIComponent(room || 'test');
     this.topicPrefix = `nine-lives/${this.room}/players`;
     this.positionTopic = `${this.topicPrefix}/${this.playerId}/position`;
+    this.attackTopic = `${this.topicPrefix}/${this.playerId}/attack`;
 
     try {
       this.mqtt = new MqttClient(brokerUrl, {
@@ -44,7 +49,10 @@ export default class MultiplayerManager {
     }
 
     this.onConnect = () => {
-      this.mqtt.subscribe(`${this.topicPrefix}/+/position`).catch((error) => {
+      Promise.all([
+        this.mqtt.subscribe(`${this.topicPrefix}/+/position`),
+        this.mqtt.subscribe(`${this.topicPrefix}/+/attack`)
+      ]).catch((error) => {
         console.error('[Multiplayer] Falha ao assinar tópico:', error);
       });
     };
@@ -75,7 +83,7 @@ export default class MultiplayerManager {
 
     this.remotePlayers.forEach((remote, id) => {
       if (now - remote.lastSeenAt > PLAYER_TIMEOUT_MS) {
-        remote.sprite.destroy();
+        this._destroyRemote(remote);
         this.remotePlayers.delete(id);
         return;
       }
@@ -83,6 +91,19 @@ export default class MultiplayerManager {
       remote.sprite.x = Phaser.Math.Linear(remote.sprite.x, remote.targetX, blend);
       remote.sprite.y = Phaser.Math.Linear(remote.sprite.y, remote.targetY, blend);
       this._drawRemoteStatus(remote);
+    });
+  }
+
+  sendAttack(attack) {
+    if (!this.mqtt?.connected) return;
+    const now = this.scene.time.now;
+    if (now - this.lastAttackSentAt < ATTACK_MIN_INTERVAL_MS) return;
+    this.lastAttackSentAt = now;
+    this.attackSequence += 1;
+    this.mqtt.publish(this.attackTopic, {
+      id: this.playerId,
+      seq: this.attackSequence,
+      ...attack
     });
   }
 
@@ -108,13 +129,18 @@ export default class MultiplayerManager {
   }
 
   _onMessage(topic, payload) {
-    if (!topic.startsWith(`${this.topicPrefix}/`) || !topic.endsWith('/position')) return;
-    const playerId = topic.slice(`${this.topicPrefix}/`.length).split('/')[0];
+    if (!topic.startsWith(`${this.topicPrefix}/`)) return;
+    const [playerId, messageType] = topic.slice(`${this.topicPrefix}/`.length).split('/');
+    if (messageType !== 'position' && messageType !== 'attack') return;
     if (!playerId || playerId === this.playerId) return;
 
     try {
       const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
       const state = JSON.parse(text);
+      if (messageType === 'attack') {
+        this._onAttack(playerId, state);
+        return;
+      }
       if (state.id !== playerId || !Number.isFinite(state.x) || !Number.isFinite(state.y)) return;
       const maxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : 100;
       const hp = Number.isFinite(state.hp) ? Phaser.Math.Clamp(state.hp, 0, maxHp) : maxHp;
@@ -163,6 +189,119 @@ export default class MultiplayerManager {
     }
   }
 
+  _onAttack(playerId, attack) {
+    if (attack.id !== playerId || !Number.isInteger(attack.seq)) return;
+    if (!['arc', 'sword', 'shot'].includes(attack.kind)) return;
+    if (![attack.x, attack.y].every(Number.isFinite)) return;
+
+    const remote = this.remotePlayers.get(playerId);
+    if (!remote || attack.seq <= (remote.lastAttackSequence || 0)) return;
+    remote.lastAttackSequence = attack.seq;
+
+    const tint = Number.isInteger(attack.tint) && attack.tint >= 0 && attack.tint <= 0xffffff
+      ? attack.tint
+      : 0xffffff;
+    if (attack.kind === 'shot') {
+      this._playRemoteShot(attack, tint);
+      return;
+    }
+
+    if (!Number.isFinite(attack.dx) || !Number.isFinite(attack.dy)) return;
+    const range = Number.isFinite(attack.range) ? Phaser.Math.Clamp(attack.range, 20, 260) : 100;
+    const angle = Math.atan2(attack.dy, attack.dx);
+    const duration = Number.isFinite(attack.durationMs)
+      ? Phaser.Math.Clamp(attack.durationMs, 60, 400)
+      : 150;
+
+    if (attack.kind === 'arc') {
+      const fx = this.scene.add.image(
+        attack.x + attack.dx * range * 0.5,
+        attack.y + attack.dy * range * 0.5,
+        'hit_fx'
+      )
+        .setDepth(20)
+        .setScale(range / 40)
+        .setRotation(angle)
+        .setTint(tint);
+      this.scene.tweens.add({
+        targets: fx,
+        alpha: 0,
+        scale: fx.scale * 1.4,
+        duration,
+        onComplete: () => fx.destroy()
+      });
+      return;
+    }
+
+    const halfArc = Phaser.Math.DegToRad(
+      Number.isFinite(attack.arcDegrees) ? Phaser.Math.Clamp(attack.arcDegrees, 10, 180) : 100
+    ) / 2;
+    const finisher = attack.finisher === true;
+    const swing = this.scene.add.graphics({ x: attack.x, y: attack.y }).setDepth(20);
+    swing.fillStyle(tint, finisher ? 0.65 : 0.5);
+    swing.slice(0, 0, range, angle - halfArc, angle + halfArc, false);
+    swing.fillPath();
+    swing.lineStyle(finisher ? 9 : 5, tint, 0.95);
+    swing.beginPath();
+    swing.arc(0, 0, range, angle - halfArc, angle + halfArc, false);
+    swing.strokePath();
+    this.scene.tweens.add({
+      targets: swing,
+      alpha: 0,
+      scaleX: finisher ? 1.3 : 1.15,
+      scaleY: finisher ? 1.3 : 1.15,
+      duration: duration * (finisher ? 1.6 : 1),
+      ease: 'Cubic.easeOut',
+      onComplete: () => swing.destroy()
+    });
+  }
+
+  _playRemoteShot(attack, tint) {
+    if (!Number.isFinite(attack.targetX) || !Number.isFinite(attack.targetY)) return;
+    const dx = attack.targetX - attack.x;
+    const dy = attack.targetY - attack.y;
+    const distance = Math.min(900, Math.hypot(dx, dy));
+    if (distance === 0) return;
+
+    const angle = Math.atan2(dy, dx);
+    const count = Number.isFinite(attack.count)
+      ? Phaser.Math.Clamp(Math.floor(attack.count), 1, 8)
+      : 1;
+    const spread = Phaser.Math.DegToRad(
+      Number.isFinite(attack.spreadDeg) ? Phaser.Math.Clamp(attack.spreadDeg, 0, 20) : 0
+    );
+    const speed = Number.isFinite(attack.speed) ? Phaser.Math.Clamp(attack.speed, 100, 1200) : 380;
+    const duration = Phaser.Math.Clamp(distance / speed * 1000, 60, 1200);
+    const scale = Number.isFinite(attack.scale) ? Phaser.Math.Clamp(attack.scale, 0.5, 1.5) : 1;
+    const texture = ensureBulletTexture(this.scene, tint);
+
+    for (let i = 0; i < count; i++) {
+      const side = i === 0 ? 0 : i % 2 === 1 ? 1 : -1;
+      const offset = spread * side * Math.ceil(i / 2);
+      const pelletAngle = angle + offset;
+      const bolt = this.scene.add.image(attack.x, attack.y, texture)
+        .setDepth(15)
+        .setScale(scale)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setRotation(pelletAngle);
+      if (bolt.preFX) bolt.preFX.addGlow(tint, 0, 1.5, false, 0.2, 6);
+      this.scene.tweens.add({
+        targets: bolt,
+        x: attack.x + Math.cos(pelletAngle) * distance,
+        y: attack.y + Math.sin(pelletAngle) * distance,
+        duration,
+        ease: 'Linear',
+        onComplete: () => bolt.destroy()
+      });
+    }
+  }
+
+  _destroyRemote(remote) {
+    remote.sprite.destroy();
+    remote.healthBar.destroy();
+    remote.levelLabel.destroy();
+  }
+
   destroy() {
     if (this.mqtt) {
       this.mqtt.off('connect', this.onConnect);
@@ -170,11 +309,7 @@ export default class MultiplayerManager {
       this.mqtt.off('error', this.onError);
       this.mqtt.end();
     }
-    this.remotePlayers.forEach(({ sprite }) => sprite.destroy());
-    this.remotePlayers.forEach(({ healthBar, levelLabel }) => {
-      healthBar.destroy();
-      levelLabel.destroy();
-    });
+    this.remotePlayers.forEach((remote) => this._destroyRemote(remote));
     this.remotePlayers.clear();
   }
 }

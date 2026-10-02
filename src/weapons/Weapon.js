@@ -115,6 +115,18 @@ export default class Weapon {
     } else {
       this._showArcFx(scene, player, aim, range);
     }
+    scene.multiplayer?.sendAttack({
+      kind: useSwordFx ? 'sword' : 'arc',
+      x: player.x,
+      y: player.y,
+      dx: aim.x,
+      dy: aim.y,
+      range,
+      arcDegrees,
+      tint: options.tint ?? this.def.fxTint ?? 0xffffff,
+      durationMs: (this.def.fxDurationMs ?? 150) * (options.fxDurationMultiplier ?? 1),
+      finisher: !!options.isFinisher
+    });
 
     let landedHit = false;
     // snapshot: applyHit pode matar/remover do grupo e quebrar a iteração l…

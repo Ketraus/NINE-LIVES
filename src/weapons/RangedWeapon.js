@@ -20,6 +20,29 @@ const FRAGMENTATION_SPREAD_DEG = 7;
 // ---- "SMARTSHOT" (pistol_fragmentation_evo_smartshot) ----
 const SMART_SHOT_TRIGGER_FRACTION = 0.5;
 
+export function ensureBulletTexture(scene, tint) {
+  const key = `fx_laser_bolt_${tint.toString(16)}`;
+  if (scene.textures.exists(key)) return key;
+
+  const w = LASER_TEX_WIDTH;
+  const h = LASER_TEX_HEIGHT;
+  const cx = w / 2;
+  const cy = h / 2;
+  const graphics = scene.add.graphics();
+
+  graphics.fillStyle(tint, 0.16);
+  graphics.fillEllipse(cx, cy, w, h);
+  graphics.fillStyle(tint, 0.32);
+  graphics.fillEllipse(cx, cy, w * 0.72, h * 0.6);
+  graphics.fillStyle(tint, 0.95);
+  graphics.fillRoundedRect(cx - w * 0.4, cy - h * 0.16, w * 0.8, h * 0.32, h * 0.16);
+  graphics.fillStyle(0xffffff, 0.95);
+  graphics.fillRoundedRect(cx - w * 0.3, cy - h * 0.09, w * 0.55, h * 0.18, h * 0.09);
+  graphics.generateTexture(key, w, h);
+  graphics.destroy();
+  return key;
+}
+
 export default class RangedWeapon {
   constructor(def) {
     this.def = def;
@@ -37,6 +60,20 @@ export default class RangedWeapon {
 
     const damage = this.def.damage * (1 + statMods.damageMultiplier);
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();
+    scene.multiplayer?.sendAttack({
+      kind: 'shot',
+      x: player.x,
+      y: player.y,
+      targetX: target.x,
+      targetY: target.y,
+      tint: this.def.projectileTint ?? DEFAULT_PROJECTILE_TINT,
+      speed: this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED,
+      scale: (this.def.projectileScale ?? 1) * (statMods.fragmentation ? 0.8 : 1),
+      count: statMods.fragmentation?.pelletCount ?? 1,
+      spreadDeg: statMods.fragmentation ? FRAGMENTATION_SPREAD_DEG : 0,
+      durationMs: DEFAULT_PROJECTILE_LIFETIME_MS *
+        (statMods.fragmentation ? FRAGMENTATION_LIFETIME_FRACTION : 1)
+    });
 
     // "Fragmentação": em vez de 1 bala normal, dispara pelletCount balas
     if (statMods.fragmentation) {
@@ -119,33 +156,7 @@ export default class RangedWeapon {
 
   // Desenha (uma única vez por cor, com Graphics + generateTexture) a
   _ensureBulletTexture(scene, tint) {
-    const key = `fx_laser_bolt_${tint.toString(16)}`;
-    if (scene.textures.exists(key)) return key;
-
-    const w = LASER_TEX_WIDTH;
-    const h = LASER_TEX_HEIGHT;
-    const cx = w / 2;
-    const cy = h / 2;
-
-    const g = scene.add.graphics();
-
-    // halo externo — bem suave, é o que lê como "brilho" do raio à distância
-    g.fillStyle(tint, 0.16);
-    g.fillEllipse(cx, cy, w, h);
-    g.fillStyle(tint, 0.32);
-    g.fillEllipse(cx, cy, w * 0.72, h * 0.6);
-
-    // corpo do raio: cápsula alongada apontando pra frente (direção +X,
-    g.fillStyle(tint, 0.95);
-    g.fillRoundedRect(cx - w * 0.4, cy - h * 0.16, w * 0.8, h * 0.32, h * 0.16);
-
-    // núcleo quase branco — "ponto quente" na frente do disparo
-    g.fillStyle(0xffffff, 0.95);
-    g.fillRoundedRect(cx - w * 0.3, cy - h * 0.09, w * 0.55, h * 0.18, h * 0.09);
-
-    g.generateTexture(key, w, h);
-    g.destroy();
-    return key;
+    return ensureBulletTexture(scene, tint);
   }
 
   // Overlap bala x inimigos, e colisão bala x paredes, registrados uma ún…
