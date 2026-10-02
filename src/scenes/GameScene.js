@@ -108,6 +108,7 @@ export default class GameScene extends Phaser.Scene {
     // guarda pra poder repassar no restart (tecla R) sem perder a arma esco…
     this.weaponId = data?.weaponId || this.weaponId || null;
     this.multiplayerRoom = data?.multiplayerRoom || null;
+    this.isRoomHost = Boolean(data?.isRoomHost);
 
     this._buildMap();
     this._buildRun();
@@ -199,11 +200,18 @@ export default class GameScene extends Phaser.Scene {
   // Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
   _restartOrGoToWeaponSelect() {
     if (this.hasWon) {
-      this.scene.start('WeaponSelectScene', { multiplayerRoom: this.multiplayerRoom });
+      this.scene.start('WeaponSelectScene', {
+        multiplayerRoom: this.multiplayerRoom,
+        isRoomHost: this.isRoomHost
+      });
       return;
     }
     // repassa a arma explicitamente: scene.restart() sozinho não
-    this.scene.restart({ weaponId: this.weaponId, multiplayerRoom: this.multiplayerRoom });
+    this.scene.restart({
+      weaponId: this.weaponId,
+      multiplayerRoom: this.multiplayerRoom,
+      isRoomHost: this.isRoomHost
+    });
   }
 
   // ---------- construção ----------
@@ -247,7 +255,12 @@ export default class GameScene extends Phaser.Scene {
   }
 
   _buildMultiplayer() {
-    this.multiplayer = new MultiplayerManager(this, this.player, this.multiplayerRoom);
+    this.multiplayer = new MultiplayerManager(
+      this,
+      this.player,
+      this.multiplayerRoom,
+      this.isRoomHost
+    );
     this.events.once('shutdown', () => {
       this.multiplayer?.destroy();
       this.multiplayer = null;
@@ -274,6 +287,7 @@ export default class GameScene extends Phaser.Scene {
     this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData, spawnCurvesData, sealerScheduleData, eliteScheduleData, bossScheduleData);
     this._lastRunTimeSeconds = -1;
     this.spawnDirector.start();
+    this.multiplayer?.attachRunClock(this.spawnDirector);
   }
 
   _buildWeapon() {
@@ -437,19 +451,27 @@ export default class GameScene extends Phaser.Scene {
   // decide retomar é o jogador). Phaser.Core.Events BLUR/HIDDEN cobrem
   // tanto blur de janela quanto document.visibilitychange, num só lugar.
   _buildAutoPauseOnBlur() {
-    const gameEvents = this.sys.game.events;
     const handleBlur = () => {
-      if (this.isGameOver || this.hasWon) return;
+      if (this.multiplayerRoom || this.isGameOver || this.hasWon) return;
       this.pauseUI.open();
     };
-    gameEvents.on(Phaser.Core.Events.BLUR, handleBlur);
-    gameEvents.on(Phaser.Core.Events.HIDDEN, handleBlur);
+    const handleVisibilityChange = () => {
+      if (this.multiplayerRoom) return;
+      if (document.hidden) {
+        handleBlur();
+        this.sys.game.loop.sleep();
+      } else {
+        this.sys.game.loop.wake();
+      }
+    };
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // gameEvents é global (sobrevive ao scene.restart()) — sem isso os
+    // Os listeners globais sobrevivem ao scene.restart() — sem isso os
     // listeners se acumulariam a cada morte/restart da run
     this.events.once('shutdown', () => {
-      gameEvents.off(Phaser.Core.Events.BLUR, handleBlur);
-      gameEvents.off(Phaser.Core.Events.HIDDEN, handleBlur);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     });
   }
 

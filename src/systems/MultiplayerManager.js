@@ -17,13 +17,18 @@ function createPlayerId() {
 }
 
 export default class MultiplayerManager {
-  constructor(scene, player, roomId = null) {
+  constructor(scene, player, roomId = null, isRoomHost = false) {
     this.scene = scene;
     this.player = player;
     this.remotePlayers = new Map();
     this.lastSentAt = 0;
     this.lastAttackSentAt = -Infinity;
     this.attackSequence = 0;
+    this.isRoomHost = Boolean(isRoomHost);
+    this.hostPlayerId = null;
+    this.hostRunTimeMs = null;
+    this.hostRunTimeReceivedAt = 0;
+    this.hostRunPaused = false;
     this.pauseRequested = false;
     this.pauseApplied = false;
 
@@ -33,6 +38,7 @@ export default class MultiplayerManager {
     if (!brokerUrl) return;
 
     this.playerId = createPlayerId();
+    if (this.isRoomHost) this.hostPlayerId = this.playerId;
     this.room = encodeURIComponent(room || 'test');
     this.topicPrefix = `nine-lives/${this.room}/players`;
     this.positionTopic = `${this.topicPrefix}/${this.playerId}/position`;
@@ -80,7 +86,10 @@ export default class MultiplayerManager {
         hp: this.player.healthSystem.current,
         maxHp: this.player.healthSystem.maxHp,
         level: this.player.runState.level,
-        pauseRequested: this.pauseRequested
+        pauseRequested: this.pauseRequested,
+        isHost: this.isRoomHost,
+        runTimeMs: this.isRoomHost ? (this.scene.spawnDirector?.getElapsedMs() ?? 0) : undefined,
+        runPaused: this.isRoomHost && this.scene.isPaused
       });
     }
 
@@ -117,6 +126,18 @@ export default class MultiplayerManager {
     this.pauseRequested = this.pauseApplied ? false : !this.pauseRequested;
     this._syncPauseVote();
     return true;
+  }
+
+  attachRunClock(spawnDirector) {
+    if (this.isRoomHost) return;
+    spawnDirector.setElapsedTimeSource(() => this.getSharedRunTimeMs());
+  }
+
+  getSharedRunTimeMs() {
+    if (this.isRoomHost) return this.scene.spawnDirector?.getElapsedMs() ?? null;
+    if (this.hostRunTimeMs == null) return null;
+    const age = Math.min(PLAYER_TIMEOUT_MS, Math.max(0, Date.now() - this.hostRunTimeReceivedAt));
+    return this.hostRunTimeMs + (this.hostRunPaused ? 0 : age);
   }
 
   _syncPauseVote() {
@@ -174,6 +195,15 @@ export default class MultiplayerManager {
         return;
       }
       if (state.id !== playerId || !Number.isFinite(state.x) || !Number.isFinite(state.y)) return;
+      if (!this.isRoomHost && state.isHost === true &&
+        (!this.hostPlayerId || this.hostPlayerId === playerId)) {
+        this.hostPlayerId = playerId;
+        if (Number.isFinite(state.runTimeMs)) {
+          this.hostRunTimeMs = Math.max(0, state.runTimeMs);
+          this.hostRunTimeReceivedAt = Date.now();
+          this.hostRunPaused = state.runPaused === true;
+        }
+      }
       const maxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : 100;
       const hp = Number.isFinite(state.hp) ? Phaser.Math.Clamp(state.hp, 0, maxHp) : maxHp;
       const level = Number.isFinite(state.level) ? Math.max(1, Math.floor(state.level)) : 1;
@@ -201,6 +231,7 @@ export default class MultiplayerManager {
           maxHp,
           level,
           pauseRequested: false,
+          isHost: state.isHost === true,
           healthBar,
           levelLabel,
           lastSeenAt: this.scene.time.now
@@ -214,6 +245,7 @@ export default class MultiplayerManager {
       remote.maxHp = maxHp;
       remote.level = level;
       remote.pauseRequested = state.pauseRequested === true;
+      remote.isHost = state.isHost === true;
       remote.lastSeenAt = Date.now();
       remote.sprite.setFlipX(Boolean(state.flipX));
       const animation = state.moving ? remote.spriteSet.walk : remote.spriteSet.idle;

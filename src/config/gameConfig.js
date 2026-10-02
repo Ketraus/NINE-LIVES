@@ -31,6 +31,7 @@ export const gameConfig = {
   width,
   height: BASE_HEIGHT,
   backgroundColor: '#111318',
+  disableVisibilityChange: true,
   pixelArt: false,
   render: {
     roundPixels: false

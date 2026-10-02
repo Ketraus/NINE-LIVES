@@ -123,12 +123,12 @@ export default class MainMenuScene extends Phaser.Scene {
   _createRoom() {
     const roomId = `sala-${Math.random().toString(36).slice(2, 8)}`;
     window.prompt('ID da sala criada. Copie para compartilhar:', roomId);
-    this._start(roomId);
+    this._start(roomId, true);
   }
 
   _joinRoom() {
     const roomId = window.prompt('Digite o ID da sala:')?.trim();
-    if (roomId) this._start(roomId);
+    if (roomId) this._start(roomId, false);
   }
 
   // Efeitos "retrô" do menu inteiro: bloom/bleeding sutil nas áreas claras
@@ -251,10 +251,10 @@ export default class MainMenuScene extends Phaser.Scene {
     g.strokePoints(points, true);
   }
 
-  _start(multiplayerRoom = null) {
+  _start(multiplayerRoom = null, isRoomHost = false) {
     if (this._transitioning) return;
     this._transitioning = true;
-    this.nextSceneData = multiplayerRoom ? { multiplayerRoom } : {};
+    this.nextSceneData = multiplayerRoom ? { multiplayerRoom, isRoomHost } : {};
 
     // celular: aproveita esse mesmo toque (gesto do usuário, exigido pela
     if (this.sys.game.device.input.touch && this.scale.fullscreen.available && !this.scale.isFullscreen) {

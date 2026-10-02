@@ -38,6 +38,7 @@ export default class SpawnDirector {
     this.spawnCurves = spawnCurves;
     this.startTime = null;
     this.timerEvent = null;
+    this.elapsedTimeSource = null;
     this.pausedMs = 0; // soma de todo tempo já pausado (tela de cartas), descontado do relógio…
     this.pauseStartedAt = null; // timestamp de quando a pausa atual começou, ou null se não está pausado
 
@@ -90,10 +91,16 @@ export default class SpawnDirector {
   }
 
   getElapsedMs() {
+    const sharedElapsedMs = this.elapsedTimeSource?.();
+    if (Number.isFinite(sharedElapsedMs)) return Math.max(0, sharedElapsedMs);
     if (this.startTime == null) return 0;
     const now = this._now();
     const currentPauseMs = this.pauseStartedAt != null ? now - this.pauseStartedAt : 0;
     return now - this.startTime - this.pausedMs - currentPauseMs;
+  }
+
+  setElapsedTimeSource(source) {
+    this.elapsedTimeSource = source;
   }
 
   // Cheat (DevConsole "settime"): ajusta o relógio da run pra um tempo
