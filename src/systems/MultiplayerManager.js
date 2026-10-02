@@ -24,6 +24,8 @@ export default class MultiplayerManager {
     this.lastSentAt = 0;
     this.lastAttackSentAt = -Infinity;
     this.attackSequence = 0;
+    this.pauseRequested = false;
+    this.pauseApplied = false;
 
     const params = new URLSearchParams(window.location.search);
     const room = roomId || params.get('room');
@@ -64,7 +66,7 @@ export default class MultiplayerManager {
   }
 
   update(_time, delta) {
-    const now = this.scene.time.now;
+    const now = Date.now();
     if (this.mqtt?.connected && now - this.lastSentAt >= POSITION_INTERVAL_MS) {
       this.lastSentAt = now;
       this.mqtt.publish(this.positionTopic, {
@@ -77,7 +79,8 @@ export default class MultiplayerManager {
         weaponId: this.player.runState.weaponId,
         hp: this.player.healthSystem.current,
         maxHp: this.player.healthSystem.maxHp,
-        level: this.player.runState.level
+        level: this.player.runState.level,
+        pauseRequested: this.pauseRequested
       });
     }
 
@@ -92,11 +95,12 @@ export default class MultiplayerManager {
       remote.sprite.y = Phaser.Math.Linear(remote.sprite.y, remote.targetY, blend);
       this._drawRemoteStatus(remote);
     });
+    this._syncPauseVote();
   }
 
   sendAttack(attack) {
     if (!this.mqtt?.connected) return;
-    const now = this.scene.time.now;
+    const now = Date.now();
     if (now - this.lastAttackSentAt < ATTACK_MIN_INTERVAL_MS) return;
     this.lastAttackSentAt = now;
     this.attackSequence += 1;
@@ -105,6 +109,34 @@ export default class MultiplayerManager {
       seq: this.attackSequence,
       ...attack
     });
+  }
+
+  togglePauseVote() {
+    if (!this.mqtt || this.scene.isGameOver || this.scene.hasWon ||
+      this.scene.levelUpUI?.container.visible) return false;
+    this.pauseRequested = this.pauseApplied ? false : !this.pauseRequested;
+    this._syncPauseVote();
+    return true;
+  }
+
+  _syncPauseVote() {
+    const now = Date.now();
+    const activeRemotes = [...this.remotePlayers.values()].filter(
+      (remote) => now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS
+    );
+    const allVoted = activeRemotes.length > 0 && this.pauseRequested &&
+      activeRemotes.every((remote) => remote.pauseRequested);
+
+    if (allVoted && !this.pauseApplied) {
+      this.scene.pauseUI?.open();
+      this.pauseApplied = this.scene.pauseUI?.isOpen === true;
+    } else if (!allVoted && this.pauseApplied) {
+      this.pauseApplied = false;
+      this.pauseRequested = false;
+      this.scene.pauseUI?.close();
+    }
+
+    this.scene.pauseUI?.setWaitingForPlayer(this.pauseRequested && !this.pauseApplied);
   }
 
   _drawRemoteStatus(remote) {
@@ -168,6 +200,7 @@ export default class MultiplayerManager {
           hp,
           maxHp,
           level,
+          pauseRequested: false,
           healthBar,
           levelLabel,
           lastSeenAt: this.scene.time.now
@@ -180,10 +213,12 @@ export default class MultiplayerManager {
       remote.hp = hp;
       remote.maxHp = maxHp;
       remote.level = level;
-      remote.lastSeenAt = this.scene.time.now;
+      remote.pauseRequested = state.pauseRequested === true;
+      remote.lastSeenAt = Date.now();
       remote.sprite.setFlipX(Boolean(state.flipX));
       const animation = state.moving ? remote.spriteSet.walk : remote.spriteSet.idle;
       if (remote.sprite.anims.currentAnim?.key !== animation) remote.sprite.play(animation);
+      this._syncPauseVote();
     } catch (error) {
       console.warn('[Multiplayer] Mensagem inválida ignorada:', error.message);
     }

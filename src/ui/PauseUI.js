@@ -32,8 +32,10 @@ export default class PauseUI {
   constructor(scene) {
     this.scene = scene;
     this.isOpen = false;
+    this.isWaitingForPlayer = false;
 
     this._buildButton();
+    this._buildWaitingMessage();
     this._buildPanel();
     this._setupPauseCamera();
 
@@ -72,6 +74,41 @@ export default class PauseUI {
     this.buttonContainer.add([bg, bar1, bar2]);
   }
 
+  _buildWaitingMessage() {
+    const { width } = this.scene.scale;
+    const zoom = this.scene.cameras.main.zoom || 1;
+    this.waitingText = this.scene.add
+      .text(width / 2, 72, 'ESPERANDO O SEGUNDO JOGADOR', {
+        fontFamily: PIXEL_FONT,
+        fontSize: '8px',
+        color: TEXT_HOVER,
+        stroke: '#061014',
+        strokeThickness: 3
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setScale(1 / zoom)
+      .setDepth(200)
+      .setVisible(false);
+  }
+
+  setWaitingForPlayer(waiting) {
+    if (this.isWaitingForPlayer === waiting) return;
+    this.isWaitingForPlayer = waiting;
+    this.scene.tweens.killTweensOf(this.waitingText);
+    this.waitingText.setVisible(waiting).setAlpha(1);
+    if (waiting) {
+      this.waitingBlink = this.scene.tweens.add({
+        targets: this.waitingText,
+        alpha: { from: 1, to: 0.25 },
+        duration: 550,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+    }
+  }
+
   // Painel construído centrado na própria origem do container (0,0 local =
   // centro da tela) pra que o scale-in/out da entrada/saída cresça a partir
   // do centro, e não "escorregue" de um canto.
@@ -106,7 +143,7 @@ export default class PauseUI {
     this.panelContainer.add(this.mainButtonsGroup);
 
     const buttonYs = [-20, -20 + BTN_GAP, -20 + BTN_GAP * 2];
-    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[0], 'CONTINUAR', () => this.close()));
+    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[0], 'CONTINUAR', () => this.toggle()));
     this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[1], 'SETTINGS', () => this._openSettings()));
     this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[2], 'MENU INICIAL', () => this._showQuitConfirm()));
 
@@ -510,6 +547,7 @@ export default class PauseUI {
   // ESC (keydown-ESC no GameScene._buildInput) e o botão do canto chamam
   // exatamente este método — um único fluxo de abrir/fechar para os dois.
   toggle() {
+    if (this.scene.multiplayer?.togglePauseVote()) return;
     this.isOpen ? this.close() : this.open();
   }
 
@@ -581,6 +619,8 @@ export default class PauseUI {
     // ainda aberta por cima, fecha ela junto pra não sobrar rodando
     if (this.scene.scene.isActive('SettingsScene')) this.scene.scene.stop('SettingsScene');
     this._readoutBlink?.stop();
+    this.waitingBlink?.stop();
+    this.waitingText?.destroy();
     if (this.pauseCam) this.scene.cameras.remove(this.pauseCam);
     this.buttonContainer?.destroy();
     this.panelContainer?.destroy();
