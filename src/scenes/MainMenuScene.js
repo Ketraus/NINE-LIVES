@@ -57,8 +57,8 @@ export default class MainMenuScene extends Phaser.Scene {
       height * 0.6 + 56,
       300,
       40,
-      'MULTIPLAYER TESTE',
-      () => this._start('teste')
+      'MULTIPLAYER',
+      () => this._setRoomMenuOpen(true)
     );
 
     const settingsButton = this._buildTerminalButton(width / 2, height * 0.6 + 112, 220, 40, 'SETTINGS', () => {
@@ -68,15 +68,67 @@ export default class MainMenuScene extends Phaser.Scene {
       this._goToSettings();
     });
 
-    this.menuLayer.add([bg, title, button, multiplayerButton, settingsButton]);
+    const createRoomButton = this._buildTerminalButton(
+      width / 2,
+      height * 0.6,
+      300,
+      40,
+      'CRIAR SALA',
+      () => this._createRoom()
+    ).setVisible(false);
+    const joinRoomButton = this._buildTerminalButton(
+      width / 2,
+      height * 0.6 + 56,
+      300,
+      40,
+      'ENTRAR EM SALA',
+      () => this._joinRoom()
+    ).setVisible(false);
+    const backButton = this._buildTerminalButton(
+      width / 2,
+      height * 0.6 + 112,
+      220,
+      40,
+      'VOLTAR',
+      () => this._setRoomMenuOpen(false)
+    ).setVisible(false);
+
+    this.roomMenuButtons = [createRoomButton, joinRoomButton, backButton];
+    this.menuButtons = [button, multiplayerButton, settingsButton];
+    this.menuLayer.add([
+      bg,
+      title,
+      button,
+      multiplayerButton,
+      settingsButton,
+      ...this.roomMenuButtons
+    ]);
 
     this._setupRetroFx();
 
     this.input.keyboard.once('keydown-SPACE', () => {
-      if (this._transitioning) return;
+      if (this._transitioning || this.roomMenuOpen) return;
       this.sound.play('sfx_ui_click', { volume: 0.6 });
       this._start();
     });
+  }
+
+  _setRoomMenuOpen(open) {
+    if (this._transitioning) return;
+    this.roomMenuOpen = open;
+    this.menuButtons.forEach((button) => button.setVisible(!open));
+    this.roomMenuButtons.forEach((button) => button.setVisible(open));
+  }
+
+  _createRoom() {
+    const roomId = `sala-${Math.random().toString(36).slice(2, 8)}`;
+    window.prompt('ID da sala criada. Copie para compartilhar:', roomId);
+    this._start(roomId);
+  }
+
+  _joinRoom() {
+    const roomId = window.prompt('Digite o ID da sala:')?.trim();
+    if (roomId) this._start(roomId);
   }
 
   // Efeitos "retrô" do menu inteiro: bloom/bleeding sutil nas áreas claras
