@@ -144,7 +144,13 @@ export default class GameScene extends Phaser.Scene {
     this._updateRunTimer();
     this.multiplayer?.update(time, delta);
 
-    if (this.isGameOver || this.isPaused) return;
+    if (this.isGameOver) {
+      if (this.multiplayer?.isMultiplayer && this.multiplayer.isRoomHost) {
+        this.enemySpawner.updateAll(this.time.now);
+      }
+      return;
+    }
+    if (this.isPaused) return;
     this.player.update();
     if (!this.multiplayer?.isMultiplayer || this.multiplayer.isRoomHost || !this.multiplayer.mqtt) {
       this.enemySpawner.updateAll(this.time.now);
@@ -379,7 +385,9 @@ export default class GameScene extends Phaser.Scene {
 
     EventBus.on('player-died', () => {
       this.isGameOver = true;
-      this.spawnDirector.stop();
+      if (!this.multiplayer?.isMultiplayer || !this.multiplayer.isRoomHost) {
+        this.spawnDirector.stop();
+      }
       this.scoreManager.finalize(false, { finalLevel: this.runState.level });
     });
 
