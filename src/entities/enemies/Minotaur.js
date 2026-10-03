@@ -110,6 +110,8 @@ export default class Minotaur extends Enemy {
     this.chargeFootsteps = null;
     // Machado Arremessado: ver _startAxeThrow e afins. axeSprite é o
     this.axeSprite = null;
+    this.networkAxeSprite = null;
+    this.networkMeteorGraphics = null;
     // Trilha do machado (outbound/stuck/raise/return, ou null) — roda EM
     // PARALELO ao bossState (corpo), ver _updateAxeTrack.
     this.axePhase = null;
@@ -208,8 +210,123 @@ export default class Minotaur extends Enemy {
     this.bossTelegraphGraphics?.destroy();
     // Boss: o ícone do Machado Arremessado (voando ou já cravado) também
     this.axeSprite?.destroy();
+    this.networkAxeSprite?.destroy();
+    this.networkMeteorGraphics?.destroy();
     // Boss: os passos em loop da Investida também, senão ficam tocando
     this._stopChargeFootsteps();
+  }
+
+  getNetworkVisualState(nowMs) {
+    const cleaveProgress = this.bossState === 'cleave_pause'
+      ? 1
+      : this.bossState === 'cleave_telegraph'
+        ? Phaser.Math.Clamp((nowMs - this.cleaveTelegraphStartMs) / this.cleaveTelegraphDurationMs, 0, 1)
+        : 0;
+    const stompProgress = this.bossState === 'stomp_raise'
+      ? Phaser.Math.Clamp(1 - (this.stompRaiseUntil - nowMs) / this.stompRaiseDurationMs, 0, 1)
+      : 0;
+
+    return {
+      bossState: this.bossState,
+      isEnraged: this.isEnraged,
+      isDisarmed: this.isDisarmed,
+      visible: this.visible,
+      scaleX: this.scaleX,
+      scaleY: this.scaleY,
+      chargeDir: [this.bossChargeDir.x, this.bossChargeDir.y],
+      axeTarget: [this.axeTargetX, this.axeTargetY],
+      cleaveAngle: this.cleaveAngle,
+      cleaveProgress,
+      stompProgress,
+      axe: this.axeSprite?.visible ? {
+        x: this.axeSprite.x,
+        y: this.axeSprite.y,
+        rotation: this.axeSprite.rotation,
+        texture: this.axeSprite.texture.key
+      } : null,
+      meteors: this.meteors.slice(0, 20).map((meteor) => [
+        meteor.x,
+        meteor.y,
+        meteor.warn.scale,
+        meteor.warn.alpha,
+        meteor.rock.x,
+        meteor.rock.y
+      ])
+    };
+  }
+
+  syncNetworkVisualState(state, nowMs) {
+    if (!state || typeof state.bossState !== 'string') return;
+    if (this.isEnraged !== (state.isEnraged === true) || this.isDisarmed !== (state.isDisarmed === true)) {
+      this.isEnraged = state.isEnraged === true;
+      this.isDisarmed = state.isDisarmed === true;
+      this._refreshBossVisual();
+    }
+    this.setVisible(state.visible !== false);
+    this.setScale(
+      Number.isFinite(state.scaleX) ? state.scaleX : this.baseScale,
+      Number.isFinite(state.scaleY) ? state.scaleY : this.baseScale
+    );
+    if (Array.isArray(state.chargeDir) && state.chargeDir.every(Number.isFinite)) {
+      this.bossChargeDir = { x: state.chargeDir[0], y: state.chargeDir[1] };
+    }
+    if (Array.isArray(state.axeTarget) && state.axeTarget.every(Number.isFinite)) {
+      [this.axeTargetX, this.axeTargetY] = state.axeTarget;
+    }
+    if (Number.isFinite(state.cleaveAngle)) this.cleaveAngle = state.cleaveAngle;
+
+    const telegraphStates = [
+      'charge_telegraph', 'charge_swing_telegraph', 'axe_telegraph',
+      'cleave_telegraph', 'cleave_pause', 'stomp_raise'
+    ];
+    if (telegraphStates.includes(state.bossState)) {
+      if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+      if (state.bossState === 'charge_telegraph') this._drawChargeTelegraph(nowMs);
+      else if (state.bossState === 'charge_swing_telegraph') this._drawSwingTelegraph(nowMs);
+      else if (state.bossState === 'axe_telegraph') this._drawAxeTelegraph(nowMs);
+      else if (state.bossState === 'cleave_telegraph' || state.bossState === 'cleave_pause') {
+        this._drawCleaveTelegraph(state.cleaveProgress);
+      } else if (state.bossState === 'stomp_raise') {
+        this._drawStompTelegraph(nowMs, state.stompProgress);
+      }
+    } else {
+      this.bossTelegraphGraphics?.clear();
+    }
+
+    const axe = state.axe;
+    if (axe && Number.isFinite(axe.x) && Number.isFinite(axe.y) &&
+      typeof axe.texture === 'string' && this.scene.textures.exists(axe.texture)) {
+      if (!this.networkAxeSprite) {
+        this.networkAxeSprite = this.scene.add.image(axe.x, axe.y, axe.texture)
+          .setOrigin(0.5)
+          .setDepth(15)
+          .setScale(AXE_SPRITE_SCALE);
+      }
+      this.networkAxeSprite.setTexture(axe.texture).setPosition(axe.x, axe.y)
+        .setRotation(Number.isFinite(axe.rotation) ? axe.rotation : 0).setVisible(true);
+    } else {
+      this.networkAxeSprite?.setVisible(false);
+    }
+
+    const meteors = Array.isArray(state.meteors)
+      ? state.meteors.slice(0, 20).filter((meteor) => Array.isArray(meteor) && meteor.length === 6 && meteor.every(Number.isFinite))
+      : [];
+    if (meteors.length > 0) {
+      if (!this.networkMeteorGraphics) this.networkMeteorGraphics = this.scene.add.graphics().setDepth(15);
+      this.networkMeteorGraphics.clear();
+      meteors.forEach(([x, y, scale, alpha, rockX, rockY]) => {
+        this.networkMeteorGraphics.fillStyle(METEOR_WARN_COLOR, 0.35 * alpha);
+        this.networkMeteorGraphics.fillCircle(x, y, this.def.meteorImpactRadius * scale);
+        this.networkMeteorGraphics.lineStyle(3, METEOR_WARN_COLOR, 0.9 * alpha);
+        this.networkMeteorGraphics.strokeCircle(x, y, this.def.meteorImpactRadius * scale);
+        this.networkMeteorGraphics.fillStyle(METEOR_ROCK_COLOR, 1);
+        this.networkMeteorGraphics.fillCircle(rockX, rockY, 16);
+        this.networkMeteorGraphics.fillStyle(METEOR_CORE_COLOR, 1);
+        this.networkMeteorGraphics.fillCircle(rockX, rockY, 8);
+      });
+    } else {
+      this.networkMeteorGraphics?.clear();
+    }
   }
 
   // Recalcula qual walkAnim/idleTexture usar AGORA, dado o estado atual
@@ -1289,12 +1406,12 @@ export default class Minotaur extends Enemy {
   }
 
   // Círculo de aviso (área de impacto) no próprio Minotauro, crescendo
-  _drawStompTelegraph(nowMs) {
+  _drawStompTelegraph(nowMs, progressOverride = null) {
     const g = this.bossTelegraphGraphics;
     g.clear();
-    const progress = Phaser.Math.Clamp(
-      1 - (this.stompRaiseUntil - nowMs) / this.stompRaiseDurationMs, 0, 1
-    );
+    const progress = Number.isFinite(progressOverride)
+      ? Phaser.Math.Clamp(progressOverride, 0, 1)
+      : Phaser.Math.Clamp(1 - (this.stompRaiseUntil - nowMs) / this.stompRaiseDurationMs, 0, 1);
     const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
     const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.1, MISSILE_BLINK_ALPHA_MAX + 0.1, blinkT);
     const radius = Phaser.Math.Linear(this.def.stompImpactRadius * 0.3, this.def.stompImpactRadius, progress);

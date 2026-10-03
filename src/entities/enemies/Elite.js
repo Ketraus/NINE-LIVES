@@ -34,7 +34,56 @@ export default class Elite extends Enemy {
     this.eliteLaunchDetonateAt = null;
     this.eliteLaunchStartMs = null;
     this.eliteMissileProjectiles = []; // bolas visuais em voo, ver _launchMissiles
+    this.networkMissileProjectiles = [];
     this.eliteMeleeTelegraphUntil = 0;
+  }
+
+  getNetworkVisualState() {
+    return {
+      state: this.eliteState,
+      points: this.eliteMissilePoints.map(({ x, y }) => [x, y]),
+      revealed: this.eliteMissileRevealed,
+      projectiles: this.eliteMissileProjectiles.map(({ fx }) => [fx.x, fx.y])
+    };
+  }
+
+  syncNetworkVisualState(state, nowMs) {
+    if (!state || !['chasing', 'missile_telegraph', 'missile_launch', 'melee_telegraph', 'melee_swing'].includes(state.state)) return;
+    this.eliteState = state.state;
+    this.eliteMissilePoints = Array.isArray(state.points)
+      ? state.points.filter((point) => Array.isArray(point) && point.every(Number.isFinite))
+      : [];
+    this.eliteMissileRevealed = Phaser.Math.Clamp(
+      Math.floor(state.revealed || 0), 0, this.eliteMissilePoints.length
+    );
+
+    if (['missile_telegraph', 'missile_launch', 'melee_telegraph', 'melee_swing'].includes(this.eliteState)) {
+      if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+      if (this.eliteState === 'melee_telegraph' || this.eliteState === 'melee_swing') {
+        this._drawMeleeTelegraph(nowMs);
+      } else {
+        this._drawMissileTelegraph(nowMs);
+      }
+    } else {
+      this.eliteTelegraphGraphics?.clear();
+    }
+
+    const projectiles = this.eliteState === 'missile_launch' && Array.isArray(state.projectiles)
+      ? state.projectiles.filter((point) => Array.isArray(point) && point.every(Number.isFinite))
+      : [];
+    while (this.networkMissileProjectiles.length > projectiles.length) {
+      this.networkMissileProjectiles.pop().destroy();
+    }
+    while (this.networkMissileProjectiles.length < projectiles.length) {
+      this.networkMissileProjectiles.push(
+        this.scene.add.circle(0, 0, MISSILE_RADIUS, MISSILE_COLOR, 0.95)
+          .setStrokeStyle(2, 0xffffff, 0.8)
+          .setDepth(15)
+      );
+    }
+    this.networkMissileProjectiles.forEach((projectile, index) => {
+      projectile.setPosition(...projectiles[index]);
+    });
   }
 
   _specialChase(target, nowMs) {
@@ -57,6 +106,8 @@ export default class Elite extends Enemy {
     this.eliteTelegraphGraphics?.destroy();
     // Elite: bolas de míssil em voo também não são filhas do sprite —
     this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
+    this.networkMissileProjectiles?.forEach((projectile) => projectile.destroy());
+    this.networkMissileProjectiles = [];
   }
 
   _onDie() {

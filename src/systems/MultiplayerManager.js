@@ -427,6 +427,9 @@ export default class MultiplayerManager {
     const defs = spawner.enemyDefs;
     const enemies = spawner.group.getChildren()
       .filter((enemy) => enemy.active && Number.isInteger(enemy.networkId))
+      .sort((a, b) => Number(Boolean(b.def.boss)) - Number(Boolean(a.def.boss)) ||
+        Number(Boolean(b.def.elite)) - Number(Boolean(a.def.elite)) ||
+        Number(Boolean(b.def.sealer)) - Number(Boolean(a.def.sealer)))
       .slice(0, MAX_SYNCED_ENEMIES)
       .map((enemy) => [
         enemy.networkId,
@@ -440,7 +443,8 @@ export default class MultiplayerManager {
         enemy.def.sealer ? enemy.arenaCenter?.y ?? null : null,
         enemy.def.sealer ? enemy.arenaRadius ?? null : null,
         enemy.def.sealer ? enemy.arenaProgress ?? null : null,
-        enemy.def.sealer ? enemy.arenaTargetPlayerId ?? null : null
+        enemy.def.sealer ? enemy.arenaTargetPlayerId ?? null : null,
+        enemy.getNetworkVisualState?.(this.scene.time.now) ?? null
       ]);
     this.mqtt.publish(this.enemyStateTopic, {
       seq: ++this.lastEnemySnapshotSequence,
@@ -457,7 +461,8 @@ export default class MultiplayerManager {
     snapshot.enemies.slice(0, MAX_SYNCED_ENEMIES).forEach((entry) => {
       if (!Array.isArray(entry) || entry.length < 7) return;
       const [networkId, defIndex, x, y, hpTenths, flipX, moving,
-        arenaCenterX, arenaCenterY, arenaRadius, arenaProgress, arenaTargetPlayerId] = entry;
+        arenaCenterX, arenaCenterY, arenaRadius, arenaProgress, arenaTargetPlayerId,
+        networkVisualState] = entry;
       if (!Number.isInteger(networkId) || networkId <= 0 ||
         !Number.isInteger(defIndex) || !defs[defIndex] ||
         ![x, y, hpTenths].every(Number.isFinite)) return;
@@ -488,6 +493,7 @@ export default class MultiplayerManager {
           arenaTargetPlayerId
         );
       }
+      enemy.syncNetworkVisualState?.(networkVisualState, this.scene.time.now);
     });
 
     this.remoteEnemies.forEach((enemy, networkId) => {
