@@ -175,7 +175,7 @@ export default class MultiplayerManager {
         levelUpChoices: this.isRoomHost ? this.levelUpChoices : undefined,
         levelUpChoiceRound: this.levelUpChoiceRound,
         levelUpChoiceIds: this.levelUpChoiceIds,
-        abilityVisuals: this.scene.abilityManager?.getNetworkVisualState(this.scene.time.now) ?? null
+        abilityVisuals: this.scene.abilityManager?.getNetworkVisualState?.(this.scene.time.now) ?? null
       });
     }
 
