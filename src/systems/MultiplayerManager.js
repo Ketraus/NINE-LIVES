@@ -50,12 +50,9 @@ export default class MultiplayerManager {
     this.levelUpActive = false;
     this.levelUpRound = 0;
     this.levelUpPhase = 'idle';
-    this.levelUpTurnPlayerId = null;
-    this.levelUpTurnOrder = [];
-    this.levelUpTurnIndex = 0;
     this.levelUpChoices = [];
     this.levelUpChoiceRound = 0;
-    this.levelUpChoiceId = null;
+    this.levelUpChoiceIds = [];
 
     const params = new URLSearchParams(window.location.search);
     const room = roomId || params.get('room');
@@ -149,10 +146,9 @@ export default class MultiplayerManager {
         levelUpPendingCount: this._getLocalLevelUpCount(),
         levelUpRound: this.isRoomHost ? this.levelUpRound : undefined,
         levelUpPhase: this.isRoomHost ? this.levelUpPhase : undefined,
-        levelUpTurnPlayerId: this.isRoomHost ? this.levelUpTurnPlayerId : undefined,
         levelUpChoices: this.isRoomHost ? this.levelUpChoices : undefined,
         levelUpChoiceRound: this.levelUpChoiceRound,
-        levelUpChoiceId: this.levelUpChoiceId
+        levelUpChoiceIds: this.levelUpChoiceIds
       });
     }
 
@@ -188,23 +184,25 @@ export default class MultiplayerManager {
   }
 
   getSelectedUpgradeIds() {
-    return this.levelUpChoices.map((choice) => choice.upgradeId);
+    return [...new Set([
+      ...this.levelUpChoices.map((choice) => choice.upgradeId),
+      ...this.levelUpChoiceIds
+    ])];
   }
 
   completeLevelUpChoice(upgradeId) {
     if (!this.isMultiplayer || !this.mqtt) return false;
-    if (this.levelUpPhase !== 'selecting' || this.levelUpTurnPlayerId !== this.playerId) return true;
+    if (this.levelUpPhase !== 'selecting') return true;
 
     this.levelUpActive = false;
     this.levelUpChoiceRound = this.levelUpRound;
-    this.levelUpChoiceId = upgradeId;
-    if (this.isRoomHost) {
-      this.levelUpChoices.push({ playerId: this.playerId, upgradeId });
-      this._advanceLevelUpTurn();
-      this._syncLevelUp();
-    } else {
-      this.scene.levelUpUI?.showWaiting();
+    if (typeof upgradeId === 'string') {
+      this.levelUpChoiceIds.push(upgradeId);
     }
+    if (this.isRoomHost && typeof upgradeId === 'string') {
+      this.levelUpChoices.push({ playerId: this.playerId, upgradeId });
+    }
+    this._syncLevelUp();
     return true;
   }
 
@@ -220,22 +218,11 @@ export default class MultiplayerManager {
     this.scene.levelUpUI?.show(this.levelUpQueue.shift());
   }
 
-  _advanceLevelUpTurn() {
-    this.levelUpTurnIndex += 1;
-    if (this.levelUpTurnIndex >= this.levelUpTurnOrder.length) {
-      this.levelUpPhase = 'idle';
-      this.levelUpTurnPlayerId = null;
-      return;
-    }
-    this.levelUpTurnPlayerId = this.levelUpTurnOrder[this.levelUpTurnIndex];
-  }
-
   _syncLevelUp() {
     if (!this.isMultiplayer || !this.mqtt) return;
     if (!this.isRoomHost) {
       if (this.levelUpPhase === 'selecting') {
-        if (this.levelUpTurnPlayerId === this.playerId &&
-          this.levelUpChoiceRound !== this.levelUpRound) {
+        if (this.levelUpQueue.length > 0) {
           this._showNextLevelUp();
         } else if (!this.levelUpActive && !this.scene.multiplayerWaitingForLevelUp) {
           this.scene.levelUpUI?.showWaiting();
@@ -246,37 +233,44 @@ export default class MultiplayerManager {
       return;
     }
 
-    if (this.levelUpPhase === 'selecting' && this.levelUpTurnPlayerId !== this.playerId) {
-      const remote = this.remotePlayers.get(this.levelUpTurnPlayerId);
-      if (remote?.levelUpChoiceRound === this.levelUpRound && remote.levelUpChoiceId) {
-        this.levelUpChoices.push({ playerId: this.levelUpTurnPlayerId, upgradeId: remote.levelUpChoiceId });
-        this._advanceLevelUpTurn();
-      }
-    }
-
     const activeRemotes = [...this.remotePlayers.entries()].filter(
       ([, remote]) => Date.now() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS
     );
     if (this.levelUpPhase === 'idle') {
-      const nextRound = this.levelUpRound + 1;
-      const everyoneReady = this.player.runState.level > nextRound &&
-        this._getLocalLevelUpCount() > 0 && activeRemotes.length > 0 &&
-        activeRemotes.every(([, remote]) => remote.level > nextRound && remote.levelUpPendingCount > 0);
+      const everyoneReady = this._getLocalLevelUpCount() > 0 && activeRemotes.length > 0 &&
+        activeRemotes.every(([, remote]) => remote.levelUpPendingCount > 0);
       if (everyoneReady) {
-        this.levelUpRound = nextRound;
+        this.levelUpRound += 1;
         this.levelUpPhase = 'selecting';
-        this.levelUpTurnOrder = [this.playerId, ...activeRemotes.map(([id]) => id).sort()];
-        this.levelUpTurnIndex = 0;
-        this.levelUpTurnPlayerId = this.levelUpTurnOrder[0];
         this.levelUpChoices = [];
+        this.levelUpChoiceIds = [];
+        this.levelUpChoiceRound = this.levelUpRound;
       } else if (this.scene.multiplayerWaitingForLevelUp) {
         this.scene.levelUpUI?.finishMultiplayerRound();
       }
     }
 
     if (this.levelUpPhase === 'selecting') {
-      if (this.levelUpTurnPlayerId === this.playerId) this._showNextLevelUp();
-      else if (this.levelUpTurnPlayerId && !this.scene.multiplayerWaitingForLevelUp) {
+      activeRemotes.forEach(([playerId, remote]) => {
+        if (remote.levelUpChoiceRound !== this.levelUpRound) return;
+        remote.levelUpChoiceIds?.forEach((upgradeId) => {
+          if (!this.levelUpChoices.some((choice) =>
+            choice.playerId === playerId && choice.upgradeId === upgradeId)) {
+            this.levelUpChoices.push({ playerId, upgradeId });
+          }
+        });
+      });
+
+      const everyoneFinished = this._getLocalLevelUpCount() === 0 &&
+        activeRemotes.every(([, remote]) => remote.levelUpPendingCount === 0);
+      if (everyoneFinished) {
+        this.levelUpPhase = 'idle';
+        this.scene.levelUpUI?.finishMultiplayerRound();
+        return;
+      }
+
+      if (this.levelUpQueue.length > 0) this._showNextLevelUp();
+      else if (!this.levelUpActive && !this.scene.multiplayerWaitingForLevelUp) {
         this.scene.levelUpUI?.showWaiting();
       }
     }
@@ -653,10 +647,13 @@ export default class MultiplayerManager {
           this.hostRunTimeReceivedAt = Date.now();
           this.hostRunPaused = state.runPaused === true;
         }
-        this.levelUpRound = Number.isFinite(state.levelUpRound) ? state.levelUpRound : 0;
+        const hostLevelUpRound = Number.isFinite(state.levelUpRound) ? state.levelUpRound : 0;
+        if (hostLevelUpRound !== this.levelUpRound) {
+          this.levelUpChoiceIds = [];
+          this.levelUpChoiceRound = hostLevelUpRound;
+        }
+        this.levelUpRound = hostLevelUpRound;
         this.levelUpPhase = state.levelUpPhase === 'selecting' ? 'selecting' : 'idle';
-        this.levelUpTurnPlayerId = typeof state.levelUpTurnPlayerId === 'string'
-          ? state.levelUpTurnPlayerId : null;
         this.levelUpChoices = Array.isArray(state.levelUpChoices)
           ? state.levelUpChoices.filter((choice) => typeof choice?.upgradeId === 'string') : [];
       }
@@ -687,7 +684,7 @@ export default class MultiplayerManager {
           maxHp,
           level,
           levelUpChoiceRound: 0,
-          levelUpChoiceId: null,
+          levelUpChoiceIds: [],
           levelUpPendingCount: 0,
           pauseRequested: false,
           isHost: state.isHost === true,
@@ -716,8 +713,8 @@ export default class MultiplayerManager {
       remote.level = level;
       remote.levelUpChoiceRound = Number.isFinite(state.levelUpChoiceRound)
         ? state.levelUpChoiceRound : 0;
-      remote.levelUpChoiceId = typeof state.levelUpChoiceId === 'string'
-        ? state.levelUpChoiceId : null;
+      remote.levelUpChoiceIds = Array.isArray(state.levelUpChoiceIds)
+        ? state.levelUpChoiceIds.filter((upgradeId) => typeof upgradeId === 'string') : [];
       remote.levelUpPendingCount = Number.isFinite(state.levelUpPendingCount)
         ? Math.max(0, Math.floor(state.levelUpPendingCount)) : 0;
       remote.pauseRequested = state.pauseRequested === true;

@@ -193,8 +193,8 @@ export default class LevelUpUI {
   }
 
   finishMultiplayerRound() {
-    if (!this.container.visible) return;
     this.scene.multiplayerWaitingForLevelUp = false;
+    this.scene.multiplayer.levelUpActive = false;
     this.container.setVisible(false);
     this.container.removeAll(true);
     this.scene.physics.resume();
