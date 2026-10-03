@@ -57,14 +57,20 @@ export default class DamageSystem {
     const multiplayer = targetScene?.multiplayer;
     if (target.networkReplica && multiplayer?.isMultiplayer && multiplayer.mqtt?.connected &&
       !multiplayer.isRoomHost) {
-      multiplayer.queueEnemyDamage(target.networkId, finalDamage);
+      // Réplica: o Host é a autoridade do inimigo. Paralisia e sangramento NÃO
+      // são aplicados aqui (o cliente não simula uma segunda versão do status):
+      // vão junto do dano e quem aplica/tica é o Host, que devolve o estado
+      // pelo snapshot (ver Enemy.syncNetworkStatus).
+      multiplayer.queueEnemyDamage(
+        target.networkId,
+        finalDamage,
+        this._rollReplicaStatus(target, source, finalDamage, nowMs)
+      );
       targetScene.scoreManager?.registerDamage?.(finalDamage);
       DamageNumberManager.show(targetScene, hitX, hitY, finalDamage, target, { ...feedback, isCritical });
       target.playHitReaction?.();
       targetScene.sound?.play(this._hitSfxKey(target), { volume: 0.5 });
       this._applyLifesteal(source, finalDamage);
-      this._applyParalyze(target, source, nowMs);
-      this._applyBleed(target, source, finalDamage, nowMs);
       return true;
     }
     const appliedDamage = target.healthSystem.takeDamage(finalDamage);
@@ -113,6 +119,22 @@ export default class DamageSystem {
     if (typeof target.applyParalyze !== 'function') return;
     if (Math.random() >= chance) return;
     target.applyParalyze(nowMs, source.runState.paralyzeOnHitDurationMs);
+  }
+
+  // Versão "só descreve" de _applyParalyze/_applyBleed para réplicas de rede:
+  // rola a chance do atacante e devolve o status que o Host deve aplicar
+  // ({ paralyzeMs, bleed: [tickDamage, durationMs, tickIntervalMs] }) ou null.
+  static _rollReplicaStatus(target, source, damage, nowMs) {
+    const runState = source?.runState;
+    if (!runState || nowMs === undefined || target.canReceiveStatus?.() === false) return null;
+    const status = {};
+    if (runState.paralyzeOnHitChance && Math.random() < runState.paralyzeOnHitChance) {
+      status.paralyzeMs = runState.paralyzeOnHitDurationMs;
+    }
+    if (runState.bleedFraction) {
+      status.bleed = [damage * runState.bleedFraction, runState.bleedDurationMs, runState.bleedTickIntervalMs];
+    }
+    return status.paralyzeMs || status.bleed ? status : null;
   }
 
   // Aplica Sangramento em `target` (carta "Hemorragia", evolução da

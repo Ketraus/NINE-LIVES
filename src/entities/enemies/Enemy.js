@@ -9,6 +9,7 @@ let nextInstanceId = 1;
 const PARALYZE_TINT = 0x1a1a66;
 // Tint aplicado enquanto o inimigo está sangrando (carta "Hemorragia" —
 const BLEED_TINT = 0x8a0000;
+const NETWORK_STATUS_HOLD_MS = 600; // quanto o tint de status da réplica dura sem novo snapshot do Host
 
 // Constantes compartilhadas por Elite.js e Minotaur.js (mesmo piscar de alarme
 // nos telegraphs dos dois).
@@ -375,6 +376,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Aplica (ou reaplica) Sangramento — carta "Hemorragia", evolução da
   applyBleed(tickDamage, nowMs, durationMs, tickIntervalMs) {
     if (!this.active || this.healthSystem.isDead()) return;
+    if (this.networkReplica) return; // réplica não simula status: vem do Host (syncNetworkStatus)
     if (!this.canReceiveStatus()) return;
     this.bleedTickDamage = tickDamage;
     this.bleedTickIntervalMs = tickIntervalMs;
@@ -387,8 +389,25 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // escrever paralyzedUntil direto), pra imunidade valer sempre.
   applyParalyze(nowMs, durationMs) {
     if (!this.active || this.healthSystem.isDead()) return;
+    if (this.networkReplica) return; // réplica não simula status: vem do Host (syncNetworkStatus)
     if (!this.canReceiveStatus()) return;
     this.paralyzedUntil = nowMs + durationMs;
+  }
+
+  // Host -> snapshot: bit 1 = sangrando, bit 2 = paralisado.
+  getNetworkStatusFlags(nowMs) {
+    if (!this.canReceiveStatus()) return 0;
+    return (nowMs < this.bleedUntil ? 1 : 0) | (nowMs < this.paralyzedUntil ? 2 : 0);
+  }
+
+  // Cliente: o estado de status da réplica é SEMPRE o do último snapshot do
+  // Host (só visual — tint). Nunca tica dano nem conta tempo por conta própria.
+  syncNetworkStatus(flags, nowMs) {
+    if (!this.networkReplica || !this.active) return;
+    const allowed = this.canReceiveStatus();
+    this.bleedUntil = allowed && (flags & 1) ? nowMs + NETWORK_STATUS_HOLD_MS : 0;
+    this.paralyzedUntil = allowed && (flags & 2) ? nowMs + NETWORK_STATUS_HOLD_MS : 0;
+    this._refreshStatusTint(nowMs);
   }
 
   // Chamado todo frame pelo EnemySpawner.updateAll (junto de chase()).

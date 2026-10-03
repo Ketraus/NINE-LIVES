@@ -41,6 +41,7 @@ const MEDKIT_PULSE_DURATION_MS = 850;
 const MEDKIT_DROP_OFFSET_MIN = 42;
 const MEDKIT_DROP_OFFSET_MAX = 56;
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
+const PICKUP_CLAIM_RETRY_MS = 600; // cliente repete o pedido de coleta se o Host não confirmar
 
 // Sprite do cristal de XP por faixa de valor — dá pra reconhecer de longe
 // se vale a pena correr atrás. Faixas batem com data/enemies.js: verde
@@ -184,7 +185,16 @@ export default class GameScene extends Phaser.Scene {
 
   // Emite o tempo de run decorrido (em segundos inteiros) só quando ele
   _updateRunTimer() {
-    if (this.isGameOver) return;
+    if (this.isGameOver) {
+      // Host morto continua dono do relógio do grupo: se os outros sobreviverem
+      // até o fim, a vitória do grupo ainda precisa ser declarada por ele.
+      const multiplayer = this.multiplayer;
+      if (multiplayer?.isMultiplayer && multiplayer.mqtt && multiplayer.isRoomHost &&
+        this.spawnDirector.getElapsedMs() / 1000 >= RUN_WIN_SECONDS) {
+        multiplayer.declareMatchWon();
+      }
+      return;
+    }
     const seconds = Math.floor(this.spawnDirector.getElapsedMs() / 1000);
     if (seconds !== this._lastRunTimeSeconds) {
       this._lastRunTimeSeconds = seconds;
@@ -192,7 +202,33 @@ export default class GameScene extends Phaser.Scene {
       EventBus.emit('run-time-changed', { seconds });
     }
     if (seconds >= RUN_WIN_SECONDS) {
-      this._triggerWin();
+      this._onRunTimeUp();
+    }
+  }
+
+  // Tempo esgotado: solo vence na hora; em multiplayer só o Host decide (e o
+  // resultado chega a todos como estado do grupo — ver applyGroupMatchState).
+  _onRunTimeUp() {
+    const multiplayer = this.multiplayer;
+    if (multiplayer?.isMultiplayer && multiplayer.mqtt) {
+      if (multiplayer.isRoomHost) multiplayer.declareMatchWon();
+      return;
+    }
+    this._triggerWin();
+  }
+
+  // Vitória/derrota do GRUPO, definida pelo Host (ver MultiplayerManager).
+  applyGroupMatchState(state) {
+    if (state === 'won') {
+      this.groupWon = true;
+      if (!this.isGameOver) this._triggerWin();
+    } else if (state === 'lost') {
+      if (!this.isGameOver) this.player.die();
+    }
+    // quem já apertou "reiniciar" esperando o grupo terminar segue agora
+    if (this._pendingGroupRestart) {
+      this._pendingGroupRestart = false;
+      this.time.delayedCall(250, () => this._restartOrGoToWeaponSelect());
     }
   }
 
@@ -207,7 +243,14 @@ export default class GameScene extends Phaser.Scene {
 
   // Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
   _restartOrGoToWeaponSelect() {
-    if (this.hasWon) {
+    // Multiplayer: a partida só acaba quando o Host declara vitória/derrota do
+    // grupo. Quem morreu antes espera aqui (o pedido fica na fila).
+    const multiplayer = this.multiplayer;
+    if (multiplayer?.isMultiplayer && multiplayer.mqtt?.connected && multiplayer.matchState === 'running') {
+      this._pendingGroupRestart = true;
+      return;
+    }
+    if (this.hasWon || this.groupWon) {
       this.scene.start('WeaponSelectScene', {
         multiplayerRoom: this.multiplayerRoom,
         isRoomHost: this.isRoomHost
@@ -236,6 +279,8 @@ export default class GameScene extends Phaser.Scene {
     this.isGameOver = false;
     this.resultComplete = false; // vira true quando a tela de resultado (ResultUI) termina
     this.hasWon = false;
+    this.groupWon = false; // vitória do grupo anunciada pelo Host (quem já tinha morrido também a recebe)
+    this._pendingGroupRestart = false;
     this.isPaused = false;
     // câmera lenta só-inimigos (evolução "Reflexos de Predador", punhos) —
     this.slowmoSystem = new SlowmoSystem();
@@ -319,6 +364,8 @@ export default class GameScene extends Phaser.Scene {
   _buildPickups() {
     this.xpOrbGroup = this.physics.add.group();
     this.medkitGroup = this.physics.add.group();
+    this.pickupsById = new Map(); // id (decidido pelo Host) -> sprite
+    this.nextPickupId = 1; // só o Host/solo atribui ids
     this.runManager = new RunManager(this.runState, this.player, upgradesData);
   }
 
@@ -365,19 +412,8 @@ export default class GameScene extends Phaser.Scene {
     });
 
     // jogador encosta em orb de xp -> coleta
-    this.physics.add.overlap(this.player, this.xpOrbGroup, (player, orb) => {
-      this.runManager.collectXp(orb.getData('xpReward'));
-      this.sound.play('sfx_xp_collect', { volume: 0.4 });
-      orb.destroy();
-    });
-
-    this.physics.add.overlap(this.player, this.medkitGroup, (player, medkit) => {
-      const healed = player.healthSystem.heal(MEDKIT_HEAL_AMOUNT);
-      if (healed > 0) {
-        DamageNumberManager.show(this, player.x, player.y, healed, player, { kind: 'heal' });
-      }
-      medkit.destroy();
-    });
+    this.physics.add.overlap(this.player, this.xpOrbGroup, (player, orb) => this._onPickupOverlap(orb));
+    this.physics.add.overlap(this.player, this.medkitGroup, (player, medkit) => this._onPickupOverlap(medkit));
 
     // inimigo morre -> registra abate, dropa orb de xp e explode em FX
     EventBus.on('enemy-died', (death) => this._handleEnemyDeath(death, true));
@@ -419,16 +455,114 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  _handleEnemyDeath(death, broadcast) {
+  // Morte, score, XP e drops são UM evento. Quem tem autoridade (Host / solo)
+  // decide os drops uma vez e os manda dentro do próprio pacote da morte; os
+  // clientes só executam o que veio (nada de Math.random por cliente).
+  _handleEnemyDeath(death, isAuthority) {
     const { enemyId, x, y, xpReward, color } = death;
-    if (broadcast) this.multiplayer?.broadcastEnemyDeath(death);
+    let event = death;
+    if (isAuthority) {
+      event = { ...death, drops: this._rollDrops(death) };
+      this.multiplayer?.broadcastEnemyDeath(event);
+    }
     this.runManager.registerKill();
     this.scoreManager.registerKill(enemyId);
-    this._spawnXpOrb(x, y, xpReward);
-    if (enemyId === 'elite' || (enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
-      this._spawnMedkit(x, y);
-    }
+    this._spawnDrops(event.drops, x, y, xpReward);
     this._spawnDeathFx(x, y, color);
+  }
+
+  // Só o Host/solo chama. drops = { orbId, medkit: [id, x, y] | null }
+  _rollDrops(death) {
+    const drops = { orbId: this.nextPickupId++, medkit: null };
+    if (death.enemyId === 'elite' ||
+      (death.enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const offset = Phaser.Math.Between(MEDKIT_DROP_OFFSET_MIN, MEDKIT_DROP_OFFSET_MAX);
+      drops.medkit = [
+        this.nextPickupId++,
+        Math.round(death.x + Math.cos(angle) * offset),
+        Math.round(death.y + Math.sin(angle) * offset)
+      ];
+    }
+    return drops;
+  }
+
+  _canSpawnPickup(id) {
+    return !this.pickupsById.has(id) && !this.multiplayer?.appliedPickupRemovals?.has(id);
+  }
+
+  _spawnDrops(drops, x, y, xpReward) {
+    if (Number.isInteger(drops?.orbId) && this._canSpawnPickup(drops.orbId)) {
+      this._spawnXpOrb(x, y, xpReward, drops.orbId);
+    }
+    const medkit = drops?.medkit;
+    if (Array.isArray(medkit) && Number.isInteger(medkit[0]) && Number.isFinite(medkit[1]) &&
+      Number.isFinite(medkit[2]) && this._canSpawnPickup(medkit[0])) {
+      this._spawnMedkit(medkit[1], medkit[2], medkit[0]);
+    }
+  }
+
+  // ---------- coleta de orbs/medkits ----------
+
+  _registerPickup(id, sprite, kind, value) {
+    sprite.setData({ pickupId: id, pickupKind: kind, pickupValue: value });
+    this.pickupsById.set(id, sprite);
+    sprite.once('destroy', () => {
+      if (this.pickupsById.get(id) === sprite) this.pickupsById.delete(id);
+    });
+  }
+
+  _onPickupOverlap(pickup) {
+    if (!pickup.active) return;
+    const multiplayer = this.multiplayer;
+    const id = pickup.getData('pickupId');
+    if (multiplayer?.isMultiplayer && multiplayer.mqtt) {
+      if (this.player.isDead) return; // morto não rouba item dos vivos
+      if (multiplayer.isRoomHost) {
+        this.hostCollectPickup(id, multiplayer.playerId);
+      } else if (this.time.now >= (pickup.getData('claimRetryAt') || 0)) {
+        // cliente só PEDE; o item some quando o Host confirmar (pra todos)
+        pickup.setData('claimRetryAt', this.time.now + PICKUP_CLAIM_RETRY_MS);
+        multiplayer.claimPickup(id);
+      }
+      return;
+    }
+    this.grantPickupReward(pickup.getData('pickupKind'), pickup.getData('pickupValue'));
+    pickup.destroy();
+  }
+
+  // Host: única porta de coleta em multiplayer. Retorna false se o item já não existe.
+  hostCollectPickup(pickupId, byPlayerId) {
+    const sprite = this.pickupsById.get(pickupId);
+    if (!sprite || !sprite.active) return false;
+    const kind = sprite.getData('pickupKind');
+    const value = sprite.getData('pickupValue');
+    sprite.destroy();
+    if (byPlayerId === this.multiplayer?.playerId) this.grantPickupReward(kind, value);
+    this.multiplayer?.broadcastPickupRemoval(pickupId, byPlayerId, kind, value);
+    return true;
+  }
+
+  grantPickupReward(kind, value) {
+    if (this.isGameOver) return;
+    if (kind === 'xp') {
+      this.runManager.collectXp(value);
+      this.sound.play('sfx_xp_collect', { volume: 0.4 });
+    } else if (kind === 'medkit') {
+      const healed = this.player.healthSystem.heal(value);
+      if (healed > 0) {
+        DamageNumberManager.show(this, this.player.x, this.player.y, healed, this.player, { kind: 'heal' });
+      }
+    }
+  }
+
+  removeNetworkPickup(pickupId) {
+    this.pickupsById?.get(pickupId)?.destroy();
+  }
+
+  clearNetworkPickups() {
+    this.pickupsById?.forEach((sprite) => sprite.destroy());
+    this.pickupsById?.clear();
   }
 
   _setGameplayVisualsPaused(paused) {
@@ -498,10 +632,10 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  _spawnXpOrb(x, y, xpReward) {
+  _spawnXpOrb(x, y, xpReward, pickupId) {
     const tier = _xpGemTierFor(xpReward);
     const orb = this.physics.add.image(x, y, tier.texture).setDepth(5).setScale(tier.scale);
-    orb.setData('xpReward', xpReward);
+    this._registerPickup(pickupId, orb, 'xp', xpReward);
     // raio/offset do body circular são em pixels da textura (o Phaser multiplica pela escala)
     const worldRadius = XP_GEM_PICKUP_RADIUS * (tier.scale / XP_GEM_BASE_SCALE);
     const radius = worldRadius / tier.scale;
@@ -534,14 +668,10 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  _spawnMedkit(x, y) {
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    const offset = Phaser.Math.Between(MEDKIT_DROP_OFFSET_MIN, MEDKIT_DROP_OFFSET_MAX);
-    const medkit = this.physics.add.image(
-      x + Math.cos(angle) * offset,
-      y + Math.sin(angle) * offset,
-      'medkit'
-    ).setDepth(5).setScale(MEDKIT_SCALE);
+  // x/y já vêm finais (offset sorteado uma vez pelo Host em _rollDrops)
+  _spawnMedkit(x, y, pickupId) {
+    const medkit = this.physics.add.image(x, y, 'medkit').setDepth(5).setScale(MEDKIT_SCALE);
+    this._registerPickup(pickupId, medkit, 'medkit', MEDKIT_HEAL_AMOUNT);
     const radius = Math.min(medkit.width, medkit.height) * 0.42;
     medkit.body.setCircle(radius, medkit.width / 2 - radius, medkit.height / 2 - radius);
     this.medkitGroup.add(medkit);

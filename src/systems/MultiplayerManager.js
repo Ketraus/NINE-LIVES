@@ -12,6 +12,16 @@ const MAX_DAMAGE_PER_MESSAGE = 5000;
 const ATTACK_MIN_INTERVAL_MS = 60;
 const PLAYER_TIMEOUT_MS = 5000;
 const DEFAULT_BROKER_URL = 'wss://ninelives.feira-de-jogos.dev.br/mqtt';
+// Mortes e coletas recém-ocorridas são reenviadas dentro dos próximos snapshots
+// (QoS 0 pode perder o pacote avulso). Tudo é idempotente no cliente.
+const REPLAY_SNAPSHOTS = 5;
+const REPLAY_MAX_AGE_MS = 5000;
+const REPLAY_MAX_ENTRIES = 80;
+const MAX_PICKUP_STATUS_MS = 10000;
+const PICKUP_KINDS = new Set(['xp', 'medkit', 'gone']);
+// Partidas (runEpoch do Host) que este cliente já viu terminar: se ele reinicia
+// enquanto o Host ainda anuncia "fim", o estado velho não pode encerrar a run nova.
+const staleMatchEpochs = new Set();
 const SPRITE_ANIMATIONS = {
   katana: { idle: 'player-katana-idle', walk: 'player-katana-walk' },
   fists: { idle: 'player-paws-idle', walk: 'player-paws-walk' },
@@ -41,6 +51,10 @@ export default class MultiplayerManager {
     this.lastAttackSentAt = -Infinity;
     this.attackSequence = 0;
     this.isRoomHost = Boolean(isRoomHost);
+    this.matchState = 'running'; // 'running' | 'won' | 'lost' — definido SÓ pelo Host
+    this.recentDeaths = [];
+    this.recentPickupRemovals = [];
+    this.appliedPickupRemovals = new Set();
     this.hostPlayerId = null;
     this.hostRunTimeMs = null;
     this.hostRunTimeReceivedAt = 0;
@@ -73,6 +87,9 @@ export default class MultiplayerManager {
     this.enemyHitPrefix = `nine-lives/${this.room}/enemy-hits`;
     this.enemyHitTopic = `${this.enemyHitPrefix}/${this.playerId}`;
     this.playerDamageTopic = `${this.topicPrefix}/${this.playerId}/damage`;
+    this.pickupClaimPrefix = `nine-lives/${this.room}/pickup-claims`;
+    this.pickupClaimTopic = `${this.pickupClaimPrefix}/${this.playerId}`;
+    this.pickupRemovedTopic = `nine-lives/${this.room}/pickups/removed`;
 
     try {
       this.mqtt = new MqttClient(brokerUrl, {
@@ -91,11 +108,16 @@ export default class MultiplayerManager {
         this.mqtt.subscribe(`${this.topicPrefix}/+/position`),
         this.mqtt.subscribe(`${this.topicPrefix}/+/attack`),
         ...(this.isRoomHost
-          ? [this.mqtt.subscribe(`${this.topicPrefix}/+/damage`), this.mqtt.subscribe(`${this.enemyHitPrefix}/+`)]
+          ? [
+            this.mqtt.subscribe(`${this.topicPrefix}/+/damage`),
+            this.mqtt.subscribe(`${this.enemyHitPrefix}/+`),
+            this.mqtt.subscribe(`${this.pickupClaimPrefix}/+`)
+          ]
           : [
             this.mqtt.subscribe(this.enemyStateTopic),
             this.mqtt.subscribe(this.enemyDeathTopic),
-            this.mqtt.subscribe(this.playerDamageTopic)
+            this.mqtt.subscribe(this.playerDamageTopic),
+            this.mqtt.subscribe(this.pickupRemovedTopic)
           ])
       ]).catch((error) => {
         console.error('[Multiplayer] Falha ao assinar tópico:', error);
@@ -146,6 +168,7 @@ export default class MultiplayerManager {
         runEpoch: this.isRoomHost ? this.runEpoch : undefined,
         runTimeMs: this.isRoomHost ? (this.scene.spawnDirector?.getElapsedMs() ?? 0) : undefined,
         runPaused: this.isRoomHost && this.scene.isPaused,
+        matchState: this.isRoomHost ? this.matchState : undefined,
         levelUpPendingCount: this._getLocalLevelUpCount(),
         levelUpRound: this.isRoomHost ? this.levelUpRound : undefined,
         levelUpPhase: this.isRoomHost ? this.levelUpPhase : undefined,
@@ -175,9 +198,40 @@ export default class MultiplayerManager {
         Phaser.Math.Linear(enemy.y, enemy.targetY, blend)
       );
     });
+    this._evaluateMatchEnd();
     this._syncPauseVote();
     this._syncLevelUp();
     this._syncHostPause();
+  }
+
+  // ---------- fim da partida (estado do GRUPO, definido pelo Host) ----------
+
+  getAliveRemoteCount() {
+    return [...this.remotePlayers.values()].filter((remote) => remote.combatant?.active).length;
+  }
+
+  // Derrota do grupo: o Host morreu e não sobrou nenhum jogador remoto vivo.
+  _evaluateMatchEnd() {
+    if (!this.isRoomHost || !this.mqtt || this.matchState !== 'running') return;
+    if (this.player.isDead && this.getAliveRemoteCount() === 0) this._setHostMatchState('lost');
+  }
+
+  // Vitória do grupo: chamada pela GameScene quando o relógio do Host chega ao fim.
+  declareMatchWon() {
+    if (!this.isRoomHost || !this.mqtt || this.matchState !== 'running') return;
+    this._setHostMatchState('won');
+  }
+
+  _setHostMatchState(state) {
+    this.matchState = state; // vai pra todos no heartbeat (reenviado a cada 100ms)
+    this.scene.applyGroupMatchState?.(state);
+  }
+
+  _applyHostMatchState(state, epoch) {
+    if (this.isRoomHost || (state !== 'won' && state !== 'lost') || this.matchState === state) return;
+    if (typeof epoch === 'string' && staleMatchEpochs.has(epoch)) return;
+    this.matchState = state;
+    this.scene.applyGroupMatchState?.(state);
   }
 
   queueLevelUp(options) {
@@ -288,19 +342,26 @@ export default class MultiplayerManager {
     }
   }
 
-  queueEnemyDamage(networkId, damage) {
+  queueEnemyDamage(networkId, damage, status = null) {
     if (this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(networkId) ||
       !Number.isFinite(damage) || damage <= 0) return;
-    this.pendingEnemyDamage.set(
-      networkId,
-      Math.min(MAX_DAMAGE_PER_MESSAGE, (this.pendingEnemyDamage.get(networkId) || 0) + damage)
-    );
+    const entry = this.pendingEnemyDamage.get(networkId) || { damage: 0, bleed: null, paralyzeMs: 0 };
+    entry.damage = Math.min(MAX_DAMAGE_PER_MESSAGE, entry.damage + damage);
+    if (Array.isArray(status?.bleed)) entry.bleed = status.bleed;
+    if (Number.isFinite(status?.paralyzeMs)) entry.paralyzeMs = Math.max(entry.paralyzeMs, status.paralyzeMs);
+    this.pendingEnemyDamage.set(networkId, entry);
   }
 
   _flushEnemyDamage(now) {
+    // [networkId, dano, bleedTick, bleedDuração, bleedIntervalo, paralisiaMs]
     const hits = [...this.pendingEnemyDamage.entries()]
       .slice(0, MAX_SYNCED_ENEMIES)
-      .map(([networkId, damage]) => [networkId, Math.round(damage * 10) / 10]);
+      .map(([networkId, entry]) => [
+        networkId,
+        Math.round(entry.damage * 10) / 10,
+        ...(entry.bleed ? entry.bleed.map((value) => Math.round(value * 10) / 10) : [0, 0, 0]),
+        entry.paralyzeMs || 0
+      ]);
     this.pendingEnemyDamage.clear();
     this.lastEnemyHitSentAt = now;
     this.mqtt.publish(this.enemyHitTopic, {
@@ -331,7 +392,27 @@ export default class MultiplayerManager {
       DamageNumberManager.show(this.scene, hitX, hitY, appliedDamage, enemy);
       enemy.playHitReaction();
       this.scene.sound.play(this._hitSfxKey(enemy), { volume: 0.5 });
+      this._applyReplicatedStatus(enemy, hit);
     });
+  }
+
+  // Host: o status (sangramento/paralisia) que o cliente rolou passa a existir
+  // só aqui — é o Host que aplica e tica; o cliente só vê o resultado no snapshot.
+  _applyReplicatedStatus(enemy, hit) {
+    const [, , bleedTick, bleedDuration, bleedInterval, paralyzeMs] = hit;
+    const now = this.scene.time.now;
+    if (Number.isFinite(bleedTick) && bleedTick > 0 && Number.isFinite(bleedDuration) &&
+      Number.isFinite(bleedInterval)) {
+      enemy.applyBleed(
+        Math.min(bleedTick, MAX_DAMAGE_PER_MESSAGE),
+        now,
+        Phaser.Math.Clamp(bleedDuration, 0, MAX_PICKUP_STATUS_MS),
+        Phaser.Math.Clamp(bleedInterval, 100, 5000)
+      );
+    }
+    if (Number.isFinite(paralyzeMs) && paralyzeMs > 0) {
+      enemy.applyParalyze(now, Phaser.Math.Clamp(paralyzeMs, 0, 5000));
+    }
   }
 
   _hitSfxKey(enemy) {
@@ -350,12 +431,91 @@ export default class MultiplayerManager {
     });
   }
 
+  // `death` já traz o resultado completo decidido pelo Host (XP + drops com id).
+  // Morte, recompensa e drop viajam no MESMO pacote e são reenviados nos
+  // próximos snapshots, então um pacote perdido não some com a recompensa.
   broadcastEnemyDeath(death) {
     if (!this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(death.networkId)) return;
-    this.mqtt.publish(this.enemyDeathTopic, {
+    const packet = {
       ...death,
+      x: Math.round(death.x),
+      y: Math.round(death.y),
       epoch: this.runEpoch,
       seq: ++this.lastEnemyDeathSequence,
+    };
+    this.recentDeaths.push({ at: Date.now(), sends: 0, packet });
+    this.mqtt.publish(this.enemyDeathTopic, packet);
+  }
+
+  _takeReplay(list) {
+    const now = Date.now();
+    const alive = list.filter((entry) => entry.sends < REPLAY_SNAPSHOTS && now - entry.at <= REPLAY_MAX_AGE_MS);
+    alive.splice(0, Math.max(0, alive.length - REPLAY_MAX_ENTRIES));
+    alive.forEach((entry) => { entry.sends += 1; });
+    list.length = 0;
+    list.push(...alive);
+    return alive;
+  }
+
+  _applyEnemyDeath(death) {
+    if (!death || !Number.isInteger(death.networkId) || !Number.isFinite(death.x) ||
+      !Number.isFinite(death.y) || !Number.isFinite(death.xpReward) ||
+      this.receivedEnemyDeaths.has(death.networkId)) return;
+    this.receivedEnemyDeaths.add(death.networkId);
+    const enemy = this.remoteEnemies.get(death.networkId);
+    enemy?._leave();
+    this.remoteEnemies.delete(death.networkId);
+    EventBus.emit('network-enemy-died', death);
+  }
+
+  // ---------- coleta de orbs/medkits (Host é a autoridade) ----------
+
+  // Cliente pede ao Host para coletar. Só pede: o item continua no mundo até o
+  // Host confirmar (e a mensagem de confirmação é a mesma que remove pra todos).
+  claimPickup(pickupId) {
+    if (this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(pickupId)) return false;
+    this.mqtt.publish(this.pickupClaimTopic, { id: this.playerId, pickupId });
+    return true;
+  }
+
+  _onPickupClaim(playerId, message) {
+    if (!this.isRoomHost || message?.id !== playerId || !Number.isInteger(message.pickupId)) return;
+    if (!this.scene.hostCollectPickup(message.pickupId, playerId)) {
+      // já foi coletado (ou nunca existiu): manda o cliente limpar o fantasma, sem recompensa
+      this._publishPickupRemovals([[message.pickupId, null, 'gone', 0]]);
+    }
+  }
+
+  // Host: anuncia que o item sumiu pra todos e quem ficou com ele.
+  broadcastPickupRemoval(pickupId, byPlayerId, kind, value) {
+    if (!this.isRoomHost) return;
+    const record = [pickupId, byPlayerId, kind, value];
+    this.recentPickupRemovals.push({ at: Date.now(), sends: 0, record });
+    this._publishPickupRemovals([record]);
+  }
+
+  _publishPickupRemovals(records) {
+    if (!this.mqtt?.connected) return;
+    this.mqtt.publish(this.pickupRemovedTopic, { epoch: this.runEpoch, removed: records });
+  }
+
+  _applyPickupRemovals(records) {
+    if (this.isRoomHost || !Array.isArray(records)) return;
+    records.slice(0, REPLAY_MAX_ENTRIES).forEach((record) => {
+      if (!Array.isArray(record) || !Number.isInteger(record[0]) || !PICKUP_KINDS.has(record[2])) return;
+      const [pickupId, byPlayerId, kind, value] = record;
+      if (kind === 'gone') {
+        // só limpa o fantasma; não marca como aplicado pra não engolir a
+        // confirmação real (com recompensa) se ela ainda estiver a caminho
+        this.scene.removeNetworkPickup?.(pickupId);
+        return;
+      }
+      if (this.appliedPickupRemovals.has(pickupId)) return;
+      this.appliedPickupRemovals.add(pickupId);
+      this.scene.removeNetworkPickup?.(pickupId);
+      if (byPlayerId === this.playerId && Number.isFinite(value)) {
+        this.scene.grantPickupReward?.(kind, value);
+      }
     });
   }
 
@@ -365,6 +525,8 @@ export default class MultiplayerManager {
     this.lastEnemySnapshotSequence = 0;
     this.lastReceivedPlayerDamageSequence = 0;
     this.receivedEnemyDeaths.clear();
+    this.appliedPickupRemovals.clear();
+    this.scene.clearNetworkPickups?.();
     this.remoteEnemies.forEach((enemy) => enemy._leave());
     this.remoteEnemies.clear();
   }
@@ -574,12 +736,15 @@ export default class MultiplayerManager {
         enemy.def.sealer ? enemy.arenaRadius ?? null : null,
         enemy.def.sealer ? enemy.arenaProgress ?? null : null,
         enemy.def.sealer ? enemy.arenaTargetPlayerId ?? null : null,
-        enemy.getNetworkVisualState?.(this.scene.time.now) ?? null
+        enemy.getNetworkVisualState?.(this.scene.time.now) ?? null,
+        enemy.getNetworkStatusFlags?.(this.scene.time.now) ?? 0
       ]);
     this.mqtt.publish(this.enemyStateTopic, {
       seq: ++this.lastEnemySnapshotSequence,
       epoch: this.runEpoch,
-      enemies
+      enemies,
+      deaths: this._takeReplay(this.recentDeaths).map((entry) => entry.packet),
+      removed: this._takeReplay(this.recentPickupRemovals).map((entry) => entry.record)
     });
   }
 
@@ -592,7 +757,7 @@ export default class MultiplayerManager {
       if (!Array.isArray(entry) || entry.length < 7) return;
       const [networkId, defIndex, x, y, hpTenths, flipX, moving,
         arenaCenterX, arenaCenterY, arenaRadius, arenaProgress, arenaTargetPlayerId,
-        networkVisualState] = entry;
+        networkVisualState, statusFlags] = entry;
       if (!Number.isInteger(networkId) || networkId <= 0 ||
         !Number.isInteger(defIndex) || !defs[defIndex] ||
         ![x, y, hpTenths].every(Number.isFinite)) return;
@@ -624,6 +789,7 @@ export default class MultiplayerManager {
         );
       }
       enemy.syncNetworkVisualState?.(networkVisualState, this.scene.time.now);
+      enemy.syncNetworkStatus?.(Number.isInteger(statusFlags) ? statusFlags : 0, this.scene.time.now);
     });
 
     this.remoteEnemies.forEach((enemy, networkId) => {
@@ -738,6 +904,27 @@ export default class MultiplayerManager {
   }
 
   _onMessage(topic, payload) {
+    if (this.isRoomHost && topic.startsWith(`${this.pickupClaimPrefix}/`)) {
+      const playerId = topic.slice(`${this.pickupClaimPrefix}/`.length);
+      try {
+        const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
+        this._onPickupClaim(playerId, JSON.parse(text));
+      } catch (error) {
+        console.warn('[Multiplayer] Pedido de coleta inválido:', error.message);
+      }
+      return;
+    }
+    if (!this.isRoomHost && topic === this.pickupRemovedTopic) {
+      try {
+        const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
+        const message = JSON.parse(text);
+        this._syncRunEpoch(message.epoch);
+        this._applyPickupRemovals(message.removed);
+      } catch (error) {
+        console.warn('[Multiplayer] Coleta inválida:', error.message);
+      }
+      return;
+    }
     if (this.isRoomHost && topic.startsWith(`${this.enemyHitPrefix}/`)) {
       const playerId = topic.slice(`${this.enemyHitPrefix}/`.length);
       try {
@@ -755,6 +942,11 @@ export default class MultiplayerManager {
         this._syncRunEpoch(snapshot.epoch);
         if (!Number.isInteger(snapshot.seq) || snapshot.seq <= this.lastEnemySnapshotSequence) return;
         this.lastEnemySnapshotSequence = snapshot.seq;
+        // mortes/coletas reenviadas primeiro (idempotentes), depois o estado dos inimigos
+        if (Array.isArray(snapshot.deaths)) {
+          snapshot.deaths.slice(0, REPLAY_MAX_ENTRIES).forEach((death) => this._applyEnemyDeath(death));
+        }
+        this._applyPickupRemovals(snapshot.removed);
         this._applyEnemySnapshot(snapshot);
       } catch (error) {
         console.warn('[Multiplayer] Snapshot de inimigos inválido:', error.message);
@@ -766,13 +958,8 @@ export default class MultiplayerManager {
         const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
         const death = JSON.parse(text);
         this._syncRunEpoch(death.epoch);
-        if (!Number.isInteger(death.seq) || !Number.isInteger(death.networkId) ||
-          this.receivedEnemyDeaths.has(death.networkId)) return;
-        this.receivedEnemyDeaths.add(death.networkId);
-        const enemy = this.remoteEnemies.get(death.networkId);
-        enemy?._leave();
-        this.remoteEnemies.delete(death.networkId);
-        EventBus.emit('network-enemy-died', death);
+        if (!Number.isInteger(death.seq)) return;
+        this._applyEnemyDeath(death);
       } catch (error) {
         console.warn('[Multiplayer] Morte de inimigo inválida:', error.message);
       }
@@ -805,6 +992,7 @@ export default class MultiplayerManager {
         (!this.hostPlayerId || this.hostPlayerId === playerId || previousHostExpired)) {
         this.hostPlayerId = playerId;
         this._syncRunEpoch(state.runEpoch);
+        this._applyHostMatchState(state.matchState, state.runEpoch);
         if (Number.isFinite(state.runTimeMs)) {
           this.hostRunTimeMs = Math.max(0, state.runTimeMs);
           this.hostRunTimeReceivedAt = Date.now();
@@ -1020,6 +1208,9 @@ export default class MultiplayerManager {
   }
 
   destroy() {
+    if (this.matchState !== 'running' && typeof this.runEpoch === 'string') {
+      staleMatchEpochs.add(this.runEpoch);
+    }
     if (this.mqtt) {
       this.mqtt.off('connect', this.onConnect);
       this.mqtt.off('message', this.onMessage);
