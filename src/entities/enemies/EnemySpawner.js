@@ -7,6 +7,7 @@ import Elite from './Elite.js';
 import Sealer from './Sealer.js';
 import Minotaur from './Minotaur.js';
 import SwarmSystem from './SwarmSystem.js';
+import DamageSystem from '../../combat/DamageSystem.js';
 
 // Escolhe a classe do inimigo pelo def (data/enemies.js). As habilidades especiais
 // seguem as mesmas flags de antes (boss/elite/sealer/explodes); os inimigos comuns
@@ -64,6 +65,7 @@ export default class EnemySpawner {
     this.player = player;
     this.enemyDefs = enemyDefs;
     this.maxAlive = DEFAULT_MAX_ALIVE;
+    this.nextNetworkId = 1;
     this.swarmSystem = new SwarmSystem(flockingConfig);
 
     this.group = scene.physics.add.group({ runChildUpdate: false });
@@ -204,9 +206,12 @@ export default class EnemySpawner {
   }
 
   // Cria de fato um Enemy num ponto e registra ele no grupo/colisor —
-  _createAt(def, pos) {
+  _createAt(def, pos, networkId = null, networkReplica = false) {
     const EnemyClass = pickEnemyClass(def);
     const enemy = new EnemyClass(this.scene, pos.x, pos.y, def);
+    enemy.networkId = networkId ?? this.nextNetworkId++;
+    enemy.networkReplica = networkReplica;
+    this.nextNetworkId = Math.max(this.nextNetworkId, enemy.networkId + 1);
     this.group.add(enemy);
     this.mapManager.addCollider(enemy);
     // Elite: som + vibrada de entrada, tocam no instante em que ele nasce
@@ -217,6 +222,12 @@ export default class EnemySpawner {
     // Boss: pop de escala + onda de choque (ver _playBossEntranceFx) — o
     if (def.boss) this._playBossEntranceFx(enemy);
     return enemy;
+  }
+
+  spawnReplicated(defId, networkId, x, y) {
+    const def = this.enemyDefs.find((entry) => entry.id === defId);
+    if (!def || !Number.isInteger(networkId) || networkId <= 0) return null;
+    return this._createAt(def, { x, y }, networkId, true);
   }
 
   // Pop de escala (nasce pequeno, estoura pro tamanho final) + anel de
@@ -376,19 +387,39 @@ export default class EnemySpawner {
   updateAll(nowMs) {
     const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
     const active = this.group.getChildren().filter((e) => e.active);
+    const targets = (this.scene.multiplayer?.getEnemyTargets() ?? [this.player])
+      .filter((target) => target.active && !target.healthSystem?.isDead());
     this.swarmSystem.rebuild(active);
     const view = this._currentCameraView();
     const abandonmentDistance = Math.hypot(view.width, view.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW + ABANDONED_DISTANCE_MARGIN;
 
     active.forEach((enemy) => {
+      if (targets.length === 0) return;
+      const target = targets.reduce((nearest, candidate) => {
+        const candidateDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, candidate.x, candidate.y);
+        const nearestDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, nearest.x, nearest.y);
+        return candidateDistance < nearestDistance ? candidate : nearest;
+      });
       if (this.frozen) {
         enemy.setVelocity(0, 0);
       } else {
-        const moveDir = this.swarmSystem.computeMoveDir(enemy, this.player);
-        enemy.chase(this.player, nowMs, speedMultiplier, moveDir);
+        const moveDir = this.swarmSystem.computeMoveDir(enemy, target);
+        enemy.chase(target, nowMs, speedMultiplier, moveDir);
         enemy.updateFacing();
         enemy.updateAnimState();
-        if (enemy.updateAbandonment(this.player, nowMs, abandonmentDistance)) return;
+        if (enemy.updateAbandonment(target, nowMs, abandonmentDistance)) return;
+      }
+      if (target !== this.player) {
+        const contactRange = (enemy.body?.radius || 20) + (target.body?.radius || 30);
+        if (Phaser.Math.Distance.Between(enemy.x, enemy.y, target.x, target.y) <= contactRange) {
+          DamageSystem.applyContactDamage(
+            enemy,
+            target,
+            enemy.def.contactDamage,
+            enemy.def.contactCooldownMs,
+            nowMs
+          );
+        }
       }
       enemy.updateBleed(nowMs);
     });
