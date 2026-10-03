@@ -31,6 +31,16 @@ export default class MultiplayerManager {
     this.hostRunPaused = false;
     this.pauseRequested = false;
     this.pauseApplied = false;
+    this.levelUpQueue = [];
+    this.levelUpActive = false;
+    this.levelUpRound = 0;
+    this.levelUpPhase = 'idle';
+    this.levelUpTurnPlayerId = null;
+    this.levelUpTurnOrder = [];
+    this.levelUpTurnIndex = 0;
+    this.levelUpChoices = [];
+    this.levelUpChoiceRound = 0;
+    this.levelUpChoiceId = null;
 
     const params = new URLSearchParams(window.location.search);
     const room = roomId || params.get('room');
@@ -90,7 +100,14 @@ export default class MultiplayerManager {
         pauseRequested: this.pauseRequested,
         isHost: this.isRoomHost,
         runTimeMs: this.isRoomHost ? (this.scene.spawnDirector?.getElapsedMs() ?? 0) : undefined,
-        runPaused: this.isRoomHost && this.scene.isPaused
+        runPaused: this.isRoomHost && this.scene.isPaused,
+        levelUpPendingCount: this._getLocalLevelUpCount(),
+        levelUpRound: this.isRoomHost ? this.levelUpRound : undefined,
+        levelUpPhase: this.isRoomHost ? this.levelUpPhase : undefined,
+        levelUpTurnPlayerId: this.isRoomHost ? this.levelUpTurnPlayerId : undefined,
+        levelUpChoices: this.isRoomHost ? this.levelUpChoices : undefined,
+        levelUpChoiceRound: this.levelUpChoiceRound,
+        levelUpChoiceId: this.levelUpChoiceId
       });
     }
 
@@ -106,6 +123,109 @@ export default class MultiplayerManager {
       this._drawRemoteStatus(remote);
     });
     this._syncPauseVote();
+    this._syncLevelUp();
+  }
+
+  queueLevelUp(options) {
+    if (!this.isMultiplayer || !this.mqtt) return false;
+    this.levelUpQueue.push(options);
+    this._syncLevelUp();
+    return true;
+  }
+
+  getSelectedUpgradeIds() {
+    return this.levelUpChoices.map((choice) => choice.upgradeId);
+  }
+
+  completeLevelUpChoice(upgradeId) {
+    if (!this.isMultiplayer || !this.mqtt) return false;
+    if (this.levelUpPhase !== 'selecting' || this.levelUpTurnPlayerId !== this.playerId) return true;
+
+    this.levelUpActive = false;
+    this.levelUpChoiceRound = this.levelUpRound;
+    this.levelUpChoiceId = upgradeId;
+    if (this.isRoomHost) {
+      this.levelUpChoices.push({ playerId: this.playerId, upgradeId });
+      this._advanceLevelUpTurn();
+      this._syncLevelUp();
+    } else {
+      this.scene.levelUpUI?.showWaiting();
+    }
+    return true;
+  }
+
+  _getLocalLevelUpCount() {
+    return this.levelUpQueue.length + (this.levelUpActive ? 1 : 0) +
+      (this.scene.runManager?.getPendingLevelUpCount() || 0);
+  }
+
+  _showNextLevelUp() {
+    if (this.levelUpActive || this.levelUpQueue.length === 0) return;
+    this.levelUpActive = true;
+    this.scene.multiplayerWaitingForLevelUp = false;
+    this.scene.levelUpUI?.show(this.levelUpQueue.shift());
+  }
+
+  _advanceLevelUpTurn() {
+    this.levelUpTurnIndex += 1;
+    if (this.levelUpTurnIndex >= this.levelUpTurnOrder.length) {
+      this.levelUpPhase = 'idle';
+      this.levelUpTurnPlayerId = null;
+      return;
+    }
+    this.levelUpTurnPlayerId = this.levelUpTurnOrder[this.levelUpTurnIndex];
+  }
+
+  _syncLevelUp() {
+    if (!this.isMultiplayer || !this.mqtt) return;
+    if (!this.isRoomHost) {
+      if (this.levelUpPhase === 'selecting') {
+        if (this.levelUpTurnPlayerId === this.playerId &&
+          this.levelUpChoiceRound !== this.levelUpRound) {
+          this._showNextLevelUp();
+        } else if (!this.levelUpActive && !this.scene.multiplayerWaitingForLevelUp) {
+          this.scene.levelUpUI?.showWaiting();
+        }
+      } else if (this.scene.multiplayerWaitingForLevelUp) {
+        this.scene.levelUpUI?.finishMultiplayerRound();
+      }
+      return;
+    }
+
+    if (this.levelUpPhase === 'selecting' && this.levelUpTurnPlayerId !== this.playerId) {
+      const remote = this.remotePlayers.get(this.levelUpTurnPlayerId);
+      if (remote?.levelUpChoiceRound === this.levelUpRound && remote.levelUpChoiceId) {
+        this.levelUpChoices.push({ playerId: this.levelUpTurnPlayerId, upgradeId: remote.levelUpChoiceId });
+        this._advanceLevelUpTurn();
+      }
+    }
+
+    const activeRemotes = [...this.remotePlayers.entries()].filter(
+      ([, remote]) => Date.now() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS
+    );
+    if (this.levelUpPhase === 'idle') {
+      const nextRound = this.levelUpRound + 1;
+      const everyoneReady = this.player.runState.level > nextRound &&
+        this._getLocalLevelUpCount() > 0 && activeRemotes.length > 0 &&
+        activeRemotes.every(([, remote]) => remote.level > nextRound && remote.levelUpPendingCount > 0);
+      if (everyoneReady) {
+        this.levelUpRound = nextRound;
+        this.levelUpPhase = 'selecting';
+        this.levelUpTurnOrder = [this.playerId, ...activeRemotes.map(([id]) => id).sort()];
+        this.levelUpTurnIndex = 0;
+        this.levelUpTurnPlayerId = this.levelUpTurnOrder[0];
+        this.levelUpChoices = [];
+      } else if (this.scene.multiplayerWaitingForLevelUp) {
+        this.scene.levelUpUI?.finishMultiplayerRound();
+      }
+    }
+
+    if (this.levelUpPhase === 'selecting') {
+      if (this.levelUpTurnPlayerId === this.playerId) this._showNextLevelUp();
+      else if (this.levelUpTurnPlayerId && !this.scene.multiplayerWaitingForLevelUp) {
+        this.scene.levelUpUI?.showWaiting();
+      }
+    }
   }
 
   sendAttack(attack) {
@@ -204,6 +324,12 @@ export default class MultiplayerManager {
           this.hostRunTimeReceivedAt = Date.now();
           this.hostRunPaused = state.runPaused === true;
         }
+        this.levelUpRound = Number.isFinite(state.levelUpRound) ? state.levelUpRound : 0;
+        this.levelUpPhase = state.levelUpPhase === 'selecting' ? 'selecting' : 'idle';
+        this.levelUpTurnPlayerId = typeof state.levelUpTurnPlayerId === 'string'
+          ? state.levelUpTurnPlayerId : null;
+        this.levelUpChoices = Array.isArray(state.levelUpChoices)
+          ? state.levelUpChoices.filter((choice) => typeof choice?.upgradeId === 'string') : [];
       }
       const maxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : 100;
       const hp = Number.isFinite(state.hp) ? Phaser.Math.Clamp(state.hp, 0, maxHp) : maxHp;
@@ -231,6 +357,9 @@ export default class MultiplayerManager {
           hp,
           maxHp,
           level,
+          levelUpChoiceRound: 0,
+          levelUpChoiceId: null,
+          levelUpPendingCount: 0,
           pauseRequested: false,
           isHost: state.isHost === true,
           healthBar,
@@ -245,6 +374,12 @@ export default class MultiplayerManager {
       remote.hp = hp;
       remote.maxHp = maxHp;
       remote.level = level;
+      remote.levelUpChoiceRound = Number.isFinite(state.levelUpChoiceRound)
+        ? state.levelUpChoiceRound : 0;
+      remote.levelUpChoiceId = typeof state.levelUpChoiceId === 'string'
+        ? state.levelUpChoiceId : null;
+      remote.levelUpPendingCount = Number.isFinite(state.levelUpPendingCount)
+        ? Math.max(0, Math.floor(state.levelUpPendingCount)) : 0;
       remote.pauseRequested = state.pauseRequested === true;
       remote.isHost = state.isHost === true;
       remote.lastSeenAt = Date.now();
@@ -252,6 +387,7 @@ export default class MultiplayerManager {
       const animation = state.moving ? remote.spriteSet.walk : remote.spriteSet.idle;
       if (remote.sprite.anims.currentAnim?.key !== animation) remote.sprite.play(animation);
       this._syncPauseVote();
+      this._syncLevelUp();
     } catch (error) {
       console.warn('[Multiplayer] Mensagem inválida ignorada:', error.message);
     }

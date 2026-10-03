@@ -45,6 +45,10 @@ export default class RunManager {
     return this._pendingLevelUps > 0;
   }
 
+  getPendingLevelUpCount() {
+    return this._pendingLevelUps;
+  }
+
   // Abre a próxima tela de level-up da fila. Público (sem `_`) porque a
   // LevelUpUI chama isto de fora depois de fechar a tela anterior.
   triggerNextLevelUp() {

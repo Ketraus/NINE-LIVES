@@ -98,10 +98,11 @@ export default class LevelUpUI {
     this._applyZoomCompensation(this.container);
     // limite do Restock: 1 uso por level-up (zera só quando um NOVO level-up
     this._restockUsed = false;
+    this._selectedUpgradeId = null;
 
     EventBus.on('level-up', ({ options }) => {
       this._restockUsed = false;
-      this.show(options);
+      if (!this.scene.multiplayer?.queueLevelUp(options)) this.show(options);
     });
     EventBus.on('evolution-ready', ({ evolution }) => this.showEvolution(evolution));
   }
@@ -117,6 +118,10 @@ export default class LevelUpUI {
   }
 
   show(options) {
+    const excludedIds = this.scene.multiplayer?.getSelectedUpgradeIds() || [];
+    const distinctOptions = options.filter((option) => !excludedIds.includes(option.id));
+    if (distinctOptions.length > 0) options = distinctOptions;
+    this._selectedUpgradeId = null;
     this._openOverlay();
 
     const hasRestock = !!this.runManager.runState.hasRestock;
@@ -172,6 +177,29 @@ export default class LevelUpUI {
     }
 
     this.container.setVisible(true);
+  }
+
+  showWaiting() {
+    if (this.scene.multiplayerWaitingForLevelUp) return;
+    this.scene.multiplayerWaitingForLevelUp = true;
+    this._openOverlay();
+    this.container.add(this.scene.add.text(
+      this.scene.scale.width / 2,
+      this.scene.scale.height / 2,
+      'AGUARDANDO OUTRO JOGADOR',
+      { fontSize: '16px', color: '#e8f6ff' }
+    ).setOrigin(0.5).setScrollFactor(0));
+    this.container.setVisible(true);
+  }
+
+  finishMultiplayerRound() {
+    if (!this.container.visible) return;
+    this.scene.multiplayerWaitingForLevelUp = false;
+    this.container.setVisible(false);
+    this.container.removeAll(true);
+    this.scene.physics.resume();
+    this.scene.time.timeScale = 1;
+    EventBus.emit('levelup-closed');
   }
 
   // Calcula o tamanho REAL das cartas nesta tela: começa do tamanho
@@ -831,6 +859,7 @@ export default class LevelUpUI {
 
   _choose(upgrade) {
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
+    this._selectedUpgradeId = upgrade.id;
     // chooseUpgrade() pode, de forma síncrona, emitir 'evolution-ready' e
     const evolutionTriggered = this.runManager.chooseUpgrade(upgrade);
     if (!evolutionTriggered) {
@@ -854,10 +883,16 @@ export default class LevelUpUI {
     // ainda tem level-up na fila (XP de sobra rendeu mais de um nível de
     // uma vez, ver RunState.addXp) — abre o próximo direto, sem retomar o
     // jogo no meio do caminho
-    if (this.runManager.hasPendingLevelUp()) {
+    const hasPendingLevelUp = this.runManager.hasPendingLevelUp();
+    if (hasPendingLevelUp) {
       this.runManager.triggerNextLevelUp();
+    }
+
+    if (this.scene.multiplayer?.completeLevelUpChoice(this._selectedUpgradeId)) {
+      this._selectedUpgradeId = null;
       return;
     }
+    if (hasPendingLevelUp) return;
 
     this.scene.physics.resume();
     this.scene.time.timeScale = 1;
