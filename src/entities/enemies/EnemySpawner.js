@@ -350,29 +350,60 @@ export default class EnemySpawner {
     const bounds = this.mapManager.getWorldBounds();
     const margin = 64; // nunca nasce colado na borda do mapa
     const view = this._currentCameraView();
+    const viewMargin = SPAWN_MARGIN_BEYOND_VIEW;
+    const activeTargets = (this.scene.multiplayer?.getEnemyTargets() ?? [this.player])
+      .filter((target) => target.active && !target.healthSystem?.isDead());
+    const spawnOrigins = activeTargets.map((target) => {
+      if (target === this.player) {
+        return {
+          x: target.x,
+          y: target.y,
+          width: view.width,
+          height: view.height
+        };
+      }
+      return {
+        x: target.x,
+        y: target.y,
+        width: target.cameraViewWidth || view.width,
+        height: target.cameraViewHeight || view.height
+      };
+    });
+    if (spawnOrigins.length === 0) {
+      spawnOrigins.push({ x: this.player.x, y: this.player.y, width: view.width, height: view.height });
+    }
+    const views = spawnOrigins.map(({ x, y, width, height }) => new Phaser.Geom.Rectangle(
+      x - width / 2 - viewMargin,
+      y - height / 2 - viewMargin,
+      width + viewMargin * 2,
+      height + viewMargin * 2
+    ));
     // metade da diagonal da câmera + margem: distância mínima do jogador
-    const minDist = Math.hypot(view.width, view.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW;
     const spreadRad = Phaser.Math.DegToRad(GROUP_SPREAD_DEG);
 
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const origin = spawnOrigins[attempt % spawnOrigins.length];
+      const minDist = Math.hypot(origin.width, origin.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW;
       const angle = baseAngle == null
         ? Phaser.Math.FloatBetween(0, Math.PI * 2)
         : baseAngle + Phaser.Math.FloatBetween(-spreadRad, spreadRad);
-      const x = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * minDist, margin, bounds.width - margin);
-      const y = Phaser.Math.Clamp(this.player.y + Math.sin(angle) * minDist, margin, bounds.height - margin);
+      const x = Phaser.Math.Clamp(origin.x + Math.cos(angle) * minDist, margin, bounds.width - margin);
+      const y = Phaser.Math.Clamp(origin.y + Math.sin(angle) * minDist, margin, bounds.height - margin);
 
-      // se o mapa for pequeno (ou o jogador estiver perto da borda), o
-      if (!view.contains(x, y)) {
+      if (!views.some((playerView) => playerView.contains(x, y))) {
         return { x, y };
       }
     }
 
     // fallback: mapa pequeno demais pra caber um ponto fora da visão em
-    const fallbackDist = Math.min(minDist, Math.hypot(bounds.width, bounds.height) / 2);
+    const fallbackOrigin = spawnOrigins[0];
+    const fallbackMinDist = Math.hypot(fallbackOrigin.width, fallbackOrigin.height) / 2 +
+      SPAWN_MARGIN_BEYOND_VIEW;
+    const fallbackDist = Math.min(fallbackMinDist, Math.hypot(bounds.width, bounds.height) / 2);
     const angle = baseAngle == null ? Phaser.Math.FloatBetween(0, Math.PI * 2) : baseAngle;
     return {
-      x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * fallbackDist, margin, bounds.width - margin),
-      y: Phaser.Math.Clamp(this.player.y + Math.sin(angle) * fallbackDist, margin, bounds.height - margin)
+      x: Phaser.Math.Clamp(fallbackOrigin.x + Math.cos(angle) * fallbackDist, margin, bounds.width - margin),
+      y: Phaser.Math.Clamp(fallbackOrigin.y + Math.sin(angle) * fallbackDist, margin, bounds.height - margin)
     };
   }
 

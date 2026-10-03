@@ -101,6 +101,7 @@ export default class LevelUpUI {
     this._selectedUpgradeId = null;
 
     EventBus.on('level-up', ({ options }) => {
+      if (this.scene.isGameOver || this.scene.hasWon) return;
       this._restockUsed = false;
       if (!this.scene.multiplayer?.queueLevelUp(options)) this.show(options);
     });
@@ -118,6 +119,7 @@ export default class LevelUpUI {
   }
 
   show(options) {
+    if (this.scene.isGameOver || this.scene.hasWon) return;
     const excludedIds = this.scene.multiplayer?.getSelectedUpgradeIds() || [];
     const distinctOptions = options.filter((option) => !excludedIds.includes(option.id));
     if (distinctOptions.length > 0) options = distinctOptions;
@@ -180,7 +182,7 @@ export default class LevelUpUI {
   }
 
   showWaiting() {
-    if (this.scene.multiplayerWaitingForLevelUp) return;
+    if (this.scene.isGameOver || this.scene.hasWon || this.scene.multiplayerWaitingForLevelUp) return;
     this.scene.multiplayerWaitingForLevelUp = true;
     this._openOverlay();
     this.container.add(this.scene.add.text(
@@ -238,6 +240,7 @@ export default class LevelUpUI {
 
   // Tela dedicada de evolução: uma carta só, sem escolha entre opções — s…
   showEvolution(evolution) {
+    if (this.scene.isGameOver || this.scene.hasWon) return;
     this._openOverlay();
 
     // toca assim que a carta evoluída APARECE na tela (o jogador acabou de

@@ -137,6 +137,8 @@ export default class MultiplayerManager {
         shieldMax: this.player.shieldSystem?.maxShield || 0,
         aimX: this.player.getAimDirection().x,
         aimY: this.player.getAimDirection().y,
+        cameraViewWidth: this.scene.cameras.main.width / (this.scene.cameras.main.zoom || 1),
+        cameraViewHeight: this.scene.cameras.main.height / (this.scene.cameras.main.zoom || 1),
         level: this.player.runState.level,
         pauseRequested: this.pauseRequested,
         isHost: this.isRoomHost,
@@ -177,10 +179,18 @@ export default class MultiplayerManager {
   }
 
   queueLevelUp(options) {
-    if (!this.isMultiplayer || !this.mqtt) return false;
+    if (!this.isMultiplayer || !this.mqtt || this.scene.isGameOver || this.scene.hasWon) return false;
     this.levelUpQueue.push(options);
     this._syncLevelUp();
     return true;
+  }
+
+  cancelPendingLevelUps() {
+    this.levelUpQueue.length = 0;
+    this.levelUpActive = false;
+    this.levelUpChoiceIds = [];
+    this.levelUpChoiceRound = this.levelUpRound;
+    this.scene.multiplayerWaitingForLevelUp = false;
   }
 
   getSelectedUpgradeIds() {
@@ -212,14 +222,14 @@ export default class MultiplayerManager {
   }
 
   _showNextLevelUp() {
-    if (this.levelUpActive || this.levelUpQueue.length === 0) return;
+    if (this.scene.isGameOver || this.scene.hasWon || this.levelUpActive || this.levelUpQueue.length === 0) return;
     this.levelUpActive = true;
     this.scene.multiplayerWaitingForLevelUp = false;
     this.scene.levelUpUI?.show(this.levelUpQueue.shift());
   }
 
   _syncLevelUp() {
-    if (!this.isMultiplayer || !this.mqtt) return;
+    if (!this.isMultiplayer || !this.mqtt || this.scene.isGameOver || this.scene.hasWon) return;
     if (!this.isRoomHost) {
       if (this.levelUpPhase === 'selecting') {
         if (this.levelUpQueue.length > 0) {
@@ -377,6 +387,8 @@ export default class MultiplayerManager {
       playerId,
       get x() { return remote.targetX; },
       get y() { return remote.targetY; },
+      get cameraViewWidth() { return remote.cameraViewWidth; },
+      get cameraViewHeight() { return remote.cameraViewHeight; },
       get active() { return remote.hp > 0 && Date.now() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS; },
       get invulnerableUntil() { return remote.invulnerableUntil || 0; },
       set invulnerableUntil(value) { remote.invulnerableUntil = value; },
@@ -683,6 +695,8 @@ export default class MultiplayerManager {
           hp,
           maxHp,
           level,
+          cameraViewWidth: null,
+          cameraViewHeight: null,
           levelUpChoiceRound: 0,
           levelUpChoiceIds: [],
           levelUpPendingCount: 0,
@@ -704,6 +718,10 @@ export default class MultiplayerManager {
       remote.vy = Number.isFinite(state.vy) ? state.vy : 0;
       remote.aimX = Number.isFinite(state.aimX) ? state.aimX : 0;
       remote.aimY = Number.isFinite(state.aimY) ? state.aimY : 1;
+      remote.cameraViewWidth = Number.isFinite(state.cameraViewWidth) && state.cameraViewWidth > 0
+        ? state.cameraViewWidth : null;
+      remote.cameraViewHeight = Number.isFinite(state.cameraViewHeight) && state.cameraViewHeight > 0
+        ? state.cameraViewHeight : null;
       remote.shieldCurrent = Number.isFinite(state.shieldCurrent) ? Math.max(0, state.shieldCurrent) : 0;
       remote.shieldMax = Number.isFinite(state.shieldMax) ? Math.max(0, state.shieldMax) : 0;
       remote.combatant.runState.dodgeChance = Number.isFinite(state.dodgeChance) ? state.dodgeChance : 0;

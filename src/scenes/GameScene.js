@@ -385,6 +385,8 @@ export default class GameScene extends Phaser.Scene {
 
     EventBus.on('player-died', () => {
       this.isGameOver = true;
+      this.runManager.discardPendingLevelUps();
+      this.multiplayer?.cancelPendingLevelUps();
       if (!this.multiplayer?.isMultiplayer || !this.multiplayer.isRoomHost) {
         this.spawnDirector.stop();
       }
