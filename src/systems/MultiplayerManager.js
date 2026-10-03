@@ -280,6 +280,7 @@ export default class MultiplayerManager {
         this.scene.levelUpUI?.showWaiting();
       }
     }
+  }
 
   queueEnemyDamage(networkId, damage) {
     if (this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(networkId) ||
@@ -508,10 +509,16 @@ export default class MultiplayerManager {
     const activeRemotes = [...this.remotePlayers.values()].filter(
       (remote) => now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS
     );
-    const allVoted = activeRemotes.length > 0 && this.pauseRequested &&
+    const hasRemotePlayers = activeRemotes.length > 0;
+    const allVoted = hasRemotePlayers && this.pauseRequested &&
       activeRemotes.every((remote) => remote.pauseRequested);
 
-    if (allVoted && !this.pauseApplied) {
+    if (!hasRemotePlayers && this.pauseRequested) {
+      if (!this.pauseApplied) {
+        this.scene.pauseUI?.open();
+        this.pauseApplied = this.scene.pauseUI?.isOpen === true;
+      }
+    } else if (allVoted && !this.pauseApplied) {
       this.scene.pauseUI?.open();
       this.pauseApplied = this.scene.pauseUI?.isOpen === true;
     } else if (!allVoted && this.pauseApplied) {
@@ -520,7 +527,9 @@ export default class MultiplayerManager {
       this.scene.pauseUI?.close();
     }
 
-    this.scene.pauseUI?.setWaitingForPlayer(this.pauseRequested && !this.pauseApplied);
+    this.scene.pauseUI?.setWaitingForPlayer(
+      hasRemotePlayers && this.pauseRequested && !this.pauseApplied
+    );
   }
 
   _syncHostPause() {
