@@ -1,6 +1,7 @@
 import MqttClient from './MqttClient.js';
 import { BASE_VISUAL_SCALE } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
+import DamageNumberManager from '../combat/DamageNumberManager.js';
 import EventBus from './EventBus.js';
 
 const POSITION_INTERVAL_MS = 100;
@@ -322,8 +323,22 @@ export default class MultiplayerManager {
       const damage = Phaser.Math.Clamp(hit[1], 0, MAX_DAMAGE_PER_MESSAGE);
       if (!enemy || damage <= 0) return;
       enemy.killerPlayerId = playerId;
-      enemy.healthSystem.takeDamage(damage);
+      const hitX = enemy.x;
+      const hitY = enemy.y;
+      const appliedDamage = enemy.healthSystem.takeDamage(damage);
+      if (appliedDamage <= 0) return;
+      DamageNumberManager.show(this.scene, hitX, hitY, appliedDamage, enemy);
+      enemy.playHitReaction();
+      this.scene.sound.play(this._hitSfxKey(enemy), { volume: 0.5 });
     });
+  }
+
+  _hitSfxKey(enemy) {
+    if (enemy.def?.boss) {
+      const keys = ['sfx_minotaur_hit1', 'sfx_minotaur_hit2', 'sfx_minotaur_hit3'];
+      return keys[Math.floor(Math.random() * keys.length)];
+    }
+    return enemy.def?.elite ? 'sfx_elite_hit' : 'sfx_hit';
   }
 
   _sendPlayerDamage(playerId, amount) {
