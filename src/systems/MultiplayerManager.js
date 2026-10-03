@@ -380,6 +380,7 @@ export default class MultiplayerManager {
     };
 
     return {
+      playerId,
       get x() { return remote.targetX; },
       get y() { return remote.targetY; },
       get active() { return remote.hp > 0 && Date.now() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS; },
@@ -413,7 +414,12 @@ export default class MultiplayerManager {
         Math.round(enemy.y),
         Math.round(enemy.healthSystem.current * 10),
         enemy.flipX ? 1 : 0,
-        enemy.body?.velocity.lengthSq() > 0 ? 1 : 0
+        enemy.body?.velocity.lengthSq() > 0 ? 1 : 0,
+        enemy.def.sealer ? enemy.arenaCenter?.x ?? null : null,
+        enemy.def.sealer ? enemy.arenaCenter?.y ?? null : null,
+        enemy.def.sealer ? enemy.arenaRadius ?? null : null,
+        enemy.def.sealer ? enemy.arenaProgress ?? null : null,
+        enemy.def.sealer ? enemy.arenaTargetPlayerId ?? null : null
       ]);
     this.mqtt.publish(this.enemyStateTopic, {
       seq: ++this.lastEnemySnapshotSequence,
@@ -429,7 +435,8 @@ export default class MultiplayerManager {
 
     snapshot.enemies.slice(0, MAX_SYNCED_ENEMIES).forEach((entry) => {
       if (!Array.isArray(entry) || entry.length < 7) return;
-      const [networkId, defIndex, x, y, hpTenths, flipX, moving] = entry;
+      const [networkId, defIndex, x, y, hpTenths, flipX, moving,
+        arenaCenterX, arenaCenterY, arenaRadius, arenaProgress, arenaTargetPlayerId] = entry;
       if (!Number.isInteger(networkId) || networkId <= 0 ||
         !Number.isInteger(defIndex) || !defs[defIndex] ||
         ![x, y, hpTenths].every(Number.isFinite)) return;
@@ -451,6 +458,15 @@ export default class MultiplayerManager {
       enemy.setFlipX(flipX === 1);
       enemy._wantsToMove = moving === 1;
       enemy.updateAnimState();
+      if (enemy.def.sealer) {
+        enemy.syncArenaVisual?.(
+          arenaCenterX,
+          arenaCenterY,
+          arenaRadius,
+          arenaProgress,
+          arenaTargetPlayerId
+        );
+      }
     });
 
     this.remoteEnemies.forEach((enemy, networkId) => {

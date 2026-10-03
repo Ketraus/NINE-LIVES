@@ -10,6 +10,9 @@ export default class Sealer extends Enemy {
     this.body.setImmovable(true);
     this.arenaCenter = null;
     this.arenaBirthMs = null;
+    this.arenaTargetPlayerId = null;
+    this.arenaRadius = null;
+    this.arenaProgress = 0;
     this.arenaGraphics = null;
     this.arenaNextCrushTickAt = 0;
     // Movimento em "rajadas" (ver _updateSealerMovement/_decideSealerMoveDi…
@@ -35,6 +38,9 @@ export default class Sealer extends Enemy {
 
   // Sealer (def.sealer = true): forma uma arena circular fixa no mundo,
   _updateArena(target, nowMs, speedMultiplier = 1) {
+    this.arenaTargetPlayerId = target === this.scene.player
+      ? this.scene.multiplayer?.playerId ?? null
+      : target.playerId ?? null;
     if (!this.arenaCenter) {
       // nasce agora: centro fixo = onde o jogador estava neste instante
       this.arenaCenter = { x: target.x, y: target.y };
@@ -46,6 +52,8 @@ export default class Sealer extends Enemy {
       (nowMs - this.arenaBirthMs) / this.def.arenaShrinkDurationMs, 0, 1
     );
     const radius = Phaser.Math.Linear(this.def.arenaStartRadius, this.def.arenaMinRadius, t);
+    this.arenaRadius = radius;
+    this.arenaProgress = t;
     this._drawArena(radius, t);
 
     // Foge da horda (nunca do jogador — é assim que ele fica mais fácil
@@ -127,6 +135,7 @@ export default class Sealer extends Enemy {
 
   // Empurra `body` (jogador ou outro inimigo) de volta pra dentro do
   _containWithinArena(body, radius) {
+    if (typeof body.setPosition !== 'function') return;
     const dx = body.x - this.arenaCenter.x;
     const dy = body.y - this.arenaCenter.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -135,9 +144,23 @@ export default class Sealer extends Enemy {
     body.setPosition(this.arenaCenter.x + dx * scale, this.arenaCenter.y + dy * scale);
   }
 
+  syncArenaVisual(centerX, centerY, radius, progress, targetPlayerId) {
+    if (![centerX, centerY, radius, progress].every(Number.isFinite)) return;
+    this.arenaCenter = { x: centerX, y: centerY };
+    this.arenaTargetPlayerId = typeof targetPlayerId === 'string' ? targetPlayerId : null;
+    this.arenaRadius = radius;
+    this.arenaProgress = Phaser.Math.Clamp(progress, 0, 1);
+    if (!this.arenaGraphics) this.arenaGraphics = this.scene.add.graphics().setDepth(4);
+    this._drawArena(this.arenaRadius, this.arenaProgress);
+    if (this.arenaTargetPlayerId === this.scene.multiplayer?.playerId) {
+      this._containWithinArena(this.scene.player, this.arenaRadius);
+    }
+  }
+
   // Desenha o anel da arena — vai de um roxo frio (recém-aberta) pra um
   _drawArena(radius, t) {
     const g = this.arenaGraphics;
+    if (!g || !this.arenaCenter) return;
     g.clear();
     const color = Phaser.Display.Color.Interpolate.ColorWithColor(
       new Phaser.Display.Color(0x9b, 0x30, 0xff),
