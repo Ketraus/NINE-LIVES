@@ -176,8 +176,8 @@ export default class MultiplayerManager {
       );
     });
     this._syncPauseVote();
-<<<<<<< HEAD
     this._syncLevelUp();
+    this._syncHostPause();
   }
 
   queueLevelUp(options) {
@@ -280,9 +280,6 @@ export default class MultiplayerManager {
         this.scene.levelUpUI?.showWaiting();
       }
     }
-=======
-    this._syncHostPause();
-  }
 
   queueEnemyDamage(networkId, damage) {
     if (this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(networkId) ||
@@ -460,7 +457,6 @@ export default class MultiplayerManager {
       enemy._leave();
       this.remoteEnemies.delete(networkId);
     });
->>>>>>> 517a7a23f2726a2a50394e5485b07a04bb1cef7e
   }
 
   sendAttack(attack) {
