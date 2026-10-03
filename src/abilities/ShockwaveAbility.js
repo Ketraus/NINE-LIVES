@@ -19,6 +19,7 @@ export default class ShockwaveAbility {
     this.evolved = false;
     this.explosionRadius = 0;
     this.explosionDamageFraction = 0;
+    this.networkBursts = [];
   }
 
   // Chamado pela evolução Blastix (upgradeAbility, não unlockAbility — ver
@@ -80,6 +81,9 @@ export default class ShockwaveAbility {
   }
 
   _showExplosionFx(scene, x, y) {
+    this.networkBursts.push({ kind: 'circle', x, y, radius: this.explosionRadius,
+      color: BLASTIX_EXPLOSION_COLOR, alpha: 0.35, scaleFrom: 1, scaleTo: 1.3,
+      startAt: scene.time.now, endAt: scene.time.now + 220 });
     const fx = scene.add
       .circle(x, y, this.explosionRadius, BLASTIX_EXPLOSION_COLOR, 0.35)
       .setBlendMode(Phaser.BlendModes.ADD)

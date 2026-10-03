@@ -22,6 +22,7 @@ export default class SlamAbility {
     this.shockwaveDamageFraction = 0;
     this.shockwaveKnockback = 0;
     this.shockwaveDelayMs = 0;
+    this.networkBursts = [];
   }
 
   // Chamado a cada cópia extra da carta "Pancada Sísmica" (até 4, ver
@@ -69,6 +70,9 @@ export default class SlamAbility {
 
   // Onda circular simples se expandindo a partir do jogador.
   _showFx(scene, player, radius) {
+    this.networkBursts.push({ kind: 'circle', x: player.x, y: player.y, radius,
+      color: 0xff5555, alpha: 0.28, scaleFrom: 1, scaleTo: 1.3,
+      startAt: scene.time.now, endAt: scene.time.now + 220 });
     const fx = scene.add
       .circle(player.x, player.y, radius, 0xff5555, 0.28)
       .setDepth(19);
@@ -115,6 +119,9 @@ export default class SlamAbility {
 
   // Segunda fase visual do Terremoto: anel alaranjado se expandindo bem
   _showShockwaveFx(scene, player, radius) {
+    this.networkBursts.push({ kind: 'circle', x: player.x, y: player.y, radius,
+      color: TERREMOTO_SHOCKWAVE_COLOR, alpha: 0.24, scaleFrom: 0.2, scaleTo: 1,
+      startAt: scene.time.now, endAt: scene.time.now + 340 });
     const wave = scene.add
       .circle(player.x, player.y, radius, TERREMOTO_SHOCKWAVE_COLOR, 0.24)
       .setDepth(18)

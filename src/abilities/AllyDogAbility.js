@@ -49,6 +49,7 @@ export default class AllyDogAbility {
     this.lastCannonMs = 0;
     this.flameZones = []; // { x, y, spawnMs, lastTickMs, fx }
     this.grenadesInFlight = []; // { fx, startX, startY, targetX, targetY, startMs, durationMs }
+    this.networkBursts = [];
     this.recentTargets = new Map(); // enemy -> timestamp do último ataque (só usado com evoDef, ver _findNe…
   }
 
@@ -209,6 +210,10 @@ export default class AllyDogAbility {
     const baseAngle = aim.angle();
     const tint = this.evoDef.swordTint ?? 0x1b2a6b;
     const g = scene.add.graphics({ x: this.dog.x, y: this.dog.y }).setDepth(20);
+    const duration = this.evoDef.swordFxDurationMs ?? 200;
+    this.networkBursts.push({ kind: 'sector', x: this.dog.x, y: this.dog.y,
+      radius: range, angle: baseAngle, halfAngle, color: tint, alpha: 0.55,
+      startAt: scene.time.now, endAt: scene.time.now + duration });
 
     g.fillStyle(tint, 0.55);
     g.slice(0, 0, range, baseAngle - halfArc, baseAngle + halfArc, false);
@@ -224,7 +229,7 @@ export default class AllyDogAbility {
       alpha: 0,
       scaleX: 1.15,
       scaleY: 1.15,
-      duration: this.evoDef.swordFxDurationMs ?? 200,
+      duration,
       ease: 'Cubic.easeOut',
       onComplete: () => g.destroy()
     });
@@ -271,6 +276,10 @@ export default class AllyDogAbility {
   // Visual do laser: um traço grosso roxo bem escuro por baixo (glow) e um
   _showCannonFx(scene, x1, y1, x2, y2) {
     const g = scene.add.graphics().setDepth(21);
+    const duration = this.evoDef.cannonFxDurationMs ?? CANNON_BEAM_DURATION_MS;
+    this.networkBursts.push({ kind: 'line', x1, y1, x2, y2,
+      color: CANNON_COLOR_CORE, width: this.evoDef.cannonWidth * 2,
+      startAt: scene.time.now, endAt: scene.time.now + duration });
 
     g.lineStyle(this.evoDef.cannonWidth * 2, CANNON_COLOR_OUTER, 0.85);
     g.beginPath();
@@ -291,7 +300,7 @@ export default class AllyDogAbility {
     scene.tweens.add({
       targets: [g, muzzleFlash],
       alpha: 0,
-      duration: this.evoDef.cannonFxDurationMs ?? CANNON_BEAM_DURATION_MS,
+      duration,
       ease: 'Cubic.easeOut',
       onComplete: () => {
         g.destroy();

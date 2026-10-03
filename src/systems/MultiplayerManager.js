@@ -151,7 +151,8 @@ export default class MultiplayerManager {
         levelUpPhase: this.isRoomHost ? this.levelUpPhase : undefined,
         levelUpChoices: this.isRoomHost ? this.levelUpChoices : undefined,
         levelUpChoiceRound: this.levelUpChoiceRound,
-        levelUpChoiceIds: this.levelUpChoiceIds
+        levelUpChoiceIds: this.levelUpChoiceIds,
+        abilityVisuals: this.scene.abilityManager?.getNetworkVisualState(this.scene.time.now) ?? null
       });
     }
 
@@ -419,6 +420,135 @@ export default class MultiplayerManager {
       getAimDirection() { return { x: remote.aimX || 0, y: remote.aimY || 1 }; },
       applyKnockback() {}
     };
+  }
+
+  _syncRemoteAbilityVisuals(remote, visuals) {
+    if (!visuals || typeof visuals !== 'object') visuals = {};
+    if (!remote.abilityGraphics) remote.abilityGraphics = this.scene.add.graphics().setDepth(18);
+    if (!remote.abilitySprites) remote.abilitySprites = new Map();
+
+    const graphics = remote.abilityGraphics;
+    graphics.clear();
+    (Array.isArray(visuals.circles) ? visuals.circles : []).forEach((circle) => {
+      if (![circle.x, circle.y, circle.radius, circle.color].every(Number.isFinite)) return;
+      const scale = Number.isFinite(circle.scale) ? Math.max(0, circle.scale) : 1;
+      graphics.fillStyle(circle.color, Phaser.Math.Clamp(circle.alpha ?? 0.3, 0, 1));
+      graphics.fillCircle(circle.x, circle.y, circle.radius * scale);
+      if (Number.isFinite(circle.strokeWidth) && circle.strokeWidth > 0) {
+        graphics.lineStyle(circle.strokeWidth, circle.color, Phaser.Math.Clamp(circle.strokeAlpha ?? 0.7, 0, 1));
+        graphics.strokeCircle(circle.x, circle.y, circle.radius * scale);
+      }
+    });
+
+    (Array.isArray(visuals.lines) ? visuals.lines : []).forEach((line) => {
+      if (![line.x1, line.y1, line.x2, line.y2, line.color, line.width].every(Number.isFinite)) return;
+      graphics.lineStyle(Math.max(1, line.width), line.color, Phaser.Math.Clamp(line.alpha ?? 1, 0, 1));
+      graphics.beginPath();
+      graphics.moveTo(line.x1, line.y1);
+      graphics.lineTo(line.x2, line.y2);
+      graphics.strokePath();
+    });
+
+    (Array.isArray(visuals.sectors) ? visuals.sectors : []).forEach((sector) => {
+      if (![sector.x, sector.y, sector.radius, sector.angle, sector.halfAngle, sector.color]
+        .every(Number.isFinite)) return;
+      graphics.fillStyle(sector.color, Phaser.Math.Clamp(sector.alpha ?? 0.5, 0, 1));
+      graphics.slice(sector.x, sector.y, sector.radius,
+        sector.angle - sector.halfAngle, sector.angle + sector.halfAngle, false);
+      graphics.fillPath();
+    });
+
+    const spriteStates = Array.isArray(visuals.sprites) ? visuals.sprites : [];
+    const projectileStates = Array.isArray(visuals.projectiles) ? visuals.projectiles : [];
+    const liveSpriteIds = new Set([
+      ...spriteStates.map((sprite) => sprite.id),
+      ...projectileStates.filter((projectile) => projectile.kind === 'wave').map((projectile) => projectile.id)
+    ]);
+    spriteStates.forEach((spriteState) => {
+      if (typeof spriteState.id !== 'string' || typeof spriteState.texture !== 'string' ||
+        !this.scene.textures.exists(spriteState.texture) ||
+        ![spriteState.x, spriteState.y].every(Number.isFinite)) return;
+      liveSpriteIds.add(spriteState.id);
+      let sprite = remote.abilitySprites.get(spriteState.id);
+      if (!sprite) {
+        sprite = this.scene.add.sprite(spriteState.x, spriteState.y, spriteState.texture).setDepth(17);
+        remote.abilitySprites.set(spriteState.id, sprite);
+      }
+      sprite.setTexture(spriteState.texture).setPosition(spriteState.x, spriteState.y)
+        .setRotation(Number.isFinite(spriteState.rotation) ? spriteState.rotation : 0)
+        .setScale(
+          Number.isFinite(spriteState.scaleX) ? spriteState.scaleX : 1,
+          Number.isFinite(spriteState.scaleY) ? spriteState.scaleY : 1
+        )
+        .setFlipX(spriteState.flipX === true)
+        .setAlpha(Phaser.Math.Clamp(spriteState.alpha ?? 1, 0, 1));
+      if (Number.isInteger(spriteState.tint)) sprite.setTint(spriteState.tint);
+      else sprite.clearTint();
+      if (typeof sprite.play === 'function' && typeof spriteState.animation === 'string' &&
+        sprite.anims?.currentAnim?.key !== spriteState.animation &&
+        this.scene.anims.exists(spriteState.animation)) {
+        sprite.play(spriteState.animation);
+      }
+    });
+    remote.abilitySprites.forEach((sprite, id) => {
+      if (liveSpriteIds.has(id)) return;
+      sprite.destroy();
+      remote.abilitySprites.delete(id);
+    });
+
+    projectileStates.forEach((projectileState) => {
+      if (typeof projectileState.id !== 'string' ||
+        ![projectileState.x, projectileState.y].every(Number.isFinite)) return;
+      if (projectileState.kind === 'wave' && this.scene.textures.exists('hit_fx')) {
+        let projectile = remote.abilitySprites.get(projectileState.id);
+        if (!projectile) {
+          projectile = this.scene.add.image(projectileState.x, projectileState.y, 'hit_fx').setDepth(16);
+          remote.abilitySprites.set(projectileState.id, projectile);
+        }
+        projectile.setPosition(projectileState.x, projectileState.y)
+          .setRotation(Number.isFinite(projectileState.rotation) ? projectileState.rotation : 0)
+          .setScale(projectileState.scaleX || 1, projectileState.scaleY || 1)
+          .setAlpha(Phaser.Math.Clamp(projectileState.alpha ?? 0.85, 0, 1))
+          .setTint(Number.isInteger(projectileState.color) ? projectileState.color : 0xffb199);
+        return;
+      }
+      if (projectileState.kind === 'shuriken') {
+        const radius = projectileState.radius || 9;
+        const angle = projectileState.rotation || 0;
+        const tint = projectileState.color;
+        const points = [0, 1, 2, 3].map((index) => {
+          const a = angle + index * Math.PI / 2;
+          return { x: projectileState.x + Math.cos(a) * radius, y: projectileState.y + Math.sin(a) * radius };
+        });
+        graphics.fillStyle(tint, Phaser.Math.Clamp(projectileState.alpha ?? 1, 0, 1));
+        graphics.fillTriangle(points[0].x, points[0].y, projectileState.x, projectileState.y - 2,
+          projectileState.x + 2, projectileState.y);
+        graphics.fillTriangle(points[1].x, points[1].y, projectileState.x + 2, projectileState.y,
+          projectileState.x, projectileState.y + 2);
+        graphics.fillTriangle(points[2].x, points[2].y, projectileState.x, projectileState.y + 2,
+          projectileState.x - 2, projectileState.y);
+        graphics.fillTriangle(points[3].x, points[3].y, projectileState.x - 2, projectileState.y,
+          projectileState.x, projectileState.y - 2);
+        return;
+      }
+      const radius = Number.isFinite(projectileState.radius) ? projectileState.radius : 5;
+      graphics.fillStyle(projectileState.color, Phaser.Math.Clamp(projectileState.alpha ?? 0.9, 0, 1));
+      graphics.fillCircle(projectileState.x, projectileState.y, radius);
+      if (projectileState.kind === 'bolt') {
+        const length = Math.max(8, radius * 2.5);
+        graphics.lineStyle(Math.max(2, radius * 0.55), projectileState.color, 0.9);
+        graphics.beginPath();
+        graphics.moveTo(projectileState.x, projectileState.y);
+        graphics.lineTo(projectileState.x - Math.cos(projectileState.rotation || 0) * length,
+          projectileState.y - Math.sin(projectileState.rotation || 0) * length);
+        graphics.strokePath();
+      }
+    });
+    remote.abilitySprites.forEach((sprite, id) => {
+      if (liveSpriteIds.has(id)) return;
+      sprite.destroy();
+      remote.abilitySprites.delete(id);
+    });
   }
 
   _publishEnemySnapshot() {
@@ -718,6 +848,9 @@ export default class MultiplayerManager {
           level,
           cameraViewWidth: null,
           cameraViewHeight: null,
+          abilityGraphics: null,
+          abilitySprites: new Map(),
+          abilityVisuals: null,
           levelUpChoiceRound: 0,
           levelUpChoiceIds: [],
           levelUpPendingCount: 0,
@@ -758,10 +891,12 @@ export default class MultiplayerManager {
         ? Math.max(0, Math.floor(state.levelUpPendingCount)) : 0;
       remote.pauseRequested = state.pauseRequested === true;
       remote.isHost = state.isHost === true;
+      remote.abilityVisuals = state.abilityVisuals;
       remote.lastSeenAt = Date.now();
       remote.sprite.setFlipX(Boolean(state.flipX));
       const animation = state.moving ? remote.spriteSet.walk : remote.spriteSet.idle;
       if (remote.sprite.anims.currentAnim?.key !== animation) remote.sprite.play(animation);
+      this._syncRemoteAbilityVisuals(remote, remote.abilityVisuals);
       this._syncPauseVote();
       this._syncLevelUp();
     } catch (error) {
@@ -880,6 +1015,8 @@ export default class MultiplayerManager {
     remote.sprite.destroy();
     remote.healthBar.destroy();
     remote.levelLabel.destroy();
+    remote.abilityGraphics?.destroy();
+    remote.abilitySprites?.forEach((sprite) => sprite.destroy());
   }
 
   destroy() {
