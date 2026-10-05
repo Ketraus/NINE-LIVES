@@ -1,5 +1,6 @@
 import DamageSystem from '../combat/DamageSystem.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
+import { hasCyberusLaserFx, playCyberusLaser, spawnCyberusLaserHitFx } from '../fx/CyberusLaserFx.js';
 
 // o corte azul do Cyberus é desenhado maior que o alcance real do golpe
 const CYBERUS_SLASH_SCALE = 1.3;
@@ -284,20 +285,29 @@ export default class AllyDogAbility {
       if (distToBeam > this.evoDef.cannonWidth) return;
 
       // sem `source`: dano do Cyberus, mesmo motivo da granada/espada não
-      DamageSystem.applyWeaponHit(enemy, this.evoDef.cannonDamage, undefined, time, {
+      const hit = DamageSystem.applyWeaponHit(enemy, this.evoDef.cannonDamage, undefined, time, {
         kind: 'ability',
         color: CANNON_COLOR_CORE
       });
+      if (hit && hasCyberusLaserFx(scene)) spawnCyberusLaserHitFx(scene, enemy.x, enemy.y);
     });
   }
 
   // Visual do laser: um traço grosso roxo bem escuro por baixo (glow) e um
   _showCannonFx(scene, x1, y1, x2, y2) {
-    const g = scene.add.graphics().setDepth(21);
     const duration = this.evoDef.cannonFxDurationMs ?? CANNON_BEAM_DURATION_MS;
     this.networkBursts.push({ kind: 'line', x1, y1, x2, y2,
       color: CANNON_COLOR_CORE, width: this.evoDef.cannonWidth * 2,
       startAt: scene.time.now, endAt: scene.time.now + duration });
+
+    // feixe animado com sprite (fluxo de energia, estouro e pulso)
+    if (hasCyberusLaserFx(scene)) {
+      playCyberusLaser(scene, x1, y1, x2, y2, this.evoDef.cannonWidth);
+      return;
+    }
+
+    // fallback (sprite não carregou): traço desenhado por código
+    const g = scene.add.graphics().setDepth(21);
 
     g.lineStyle(this.evoDef.cannonWidth * 2, CANNON_COLOR_OUTER, 0.85);
     g.beginPath();
