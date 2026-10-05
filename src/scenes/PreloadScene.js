@@ -1,3 +1,4 @@
+import { loadSlashSheets, createSlashAnimations } from '../fx/SlashFx.js';
 import cardArtIds from '../../data/cardArt.js';
 import AssetManager from '../systems/AssetManager.js';
 
@@ -120,6 +121,8 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('laser_green', 'assets/fx/laser_green.png');
     this.load.image('laser_purple', 'assets/fx/laser_purple.png');
     this.load.image('laser_blue', 'assets/fx/laser_blue.png');
+    // cortes animados (katana branco, Dança de Cortes vermelho, Cyberus azul)
+    loadSlashSheets(this);
 
     // salvar em assets/music/
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
@@ -268,6 +271,7 @@ export default class PreloadScene extends Phaser.Scene {
 
   create() {
     AssetManager.createAnimations(this);
+    createSlashAnimations(this);
 
     // as artes das cartas de arma não são pixel art, então usam filtro
     const smoothKeys = ['card_fists', 'card_katana', 'card_pistol']

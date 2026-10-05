@@ -1,4 +1,8 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
+
+// o corte azul do Cyberus é desenhado maior que o alcance real do golpe
+const CYBERUS_SLASH_SCALE = 1.3;
 import AllyDog from '../entities/AllyDog.js';
 
 const FOLLOW_STOP_DIST = 50; // não fica colado no jogador, dá um respiro visual
@@ -209,12 +213,26 @@ export default class AllyDogAbility {
   _showSwordFx(scene, aim, range, halfArc) {
     const baseAngle = aim.angle();
     const tint = this.evoDef.swordTint ?? 0x1b2a6b;
-    const g = scene.add.graphics({ x: this.dog.x, y: this.dog.y }).setDepth(20);
     const duration = this.evoDef.swordFxDurationMs ?? 200;
+    // o burst de rede (sector) continua igual pros outros jogadores
     this.networkBursts.push({ kind: 'sector', x: this.dog.x, y: this.dog.y,
-      radius: range, angle: baseAngle, halfAngle, color: tint, alpha: 0.55,
+      radius: range, angle: baseAngle, halfAngle: halfArc, color: tint, alpha: 0.55,
       startAt: scene.time.now, endAt: scene.time.now + duration });
 
+    if (hasSlashFx(scene, 'blue')) {
+      playSlashFx(scene, {
+        x: this.dog.x,
+        y: this.dog.y,
+        angle: baseAngle,
+        range: range * CYBERUS_SLASH_SCALE,
+        variant: 'blue',
+        durationMs: duration
+      });
+      return;
+    }
+
+    // fallback (sprites não carregaram): fatia desenhada por código
+    const g = scene.add.graphics({ x: this.dog.x, y: this.dog.y }).setDepth(20);
     g.fillStyle(tint, 0.55);
     g.slice(0, 0, range, baseAngle - halfArc, baseAngle + halfArc, false);
     g.fillPath();

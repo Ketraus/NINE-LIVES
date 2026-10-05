@@ -1,4 +1,5 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 
 // Fração do dano principal que cada acerto "avulso" da evolução "Corte
 const STRAY_DAMAGE_FRACTION = 0.5;
@@ -63,7 +64,10 @@ export default class Weapon {
           fxDurationMultiplier: style.fxDurationMultiplier,
           knockbackMultiplier: style.knockbackMultiplier,
           cameraShakeMultiplier: style.cameraShakeMultiplier,
-          isFinisher
+          isFinisher,
+          // alterna o sentido do corte a cada golpe do combo
+          flipSwing: i % 2 === 1,
+          slashVariant: isDance ? 'red' : 'white'
         });
       };
 
@@ -125,7 +129,9 @@ export default class Weapon {
       arcDegrees,
       tint: options.tint ?? this.def.fxTint ?? 0xffffff,
       durationMs: (this.def.fxDurationMs ?? 150) * (options.fxDurationMultiplier ?? 1),
-      finisher: !!options.isFinisher
+      finisher: !!options.isFinisher,
+      variant: useSwordFx ? (options.slashVariant ?? 'white') : undefined,
+      flip: !!options.flipSwing
     });
 
     let landedHit = false;
@@ -233,6 +239,21 @@ export default class Weapon {
 
   // Visual da katana: um corte em arco de verdade — uma fatia desenhada
   _showSwordSwingFx(scene, player, aim, range, halfArc, options = {}) {
+    const variant = options.slashVariant ?? 'white';
+    if (hasSlashFx(scene, variant)) {
+      playSlashFx(scene, {
+        x: player.x,
+        y: player.y,
+        angle: aim.angle(),
+        range,
+        variant,
+        durationMs: (this.def.fxDurationMs ?? 200) * (options.fxDurationMultiplier ?? 1),
+        flip: !!options.flipSwing
+      });
+      return;
+    }
+
+    // fallback (sprites não carregaram): fatia desenhada por código
     const baseAngle = aim.angle();
     const tint = options.tint ?? this.def.fxTint ?? 0xcfe8ff;
     const durationMult = options.fxDurationMultiplier ?? 1;

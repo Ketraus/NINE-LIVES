@@ -1,6 +1,7 @@
 import MqttClient from './MqttClient.js';
 import { BASE_VISUAL_SCALE } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
+import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
 import EventBus from './EventBus.js';
 
@@ -1142,6 +1143,18 @@ export default class MultiplayerManager {
       Number.isFinite(attack.arcDegrees) ? Phaser.Math.Clamp(attack.arcDegrees, 10, 180) : 100
     ) / 2;
     const finisher = attack.finisher === true;
+    if (hasSlashFx(this.scene, attack.variant)) {
+      playSlashFx(this.scene, {
+        x: attack.x,
+        y: attack.y,
+        angle,
+        range,
+        variant: attack.variant,
+        durationMs: duration * (finisher ? 1.6 : 1),
+        flip: attack.flip === true
+      });
+      return;
+    }
     const swing = this.scene.add.graphics({ x: attack.x, y: attack.y }).setDepth(20);
     swing.fillStyle(tint, finisher ? 0.65 : 0.5);
     swing.slice(0, 0, range, angle - halfArc, angle + halfArc, false);
