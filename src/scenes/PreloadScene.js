@@ -1,6 +1,7 @@
 import { loadSlashSheets, createSlashAnimations } from '../fx/SlashFx.js';
 import { createCyberusLaserTextures } from '../fx/CyberusLaserFx.js';
 import { loadTornadoSheet, createTornadoAnimation } from '../fx/TornadoFx.js';
+import { loadAuraShockSheet, createAuraShockAnimation } from '../fx/AuraShockFx.js';
 import cardArtIds from '../../data/cardArt.js';
 import AssetManager from '../systems/AssetManager.js';
 
@@ -129,6 +130,8 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('cyberus_laser', 'assets/fx/cyberus_laser.png');
     // funil animado do Tornado (4 frames 32x32)
     loadTornadoSheet(this);
+    // anel de raios da Sobrecarga (4 frames 32x32)
+    loadAuraShockSheet(this);
 
     // salvar em assets/music/
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
@@ -280,6 +283,7 @@ export default class PreloadScene extends Phaser.Scene {
     createSlashAnimations(this);
     createCyberusLaserTextures(this);
     createTornadoAnimation(this);
+    createAuraShockAnimation(this);
 
     // as artes das cartas de arma não são pixel art, então usam filtro
     const smoothKeys = ['card_fists', 'card_katana', 'card_pistol']

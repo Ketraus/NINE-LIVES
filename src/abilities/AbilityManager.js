@@ -153,7 +153,7 @@ export default class AbilityManager {
 
       if (ability.fx && ability.constructor.name === 'AuraShockAbility') {
         visuals.circles.push({ id: `${id}-aura`, x: ability.fx.x, y: ability.fx.y,
-          radius: ability.def.radius, color: 0xffe066,
+          radius: ability.def.radius, color: 0x66e6ff,
           alpha: (ability.fx.fillAlpha ?? 0.1) * ability.fx.alpha,
           strokeWidth: 2, strokeAlpha: 0.65, scale: ability.fx.scaleX });
       }

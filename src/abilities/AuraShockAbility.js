@@ -1,7 +1,8 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import { hasAuraShockFx, createAuraShockFx, updateAuraShockFx, zapAuraShockFx } from '../fx/AuraShockFx.js';
 
 // Amarelo elétrico — remete a "choque"/"sobrecarga" sem repetir o verde…
-const AURA_COLOR = 0xffe066;
+const AURA_COLOR = 0x66e6ff;
 
 // Habilidade exclusiva da evolução "Sobrecarga" (Pelo Condutor evoluída,
 export default class AuraShockAbility {
@@ -11,6 +12,7 @@ export default class AuraShockAbility {
     this.fx = null;
     // multiplicador do "aperto" ao acertar, por cima da escala do jogador
     this._pulseMultiplier = 1;
+    this._fxLastMs = null;
   }
 
   update(time, player, enemyGroup, scene) {
@@ -20,6 +22,9 @@ export default class AuraShockAbility {
     this.fx.setVisible(!player.isDead);
     // acompanha o tamanho atual do jogador (setScale em Player.applySize —
     this.fx.setScale(player.scale * this._pulseMultiplier);
+    const dt = this._fxLastMs === null ? 16 : time - this._fxLastMs;
+    this._fxLastMs = time;
+    updateAuraShockFx(this.fx, time, dt); // no-op no visual de fallback (círculo)
     if (player.isDead) return; // morto não eletrocuta ninguém
 
     if (time - this.lastTickMs >= this.def.tickIntervalMs) {
@@ -32,6 +37,7 @@ export default class AuraShockAbility {
     // raio de detecção também precisa crescer junto com o jogador, senão
     const effectiveRadius = this.def.radius * player.scale;
     let hitSomeone = false;
+    const hitEnemies = [];
     // snapshot: mesma razão do fix em SlamAbility/TornadoAbility/Weapon
     enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
@@ -39,14 +45,24 @@ export default class AuraShockAbility {
       if (dist <= effectiveRadius) {
         DamageSystem.applyWeaponHit(enemy, this.def.damage, player, time, { kind: 'ability', color: AURA_COLOR });
         hitSomeone = true;
+        hitEnemies.push(enemy);
       }
     });
-    if (hitSomeone) this._pulse();
+    if (hitSomeone) {
+      this._pulse();
+      zapAuraShockFx(this.fx, hitEnemies);
+    }
   }
 
   // Anelzinho fino ao redor do jogador, com uma respiração leve de alpha.
   _createFx(scene) {
     const radius = this.def.radius;
+    // sprite animado + raios por código; o círculo abaixo é só fallback
+    // caso a folha não tenha carregado
+    if (hasAuraShockFx(scene)) {
+      this.fx = createAuraShockFx(scene, radius);
+      return;
+    }
     this.fx = scene.add
       .circle(0, 0, radius, AURA_COLOR, 0.1)
       .setStrokeStyle(2, AURA_COLOR, 0.65)

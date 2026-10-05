@@ -365,7 +365,7 @@ export default [
         "damage": 4,
         // "bem pequena": pouco maior que o raio de contato do jogador
         // (sprite de 28px), só pra pegar quem já está grudado nele
-        "radius": 22
+        "radius": 30
       }
     ]
   },
