@@ -1,4 +1,5 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import { hasTornadoFx, createTornadoFx, pulseTornadoFx, updateTornadoFx, playTornadoEndFx } from '../fx/TornadoFx.js';
 
 // Visual: verde claro, condizente com a descrição da carta. Fica só aqui
 const TORNADO_COLOR = 0x90ee90;
@@ -6,6 +7,14 @@ const TORNADO_COLOR = 0x90ee90;
 // Fração final da vida do tornado em que ele começa a piscar e desvanec…
 const FADE_OUT_RATIO = 0.4;
 const FADE_BLINK_INTERVAL_MS = 80;
+
+// Puxão leve: dentro de radius * PULL_RANGE_MULT os inimigos ganham uma
+// velocidade extra em direção ao centro, que cresce com a proximidade. É só
+// um "convite" (bem abaixo da velocidade dos inimigos), não prende ninguém.
+// Bosses/imunes a status (statusImmune) não são puxados.
+const PULL_RANGE_MULT = 1.6;
+const PULL_MAX_SPEED = 34; // px/s no centro; cai linearmente até 0 na borda
+const PULL_DEADZONE = 6; // perto demais do centro: não puxa (evita tremer)
 
 // Habilidade exclusiva da evolução "Vórtice Turbo" (Patas Turbo evoluíd…
 export default class TornadoAbility {
@@ -50,6 +59,9 @@ export default class TornadoAbility {
   }
 
   _updateTornadoes(time, enemyGroup) {
+    const frameDt = this._fxLastMs === undefined ? 16 : time - this._fxLastMs;
+    this._fxLastMs = time;
+
     this.tornadoes = this.tornadoes.filter((tornado) => {
       const age = time - tornado.spawnMs;
 
@@ -58,6 +70,8 @@ export default class TornadoAbility {
         return false;
       }
 
+      updateTornadoFx(tornado.fx, time, frameDt);
+      this._pullEnemies(tornado, enemyGroup, frameDt);
       this._updateFadeOut(tornado, age, time);
 
       if (time - tornado.lastTickMs >= this.def.tickIntervalMs) {
@@ -84,8 +98,29 @@ export default class TornadoAbility {
 
   // Mata os tweens (rotação, pulso, pop de hit) antes de destruir, senão
   _destroyFx(fx) {
+    playTornadoEndFx(fx);
     fx.scene?.tweens.killTweensOf([fx, ...fx.list]);
     fx.destroy();
+  }
+
+  // Soma uma velocidade em direção ao centro do tornado. Roda depois do
+  // chase() dos inimigos (GameScene.update) e antes do passo da física, então
+  // respeita colisões. Pausas/hitstop: dt limitado pra não dar "tranco".
+  _pullEnemies(tornado, enemyGroup, dtMs) {
+    const range = this.def.radius * PULL_RANGE_MULT;
+    const rangeSq = range * range;
+    enemyGroup.getChildren().forEach((enemy) => {
+      if (!enemy?.active || !enemy.body || enemy.networkReplica || enemy.fleeing) return;
+      if (enemy.statusImmune || enemy.healthSystem?.isDead?.()) return;
+      const dx = tornado.x - enemy.x;
+      const dy = tornado.y - enemy.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > rangeSq || distSq < PULL_DEADZONE * PULL_DEADZONE) return;
+      const dist = Math.sqrt(distSq);
+      const strength = PULL_MAX_SPEED * (1 - dist / range);
+      enemy.body.velocity.x += (dx / dist) * strength;
+      enemy.body.velocity.y += (dy / dist) * strength;
+    });
   }
 
   _damageEnemiesInRange(tornado, enemyGroup, time) {
@@ -109,6 +144,10 @@ export default class TornadoAbility {
   // Container simples com dois anéis girando em sentidos opostos.
   _createFx(scene, x, y) {
     const radius = this.def.radius;
+    // sprite animado do funil; os círculos abaixo ficam só como fallback
+    // caso a folha não tenha carregado
+    if (hasTornadoFx(scene)) return createTornadoFx(scene, x, y, radius);
+
     const outer = scene.add.circle(0, 0, radius, TORNADO_COLOR, 0.22).setStrokeStyle(2, TORNADO_COLOR, 0.55);
     const inner = scene.add.circle(0, 0, radius * 0.55, TORNADO_COLOR, 0.3);
 
@@ -142,6 +181,10 @@ export default class TornadoAbility {
   // Mesma sensação de "aperto" que Enemy.playHitReaction dá quando um
   _pulseHit(fx) {
     if (!fx.scene) return;
+    if (fx.list.some((child) => child.type === 'Sprite')) {
+      pulseTornadoFx(fx);
+      return;
+    }
     fx.list.forEach((ring) => {
       ring.setScale(1, 1);
       fx.scene.tweens.add({

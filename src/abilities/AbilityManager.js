@@ -194,11 +194,14 @@ export default class AbilityManager {
     this.active.forEach((ability) => {
       ability.dog?.pauseVisual?.();
       ability.sprite?.anims?.pause?.();
-      ability.tornadoes?.forEach((tornado) => tornado.fx?.anims?.pause?.());
+      ability.tornadoes?.forEach((tornado) => tornado.fx?.list?.forEach((child) => child.anims?.pause?.()));
     });
   }
 
   resumeVisuals() {
-    this.active.forEach((ability) => ability.dog?.resumeVisual?.());
+    this.active.forEach((ability) => {
+      ability.dog?.resumeVisual?.();
+      ability.tornadoes?.forEach((tornado) => tornado.fx?.list?.forEach((child) => child.anims?.resume?.()));
+    });
   }
 }
