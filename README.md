@@ -25,6 +25,8 @@ Também é possível escolher uma sala pela URL, informando um broker com endpoi
 
 Cada navegador precisa usar o mesmo `room`. O jogo solo continua funcionando quando `mqttUrl` não é informado. Este primeiro protótipo não implementa autenticação, matchmaking, colisão entre jogadores nem validação do lado do servidor.
 
+Se o Host ficar sem heartbeat por cerca de 5 segundos, os jogadores ainda conectados elegem o ID ativo de menor valor como novo Host após mais 1 segundo de convergência (aproximadamente 6 segundos no total). O novo Host continua a run usando o relógio e os snapshots mais recentes de inimigos, vida e posição; inimigos especiais podem retomar com parte da lógica interna reiniciada, pois esse estado detalhado não é replicado.
+
 ---
 
 ## Escolha de arma

@@ -21,6 +21,7 @@ const MAX_SYNCED_ENEMIES = 150;
 const MAX_DAMAGE_PER_MESSAGE = 5000;
 const ATTACK_MIN_INTERVAL_MS = 60;
 const PLAYER_TIMEOUT_MS = 5000;
+const HOST_ELECTION_GRACE_MS = 1000;
 const DEFAULT_BROKER_URL = 'wss://ninelives.feira-de-jogos.dev.br/mqtt';
 // Mortes e coletas recém-ocorridas são reenviadas dentro dos próximos snapshots
 // (QoS 0 pode perder o pacote avulso). Tudo é idempotente no cliente.
@@ -50,6 +51,7 @@ export default class MultiplayerManager {
     this.lastSentAt = 0;
     this.lastEnemySnapshotAt = 0;
     this.lastEnemySnapshotSequence = 0;
+    this.hostEnemySnapshotSequence = 0;
     this.remoteEnemies = new Map();
     this.pendingEnemyDamage = new Map();
     this.lastEnemyHitSequence = 0;
@@ -66,9 +68,12 @@ export default class MultiplayerManager {
     this.recentPickupRemovals = [];
     this.appliedPickupRemovals = new Set();
     this.hostPlayerId = null;
+    this.hostTerm = 0;
+    this.hostMissingSince = null;
     this.hostRunTimeMs = null;
     this.hostRunTimeReceivedAt = 0;
     this.hostRunPaused = false;
+    this.hostSpawnDirectorState = null;
     this.pauseRequested = false;
     this.pauseApplied = false;
     this.levelUpQueue = [];
@@ -86,8 +91,11 @@ export default class MultiplayerManager {
     if (!brokerUrl) return;
 
     this.playerId = createPlayerId();
-    if (this.isRoomHost) this.hostPlayerId = this.playerId;
-    if (this.isRoomHost) this.runEpoch = createPlayerId();
+    if (this.isRoomHost) {
+      this.hostPlayerId = this.playerId;
+      this.hostTerm = 1;
+      this.runEpoch = createPlayerId();
+    }
     this.room = encodeURIComponent(room || 'test');
     this.topicPrefix = `nine-lives/${this.room}/players`;
     this.positionTopic = `${this.topicPrefix}/${this.playerId}/position`;
@@ -117,18 +125,13 @@ export default class MultiplayerManager {
       Promise.all([
         this.mqtt.subscribe(`${this.topicPrefix}/+/position`),
         this.mqtt.subscribe(`${this.topicPrefix}/+/attack`),
-        ...(this.isRoomHost
-          ? [
-            this.mqtt.subscribe(`${this.topicPrefix}/+/damage`),
-            this.mqtt.subscribe(`${this.enemyHitPrefix}/+`),
-            this.mqtt.subscribe(`${this.pickupClaimPrefix}/+`)
-          ]
-          : [
-            this.mqtt.subscribe(this.enemyStateTopic),
-            this.mqtt.subscribe(this.enemyDeathTopic),
-            this.mqtt.subscribe(this.playerDamageTopic),
-            this.mqtt.subscribe(this.pickupRemovedTopic)
-          ])
+        this.mqtt.subscribe(`${this.topicPrefix}/+/damage`),
+        this.mqtt.subscribe(`${this.enemyHitPrefix}/+`),
+        this.mqtt.subscribe(`${this.pickupClaimPrefix}/+`),
+        this.mqtt.subscribe(this.enemyStateTopic),
+        this.mqtt.subscribe(this.enemyDeathTopic),
+        this.mqtt.subscribe(this.playerDamageTopic),
+        this.mqtt.subscribe(this.pickupRemovedTopic)
       ]).catch((error) => {
         console.error('[Multiplayer] Falha ao assinar tópico:', error);
       });
@@ -142,6 +145,7 @@ export default class MultiplayerManager {
 
   update(_time, delta) {
     const now = Date.now();
+    this._checkHostMigration(now);
     if (this.isRoomHost && this.mqtt?.connected && now - this.lastEnemySnapshotAt >= ENEMY_SNAPSHOT_INTERVAL_MS) {
       this.lastEnemySnapshotAt = now;
       this._publishEnemySnapshot();
@@ -182,10 +186,15 @@ export default class MultiplayerManager {
         level: this.player.runState.level,
         pauseRequested: this.pauseRequested,
         isHost: this.isRoomHost,
+        hostTerm: this.isRoomHost ? this.hostTerm : undefined,
         runEpoch: this.isRoomHost ? this.runEpoch : undefined,
+        enemySnapshotSeq: this.isRoomHost ? this.lastEnemySnapshotSequence : undefined,
         runTimeMs: this.isRoomHost ? (this.scene.spawnDirector?.getElapsedMs() ?? 0) : undefined,
         runPaused: this.isRoomHost && this.scene.isPaused,
         matchState: this.isRoomHost ? this.matchState : undefined,
+        spawnDirectorState: this.isRoomHost
+          ? this.scene.spawnDirector?.getAuthorityState?.() ?? null
+          : undefined,
         levelUpPendingCount: this._getLocalLevelUpCount(),
         levelUpRound: this.isRoomHost ? this.levelUpRound : undefined,
         levelUpPhase: this.isRoomHost ? this.levelUpPhase : undefined,
@@ -222,6 +231,144 @@ export default class MultiplayerManager {
     this._syncPauseVote();
     this._syncLevelUp();
     this._syncHostPause();
+  }
+
+  _checkHostMigration(now) {
+    if (!this.isMultiplayer || this.isRoomHost || !this.mqtt?.connected ||
+      !this.hostPlayerId || this.matchState !== 'running') {
+      this.hostMissingSince = null;
+      return;
+    }
+
+    const host = this.remotePlayers.get(this.hostPlayerId);
+    if (host && now - host.lastSeenAt <= PLAYER_TIMEOUT_MS) {
+      this.hostMissingSince = null;
+      return;
+    }
+
+    if (this.hostMissingSince == null) {
+      this.hostMissingSince = now;
+      return;
+    }
+    if (now - this.hostMissingSince < HOST_ELECTION_GRACE_MS) return;
+
+    const candidates = [...this.remotePlayers.entries()]
+      .filter(([id, remote]) => id !== this.hostPlayerId &&
+        now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS)
+      .map(([id]) => id);
+    candidates.push(this.playerId);
+    candidates.sort();
+    if (candidates[0] === this.playerId) this._promoteToHost();
+  }
+
+  _promoteToHost() {
+    if (this.isRoomHost || !this.mqtt?.connected || !this.runEpoch) return;
+
+    const elapsedMs = this.getSharedRunTimeMs();
+    this.hostTerm += 1;
+    this.hostPlayerId = this.playerId;
+    this.hostMissingSince = null;
+    this.hostRunTimeMs = Number.isFinite(elapsedMs) ? elapsedMs : 0;
+    this.hostRunTimeReceivedAt = Date.now();
+    this.isRoomHost = true;
+    this.scene.isRoomHost = true;
+    this.lastEnemySnapshotSequence = Math.max(
+      this.lastEnemySnapshotSequence,
+      this.hostEnemySnapshotSequence
+    );
+
+    this.scene.enemySpawner?.promoteReplicas();
+    const enemyIds = [
+      ...this.remoteEnemies.keys(),
+      ...this.receivedEnemyDeaths
+    ].filter(Number.isInteger);
+    if (this.scene.enemySpawner && enemyIds.length > 0) {
+      this.scene.enemySpawner.nextNetworkId = Math.max(
+        this.scene.enemySpawner.nextNetworkId,
+        ...enemyIds.map((id) => id + 1)
+      );
+    }
+    if (this.pendingEnemyDamage.size > 0) {
+      const pendingHits = [...this.pendingEnemyDamage.entries()].map(([networkId, entry]) => [
+        networkId,
+        Math.round(entry.damage * 10) / 10,
+        ...(entry.bleed ? entry.bleed.map((value) => Math.round(value * 10) / 10) : [0, 0, 0]),
+        entry.paralyzeMs || 0
+      ]);
+      this.pendingEnemyDamage.clear();
+      this._applyEnemyHitRecords(this.playerId, pendingHits);
+    }
+    const pickupIds = [
+      ...(this.scene.pickupsById?.keys?.() ?? []),
+      ...this.appliedPickupRemovals
+    ].filter(Number.isInteger);
+    this.scene.nextPickupId = Math.max(this.scene.nextPickupId || 1, ...pickupIds.map((id) => id + 1));
+    this.scene.spawnDirector?.assumeAuthority(
+      this.hostRunTimeMs,
+      this.hostSpawnDirectorState
+    );
+    this.lastEnemySnapshotAt = 0;
+    this.lastSentAt = 0;
+    console.info(`[Multiplayer] Host migrado para ${this.playerId} (termo ${this.hostTerm}).`);
+  }
+
+  _demoteFromHost() {
+    if (!this.isRoomHost) return;
+    this.isRoomHost = false;
+    this.scene.isRoomHost = false;
+    this.scene.spawnDirector?.stop();
+    this.scene.multiplayer?.attachRunClock(this.scene.spawnDirector);
+  }
+
+  _acceptHostAnnouncement(playerId, state) {
+    if (state.isHost !== true || !Number.isInteger(state.hostTerm) || state.hostTerm < 1) return false;
+    if (typeof state.runEpoch !== 'string' || state.runEpoch.length > 32) return false;
+
+    const term = state.hostTerm;
+    if (term < this.hostTerm) return false;
+    if (term === this.hostTerm && this.hostPlayerId && this.hostPlayerId !== playerId &&
+      playerId >= this.hostPlayerId) return false;
+
+    const authorityChanged = this.hostPlayerId !== playerId || this.hostTerm !== term;
+    if (authorityChanged) {
+      this._demoteFromHost();
+      this.hostPlayerId = playerId;
+      this.hostTerm = term;
+      this.lastReceivedPlayerDamageSequence = 0;
+    }
+    this.hostMissingSince = null;
+    this._syncRunEpoch(state.runEpoch);
+    this._applyHostMatchState(state.matchState, state.runEpoch);
+    if (Number.isInteger(state.enemySnapshotSeq)) {
+      this.hostEnemySnapshotSequence = Math.max(
+        this.hostEnemySnapshotSequence,
+        state.enemySnapshotSeq
+      );
+    }
+    if (Number.isFinite(state.runTimeMs)) {
+      this.hostRunTimeMs = Math.max(0, state.runTimeMs);
+      this.hostRunTimeReceivedAt = Date.now();
+      this.hostRunPaused = state.runPaused === true;
+    }
+    if (state.spawnDirectorState && typeof state.spawnDirectorState === 'object') {
+      this.hostSpawnDirectorState = state.spawnDirectorState;
+    }
+    const hostLevelUpRound = Number.isFinite(state.levelUpRound) ? state.levelUpRound : 0;
+    if (hostLevelUpRound !== this.levelUpRound) {
+      this.levelUpChoiceIds = [];
+      this.levelUpChoiceRound = hostLevelUpRound;
+    }
+    this.levelUpRound = hostLevelUpRound;
+    this.levelUpPhase = state.levelUpPhase === 'selecting' ? 'selecting' : 'idle';
+    this.levelUpChoices = Array.isArray(state.levelUpChoices)
+      ? state.levelUpChoices.filter((choice) => typeof choice?.upgradeId === 'string') : [];
+    return true;
+  }
+
+  _isCurrentAuthorityMessage(message) {
+    return message?.hostId === this.hostPlayerId &&
+      message?.hostTerm === this.hostTerm &&
+      typeof this.hostPlayerId === 'string';
   }
 
   // ---------- fim da partida (estado do GRUPO, definido pelo Host) ----------
@@ -305,7 +452,8 @@ export default class MultiplayerManager {
   }
 
   _syncLevelUp() {
-    if (!this.isMultiplayer || !this.mqtt || this.scene.isGameOver || this.scene.hasWon) return;
+    if (!this.isMultiplayer || !this.mqtt || this.scene.hasWon ||
+      (this.scene.isGameOver && !this.isRoomHost)) return;
     if (!this.isRoomHost) {
       if (this.levelUpPhase === 'selecting') {
         if (this.levelUpQueue.length > 0) {
@@ -320,18 +468,25 @@ export default class MultiplayerManager {
     }
 
     const activeRemotes = [...this.remotePlayers.entries()].filter(
-      ([, remote]) => Date.now() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS
+      ([, remote]) => remote.combatant?.active &&
+        Date.now() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS
     );
+    const localEligible = !this.player.isDead;
+    const localPendingCount = localEligible ? this._getLocalLevelUpCount() : 0;
     if (this.levelUpPhase === 'idle') {
-      const everyoneReady = this._getLocalLevelUpCount() > 0 && activeRemotes.length > 0 &&
-        activeRemotes.every(([, remote]) => remote.levelUpPendingCount > 0);
+      const eligiblePlayers = [
+        ...(localEligible ? [localPendingCount] : []),
+        ...activeRemotes.map(([, remote]) => remote.levelUpPendingCount)
+      ];
+      const everyoneReady = eligiblePlayers.length > 0 &&
+        eligiblePlayers.every((pendingCount) => pendingCount > 0);
       if (everyoneReady) {
         this.levelUpRound += 1;
         this.levelUpPhase = 'selecting';
         this.levelUpChoices = [];
         this.levelUpChoiceIds = [];
         this.levelUpChoiceRound = this.levelUpRound;
-      } else if (this.scene.multiplayerWaitingForLevelUp) {
+      } else if (!this.scene.isGameOver && this.scene.multiplayerWaitingForLevelUp) {
         this.scene.levelUpUI?.finishMultiplayerRound();
       }
     }
@@ -347,16 +502,17 @@ export default class MultiplayerManager {
         });
       });
 
-      const everyoneFinished = this._getLocalLevelUpCount() === 0 &&
+      const everyoneFinished = localPendingCount === 0 &&
         activeRemotes.every(([, remote]) => remote.levelUpPendingCount === 0);
       if (everyoneFinished) {
         this.levelUpPhase = 'idle';
-        this.scene.levelUpUI?.finishMultiplayerRound();
+        if (!this.scene.isGameOver) this.scene.levelUpUI?.finishMultiplayerRound();
         return;
       }
 
-      if (this.levelUpQueue.length > 0) this._showNextLevelUp();
-      else if (!this.levelUpActive && !this.scene.multiplayerWaitingForLevelUp) {
+      if (!this.scene.isGameOver && this.levelUpQueue.length > 0) this._showNextLevelUp();
+      else if (!this.scene.isGameOver && !this.levelUpActive &&
+        !this.scene.multiplayerWaitingForLevelUp) {
         this.scene.levelUpUI?.showWaiting();
       }
     }
@@ -398,7 +554,11 @@ export default class MultiplayerManager {
     if (!remote || message.seq <= (remote.lastEnemyHitSequence || 0)) return;
     remote.lastEnemyHitSequence = message.seq;
 
-    message.hits.slice(0, MAX_SYNCED_ENEMIES).forEach((hit) => {
+    this._applyEnemyHitRecords(playerId, message.hits);
+  }
+
+  _applyEnemyHitRecords(playerId, hits) {
+    hits.slice(0, MAX_SYNCED_ENEMIES).forEach((hit) => {
       if (!Array.isArray(hit) || !Number.isInteger(hit[0]) || !Number.isFinite(hit[1])) return;
       const enemy = this.scene.enemySpawner?.group.getChildren()
         .find((candidate) => candidate.active && candidate.networkId === hit[0]);
@@ -448,6 +608,8 @@ export default class MultiplayerManager {
       (amount === 0 && !Number.isFinite(shieldCurrent))) return;
     this.mqtt.publish(`${this.topicPrefix}/${playerId}/damage`, {
       seq: ++this.lastPlayerDamageSequence,
+      hostId: this.playerId,
+      hostTerm: this.hostTerm,
       amount: Math.min(MAX_DAMAGE_PER_MESSAGE, amount),
       shieldCurrent: Number.isFinite(shieldCurrent) ? Math.max(0, shieldCurrent) : undefined
     });
@@ -462,6 +624,8 @@ export default class MultiplayerManager {
       ...death,
       x: Math.round(death.x),
       y: Math.round(death.y),
+      hostId: this.playerId,
+      hostTerm: this.hostTerm,
       epoch: this.runEpoch,
       seq: ++this.lastEnemyDeathSequence,
     };
@@ -518,7 +682,12 @@ export default class MultiplayerManager {
 
   _publishPickupRemovals(records) {
     if (!this.mqtt?.connected) return;
-    this.mqtt.publish(this.pickupRemovedTopic, { epoch: this.runEpoch, removed: records });
+    this.mqtt.publish(this.pickupRemovedTopic, {
+      hostId: this.playerId,
+      hostTerm: this.hostTerm,
+      epoch: this.runEpoch,
+      removed: records
+    });
   }
 
   _applyPickupRemovals(records) {
@@ -690,6 +859,7 @@ export default class MultiplayerManager {
     if (typeof epoch !== 'string' || epoch.length > 32 || epoch === this.runEpoch) return;
     this.runEpoch = epoch;
     this.lastEnemySnapshotSequence = 0;
+    this.hostEnemySnapshotSequence = 0;
     this.lastReceivedPlayerDamageSequence = 0;
     this.receivedEnemyDeaths.clear();
     this.appliedPickupRemovals.clear();
@@ -915,6 +1085,8 @@ export default class MultiplayerManager {
       ]);
     this.mqtt.publish(this.enemyStateTopic, {
       seq: ++this.lastEnemySnapshotSequence,
+      hostId: this.playerId,
+      hostTerm: this.hostTerm,
       epoch: this.runEpoch,
       enemies,
       deaths: this._takeReplay(this.recentDeaths).map((entry) => entry.packet),
@@ -1013,7 +1185,10 @@ export default class MultiplayerManager {
   getSharedRunTimeMs() {
     if (this.isRoomHost) return this.scene.spawnDirector?.getElapsedMs() ?? null;
     if (this.hostRunTimeMs == null) return null;
-    const age = Math.min(PLAYER_TIMEOUT_MS, Math.max(0, Date.now() - this.hostRunTimeReceivedAt));
+    const age = Math.min(
+      PLAYER_TIMEOUT_MS + HOST_ELECTION_GRACE_MS,
+      Math.max(0, Date.now() - this.hostRunTimeReceivedAt)
+    );
     return this.hostRunTimeMs + (this.hostRunPaused ? 0 : age);
   }
 
@@ -1092,6 +1267,7 @@ export default class MultiplayerManager {
       try {
         const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
         const message = JSON.parse(text);
+        if (!this._isCurrentAuthorityMessage(message)) return;
         this._syncRunEpoch(message.epoch);
         this._applyPickupRemovals(message.removed);
       } catch (error) {
@@ -1113,6 +1289,7 @@ export default class MultiplayerManager {
       try {
         const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
         const snapshot = JSON.parse(text);
+        if (!this._isCurrentAuthorityMessage(snapshot)) return;
         this._syncRunEpoch(snapshot.epoch);
         if (!Number.isInteger(snapshot.seq) || snapshot.seq <= this.lastEnemySnapshotSequence) return;
         this.lastEnemySnapshotSequence = snapshot.seq;
@@ -1131,6 +1308,7 @@ export default class MultiplayerManager {
       try {
         const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
         const death = JSON.parse(text);
+        if (!this._isCurrentAuthorityMessage(death)) return;
         this._syncRunEpoch(death.epoch);
         if (!Number.isInteger(death.seq)) return;
         this._applyEnemyDeath(death);
@@ -1147,7 +1325,8 @@ export default class MultiplayerManager {
       const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
       const state = JSON.parse(text);
       if (messageType === 'damage' && playerId === this.playerId && !this.isRoomHost) {
-        if (!Number.isInteger(state.seq) || state.seq <= this.lastReceivedPlayerDamageSequence ||
+        if (!this._isCurrentAuthorityMessage(state) ||
+          !Number.isInteger(state.seq) || state.seq <= this.lastReceivedPlayerDamageSequence ||
           !Number.isFinite(state.amount)) return;
         this.lastReceivedPlayerDamageSequence = state.seq;
         this.player.applyNetworkDamage(
@@ -1163,28 +1342,7 @@ export default class MultiplayerManager {
       }
       if (messageType !== 'position' || state.id !== playerId ||
         !Number.isFinite(state.x) || !Number.isFinite(state.y)) return;
-      const previousHost = this.remotePlayers.get(this.hostPlayerId);
-      const previousHostExpired = !previousHost || Date.now() - previousHost.lastSeenAt > PLAYER_TIMEOUT_MS;
-      if (!this.isRoomHost && state.isHost === true &&
-        (!this.hostPlayerId || this.hostPlayerId === playerId || previousHostExpired)) {
-        this.hostPlayerId = playerId;
-        this._syncRunEpoch(state.runEpoch);
-        this._applyHostMatchState(state.matchState, state.runEpoch);
-        if (Number.isFinite(state.runTimeMs)) {
-          this.hostRunTimeMs = Math.max(0, state.runTimeMs);
-          this.hostRunTimeReceivedAt = Date.now();
-          this.hostRunPaused = state.runPaused === true;
-        }
-        const hostLevelUpRound = Number.isFinite(state.levelUpRound) ? state.levelUpRound : 0;
-        if (hostLevelUpRound !== this.levelUpRound) {
-          this.levelUpChoiceIds = [];
-          this.levelUpChoiceRound = hostLevelUpRound;
-        }
-        this.levelUpRound = hostLevelUpRound;
-        this.levelUpPhase = state.levelUpPhase === 'selecting' ? 'selecting' : 'idle';
-        this.levelUpChoices = Array.isArray(state.levelUpChoices)
-          ? state.levelUpChoices.filter((choice) => typeof choice?.upgradeId === 'string') : [];
-      }
+      const acceptedHost = state.isHost === true && this._acceptHostAnnouncement(playerId, state);
       const maxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : 100;
       const hp = Number.isFinite(state.hp) ? Phaser.Math.Clamp(state.hp, 0, maxHp) : maxHp;
       const level = Number.isFinite(state.level) ? Math.max(1, Math.floor(state.level)) : 1;
@@ -1223,10 +1381,10 @@ export default class MultiplayerManager {
           levelUpChoiceIds: [],
           levelUpPendingCount: 0,
           pauseRequested: false,
-          isHost: state.isHost === true,
+          isHost: acceptedHost,
           healthBar,
           levelLabel,
-          lastSeenAt: this.scene.time.now
+          lastSeenAt: Date.now()
         };
         this.remotePlayers.set(playerId, remote);
         remote.combatant = this._createRemoteCombatant(remote, playerId);
@@ -1262,7 +1420,7 @@ export default class MultiplayerManager {
       remote.levelUpPendingCount = Number.isFinite(state.levelUpPendingCount)
         ? Math.max(0, Math.floor(state.levelUpPendingCount)) : 0;
       remote.pauseRequested = state.pauseRequested === true;
-      remote.isHost = state.isHost === true;
+      remote.isHost = acceptedHost;
       remote.abilityVisuals = state.abilityVisuals;
       remote.lastSeenAt = Date.now();
       remote.sprite.setFlipX(Boolean(state.flipX));

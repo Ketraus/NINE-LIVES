@@ -39,6 +39,8 @@ export default class SpawnDirector {
     this.startTime = null;
     this.timerEvent = null;
     this.elapsedTimeSource = null;
+    this.authorityActive = false;
+    this.authorityGeneration = 0;
     this.pausedMs = 0; // soma de todo tempo já pausado (tela de cartas), descontado do relógio…
     this.pauseStartedAt = null; // timestamp de quando a pausa atual começou, ou null se não está pausado
 
@@ -68,12 +70,15 @@ export default class SpawnDirector {
   start(enableSpawning = true) {
     this.startTime = this._now();
     this.enemySpawner.setMaxAlive(this.spawnCurves.capCurve[0].v);
+    this.authorityActive = enableSpawning;
     if (!enableSpawning) return;
     this._scheduleNextBatch();
     this._spawnBatch(); // primeira leva imediata, mapa não fica vazio
   }
 
   stop() {
+    this.authorityActive = false;
+    this.authorityGeneration += 1;
     this.timerEvent?.remove();
     this.timerEvent = null;
   }
@@ -104,6 +109,61 @@ export default class SpawnDirector {
     this.elapsedTimeSource = source;
   }
 
+  getAuthorityState() {
+    return {
+      autoSpawnEnabled: this.autoSpawnEnabled,
+      sealerTriggered: [...this.sealerTriggered],
+      eliteTriggered: [...this.eliteTriggered],
+      bossTriggered: this.bossTriggered,
+      bossHasSpawned: this.bossHasSpawned,
+      bossMusicRestoreDone: this._bossMusicRestoreDone
+    };
+  }
+
+  assumeAuthority(elapsedMs, state = null) {
+    if (this.timerEvent) return;
+
+    const now = this._now();
+    this.authorityActive = true;
+    this.authorityGeneration += 1;
+    const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
+    this.elapsedTimeSource = null;
+    this.pausedMs = 0;
+    this.startTime = now - elapsed;
+    this.pauseStartedAt = this.scene.isPaused ? now : null;
+    this.autoSpawnEnabled = state?.autoSpawnEnabled !== false;
+
+    const restoreSchedule = (schedule, received) => {
+      if (Array.isArray(received)) {
+        return new Set(received.filter((index) =>
+          Number.isInteger(index) && index >= 0 && index < schedule.length
+        ));
+      }
+      return new Set(schedule
+        .map((entry, index) => ({ entry, index }))
+        .filter(({ entry }) => elapsed >= (typeof entry === 'number' ? entry : entry.t))
+        .map(({ index }) => index));
+    };
+    this.sealerTriggered = restoreSchedule(this.sealerSchedule, state?.sealerTriggered);
+    this.eliteTriggered = restoreSchedule(this.eliteSchedule, state?.eliteTriggered);
+    this.bossTriggered = typeof state?.bossTriggered === 'boolean'
+      ? state.bossTriggered
+      : Boolean(this.bossSchedule && elapsed >= this.bossSchedule.t);
+    this.bossHasSpawned = state?.bossHasSpawned === true || this.enemySpawner.hasActiveBoss();
+    this._bossMusicRestoreDone = state?.bossMusicRestoreDone === true;
+    this.enemySpawner.setMaxAlive(this._currentMaxAlive());
+    this._scheduleNextBatch();
+
+    if (this.bossTriggered && !this.bossHasSpawned) {
+      this.enemySpawner.fleeAll();
+      this._waitForEmptyScreenThenBuildup();
+    } else if (this.bossHasSpawned && this.enemySpawner.hasActiveBoss()) {
+      MusicManager.playBoss(this.scene);
+    } else if (this.bossHasSpawned && !this.enemySpawner.hasActiveBoss()) {
+      this._bossMusicRestoreDone = true;
+    }
+  }
+
   // Cheat (DevConsole "settime"): ajusta o relógio da run pra um tempo
   setElapsedMs(targetMs) {
     const now = this._now();
@@ -113,9 +173,12 @@ export default class SpawnDirector {
 
   // Reagenda a cada disparo (em vez de um addEvent com loop:true de delay
   _scheduleNextBatch() {
+    if (!this.authorityActive) return;
+    const generation = this.authorityGeneration;
     this.timerEvent = this.scene.time.addEvent({
       delay: this._currentIntervalMs(),
       callback: () => {
+        if (!this.authorityActive || generation !== this.authorityGeneration) return;
         this._spawnBatch();
         this._scheduleNextBatch();
       }
@@ -123,6 +186,7 @@ export default class SpawnDirector {
   }
 
   _spawnBatch() {
+    if (!this.authorityActive) return;
     // teto de vivos é recalculado a cada leva, não só na largada — assim
     const cap = this._currentMaxAlive();
     this.enemySpawner.setMaxAlive(cap);
@@ -210,20 +274,26 @@ export default class SpawnDirector {
 
   // Depois de mandar todo mundo fugir (Enemy.flee não é instantâneo, ver
   _waitForEmptyScreenThenBuildup() {
+    const generation = this.authorityGeneration;
     const poll = this.scene.time.addEvent({
       delay: BOSS_EMPTY_SCREEN_POLL_MS,
       loop: true,
       callback: () => {
+        if (!this.authorityActive || generation !== this.authorityGeneration) {
+          poll.remove();
+          return;
+        }
         if (this.enemySpawner.hasAnyAlive()) return;
         poll.remove();
-        this._startBossTensionBuildup();
-        this.scene.time.delayedCall(BOSS_SILENCE_MS, () => this._triggerBossEntrance());
+        this._startBossTensionBuildup(generation);
+        this.scene.time.delayedCall(BOSS_SILENCE_MS, () => this._triggerBossEntrance(generation));
       }
     });
   }
 
   // Começo do silêncio de verdade (tela já vazia): escurece a tela
-  _startBossTensionBuildup() {
+  _startBossTensionBuildup(generation = this.authorityGeneration) {
+    if (!this.authorityActive || generation !== this.authorityGeneration) return;
     const cam = this.scene.cameras.main;
     this.bossOverlay = this.scene.add
       .rectangle(cam.width / 2, cam.height / 2, cam.width * 3, cam.height * 3, BOSS_OVERLAY_COLOR, 0)
@@ -241,13 +311,15 @@ export default class SpawnDirector {
 
     BOSS_HEARTBEAT_TIMES_MS.forEach((t, i) => {
       this.scene.time.delayedCall(t, () => {
+        if (!this.authorityActive || generation !== this.authorityGeneration) return;
         this.scene.cameras.main.shake(BOSS_HEARTBEAT_SHAKE_MS, BOSS_HEARTBEAT_INTENSITIES[i]);
       });
     });
   }
 
   // Fim do silêncio: corta o escurecimento na hora (contraste forte com
-  _triggerBossEntrance() {
+  _triggerBossEntrance(generation = this.authorityGeneration) {
+    if (!this.authorityActive || generation !== this.authorityGeneration) return;
     this.bossOverlay?.destroy();
     this.bossOverlay = null;
 
@@ -259,6 +331,10 @@ export default class SpawnDirector {
 
     this.scene.physics.world.pause();
     this.scene.time.delayedCall(BOSS_HITSTOP_MS, () => {
+      if (!this.authorityActive || generation !== this.authorityGeneration) {
+        this.scene.physics.world.resume();
+        return;
+      }
       this.scene.physics.world.resume();
       this.enemySpawner.spawnByDefId('minotaur', 1);
       // tema do Minotauro sobe com fade in aqui — a música de jogo já

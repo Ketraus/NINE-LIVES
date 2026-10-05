@@ -230,6 +230,16 @@ export default class EnemySpawner {
     return this._createAt(def, { x, y }, networkId, true);
   }
 
+  promoteReplicas() {
+    this.group.getChildren().forEach((enemy) => {
+      if (!enemy.active || !enemy.networkReplica) return;
+      enemy.networkReplica = false;
+      enemy.bleedUntil = 0;
+      enemy.paralyzedUntil = 0;
+      enemy.healthSystem.onChange(enemy.healthSystem.current, enemy.healthSystem.maxHp);
+    });
+  }
+
   // Pop de escala (nasce pequeno, estoura pro tamanho final) + anel de
   _playBossEntranceFx(enemy) {
     const targetScale = enemy.baseScale;
