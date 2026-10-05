@@ -154,7 +154,7 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // Container — a ordem de `list` NÃO é garantida; use os dados (`getData`)
 // pra achar as peças. Guardados: shadow, sprite, ghost, ground, back, front.
-export function createTornadoFx(scene, x, y, radius) {
+export function createTornadoFx(scene, x, y, radius, { remote = false } = {}) {
   const unit = radius / 40; // tudo é desenhado pensando em radius 40
   const baseScale = (radius * 2 * 0.95) / FRAME;
   const baseY = radius * 0.32; // ponta de baixo do funil
@@ -206,9 +206,9 @@ export function createTornadoFx(scene, x, y, radius) {
     back.add(img);
     particles.push(makeParticle(kind, img, unit));
   };
-  for (let i = 0; i < 11; i++) addParticle('streak', TEX_STREAK, pick(STREAK_COLORS), true);
-  for (let i = 0; i < 9; i++) addParticle('debris', Math.random() < 0.45 ? TEX_LEAF : TEX_PIXEL, pick(DEBRIS_COLORS), false);
-  for (let i = 0; i < 4; i++) addParticle('dust', TEX_GLOW, pick(DUST_COLORS), false);
+  for (let i = 0; i < (remote ? 4 : 11); i++) addParticle('streak', TEX_STREAK, pick(STREAK_COLORS), true);
+  for (let i = 0; i < (remote ? 3 : 9); i++) addParticle('debris', Math.random() < 0.45 ? TEX_LEAF : TEX_PIXEL, pick(DEBRIS_COLORS), false);
+  for (let i = 0; i < (remote ? 2 : 4); i++) addParticle('dust', TEX_GLOW, pick(DUST_COLORS), false);
   particles.forEach((p, i) => { p.t = i / particles.length; }); // espalhadas desde o 1º frame
 
   const container = scene.add
@@ -223,17 +223,21 @@ export function createTornadoFx(scene, x, y, radius) {
   });
 
   // ---- entrada: o funil "puxa" pra cima com um leve estouro --------------
-  sprite.setScale(baseScale * 0.2);
-  ghost.setScale(baseScale * 0.2);
-  scene.tweens.add({ targets: [sprite], scaleX: baseScale, scaleY: baseScale, duration: 240, ease: 'Back.easeOut' });
-  scene.tweens.add({ targets: [ghost], scaleX: baseScale * 1.16, scaleY: baseScale * 1.1, duration: 300, ease: 'Back.easeOut' });
-  ground.setScale(0.3, 0.14);
-  scene.tweens.add({ targets: ground, scaleX: 1, scaleY: 0.46, duration: 320, ease: 'Cubic.easeOut' });
-  shadow.setScale(0.3);
-  scene.tweens.add({ targets: shadow, scale: 1, duration: 260, ease: 'Cubic.easeOut' });
-
-  spawnShockRing(scene, x, y + baseY * 0.55, radius * 2.6, 0xc8ffa0, 0.7, 380);
-  spawnDustBurst(scene, x, y + baseY * 0.5, unit, 8, 0.55);
+  if (remote) {
+    sprite.setScale(baseScale);
+    ghost.setScale(baseScale * 1.16, baseScale * 1.1);
+  } else {
+    sprite.setScale(baseScale * 0.2);
+    ghost.setScale(baseScale * 0.2);
+    scene.tweens.add({ targets: [sprite], scaleX: baseScale, scaleY: baseScale, duration: 240, ease: 'Back.easeOut' });
+    scene.tweens.add({ targets: [ghost], scaleX: baseScale * 1.16, scaleY: baseScale * 1.1, duration: 300, ease: 'Back.easeOut' });
+    ground.setScale(0.3, 0.14);
+    scene.tweens.add({ targets: ground, scaleX: 1, scaleY: 0.46, duration: 320, ease: 'Cubic.easeOut' });
+    shadow.setScale(0.3);
+    scene.tweens.add({ targets: shadow, scale: 1, duration: 260, ease: 'Cubic.easeOut' });
+    spawnShockRing(scene, x, y + baseY * 0.55, radius * 2.6, 0xc8ffa0, 0.7, 380);
+    spawnDustBurst(scene, x, y + baseY * 0.5, unit, 8, 0.55);
+  }
 
   return container;
 }

@@ -22,6 +22,7 @@ export default class TornadoAbility {
     this.def = def;
     this.walkAccumMs = 0;
     this._lastFrameMs = null;
+    this._nextTornadoId = 0;
     this.tornadoes = []; // { x, y, spawnMs, lastTickMs, fx }
   }
 
@@ -52,6 +53,8 @@ export default class TornadoAbility {
     this.tornadoes.push({
       x: player.x,
       y: player.y,
+      networkId: ++this._nextTornadoId,
+      hitSequence: 0,
       spawnMs: time,
       lastTickMs: 0, // 0 força o primeiro tick de dano já no próximo update
       fx
@@ -138,7 +141,10 @@ export default class TornadoAbility {
       }
     });
     // um "aperta" só por tick (mesmo que tenha acertado vários inimigos de
-    if (hitSomeone) this._pulseHit(tornado.fx);
+    if (hitSomeone) {
+      tornado.hitSequence += 1;
+      this._pulseHit(tornado.fx);
+    }
   }
 
   // Container simples com dois anéis girando em sentidos opostos.

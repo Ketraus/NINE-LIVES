@@ -359,6 +359,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.healthSystem.takeDamage(amount);
   }
 
+  applyNetworkDamage(amount, shieldCurrent) {
+    if (Number.isFinite(shieldCurrent)) this.shieldSystem?.syncCurrent(shieldCurrent, this.scene.time.now);
+    if (amount > 0) this.takeDamage(amount);
+  }
+
   die() {
     if (this.isDead) return;
     this.isDead = true;

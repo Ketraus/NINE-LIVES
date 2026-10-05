@@ -188,6 +188,18 @@ export default class AllyDogAbility {
     // lastTickMs = time: o 1º tick da poça só vem depois de um intervalo,
     // senão ele colaria no dano da explosão no mesmo frame.
     if (hasPlasmaGrenadeFx(scene)) playPlasmaExplosion(scene, x, y, this.evoDef.grenadeExplosionRadius);
+    this._recordNetworkBurst({
+      kind: 'circle',
+      x,
+      y,
+      radius: this.evoDef.grenadeExplosionRadius,
+      color: FLAME_COLOR,
+      alpha: 0.9,
+      scaleFrom: 0.25,
+      scaleTo: 1.5,
+      startAt: time,
+      endAt: time + 320
+    });
     const fx = this._createFlameFx(scene, x, y);
     this.flameZones.push({ x, y, spawnMs: time, lastTickMs: time, fx });
   }
@@ -204,7 +216,14 @@ export default class AllyDogAbility {
         kind: 'explosion',
         color: FLAME_COLOR
       });
-      if (hit) spawnCyberHitFx(scene, enemy.x, enemy.y, Math.atan2(enemy.y - y, enemy.x - x));
+      if (hit) {
+        spawnCyberHitFx(scene, enemy.x, enemy.y, Math.atan2(enemy.y - y, enemy.x - x));
+        this._recordNetworkBurst({
+          kind: 'circle', x: enemy.x, y: enemy.y, radius: 20,
+          color: FLAME_COLOR, alpha: 0.9, scaleFrom: 0.3, scaleTo: 1.2,
+          startAt: time, endAt: time + 180
+        });
+      }
     });
   }
 
@@ -244,7 +263,14 @@ export default class AllyDogAbility {
         color: this.evoDef.swordTint
       });
       // descarga elétrica atravessando o inimigo
-      if (hit) spawnCyberHitFx(scene, enemy.x, enemy.y, aim.angle());
+      if (hit) {
+        spawnCyberHitFx(scene, enemy.x, enemy.y, aim.angle());
+        this._recordNetworkBurst({
+          kind: 'circle', x: enemy.x, y: enemy.y, radius: 16,
+          color: this.evoDef.swordTint, alpha: 0.85, scaleFrom: 0.3, scaleTo: 1,
+          startAt: scene.time.now, endAt: scene.time.now + 160
+        });
+      }
     });
   }
 
@@ -254,7 +280,7 @@ export default class AllyDogAbility {
     const tint = this.evoDef.swordTint ?? 0x1b2a6b;
     const duration = this.evoDef.swordFxDurationMs ?? 200;
     // o burst de rede (sector) continua igual pros outros jogadores
-    this.networkBursts.push({ kind: 'sector', x: this.dog.x, y: this.dog.y,
+    this._recordNetworkBurst({ kind: 'sector', x: this.dog.x, y: this.dog.y,
       radius: range, angle: baseAngle, halfAngle: halfArc, color: tint, alpha: 0.55,
       startAt: scene.time.now, endAt: scene.time.now + duration });
 
@@ -328,14 +354,21 @@ export default class AllyDogAbility {
         kind: 'ability',
         color: CANNON_COLOR_CORE
       });
-      if (hit && hasCyberusLaserFx(scene)) spawnCyberusLaserHitFx(scene, enemy.x, enemy.y);
+      if (hit) {
+        if (hasCyberusLaserFx(scene)) spawnCyberusLaserHitFx(scene, enemy.x, enemy.y);
+        this._recordNetworkBurst({
+          kind: 'circle', x: enemy.x, y: enemy.y, radius: 18,
+          color: CANNON_COLOR_CORE, alpha: 0.9, scaleFrom: 0.3, scaleTo: 1.1,
+          startAt: time, endAt: time + 180
+        });
+      }
     });
   }
 
   // Visual do laser: um traço grosso roxo bem escuro por baixo (glow) e um
   _showCannonFx(scene, x1, y1, x2, y2) {
     const duration = this.evoDef.cannonFxDurationMs ?? CANNON_BEAM_DURATION_MS;
-    this.networkBursts.push({ kind: 'line', x1, y1, x2, y2,
+    this._recordNetworkBurst({ kind: 'line', x1, y1, x2, y2,
       color: CANNON_COLOR_CORE, width: this.evoDef.cannonWidth * 2,
       startAt: scene.time.now, endAt: scene.time.now + duration });
 
@@ -406,6 +439,11 @@ export default class AllyDogAbility {
 
       return true;
     });
+  }
+
+  _recordNetworkBurst(burst) {
+    this.networkBursts.push(burst);
+    if (this.networkBursts.length > 24) this.networkBursts.splice(0, this.networkBursts.length - 24);
   }
 
   _damageEnemiesInFlame(zone, enemyGroup, time) {

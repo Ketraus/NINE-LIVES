@@ -92,7 +92,15 @@ export default class AbilityManager {
   }
 
   getNetworkVisualState(time) {
-    const visuals = { sprites: [], circles: [], lines: [], sectors: [], projectiles: [] };
+    const visuals = {
+      sprites: [],
+      circles: [],
+      lines: [],
+      sectors: [],
+      projectiles: [],
+      tornadoes: [],
+      auras: []
+    };
     const addSprite = (id, sprite) => {
       if (!sprite?.active || !sprite.visible) return;
       visuals.sprites.push({
@@ -139,23 +147,27 @@ export default class AbilityManager {
           : 0xffb199;
       addProjectiles(`${id}-shot`, ability.bulletGroup || ability.group, projectileKind, projectileColor);
 
-      ability.tornadoes?.forEach((tornado, tornadoIndex) => {
-        const [outer, inner] = tornado.fx?.list || [];
-        visuals.circles.push(
-          { id: `${id}-tornado-${tornadoIndex}-outer`, x: tornado.x, y: tornado.y,
-            radius: ability.def.radius, color: 0x90ee90, alpha: outer?.fillAlpha ?? 0.22,
-            strokeWidth: outer?.lineWidth ?? 2, rotation: outer?.angle ?? 0 },
-          { id: `${id}-tornado-${tornadoIndex}-inner`, x: tornado.x, y: tornado.y,
-            radius: ability.def.radius * 0.55, color: 0x90ee90, alpha: inner?.fillAlpha ?? 0.3,
-            rotation: inner?.angle ?? 0 }
-        );
+      ability.tornadoes?.forEach((tornado) => {
+        visuals.tornadoes.push({
+          id: `${id}-tornado-${tornado.networkId}`,
+          x: tornado.x,
+          y: tornado.y,
+          radius: ability.def.radius,
+          alpha: tornado.fx?.alpha ?? 1,
+          hitSequence: tornado.hitSequence,
+          remainingMs: Math.max(0, ability.def.durationMs - (time - tornado.spawnMs))
+        });
       });
 
       if (ability.fx && ability.constructor.name === 'AuraShockAbility') {
-        visuals.circles.push({ id: `${id}-aura`, x: ability.fx.x, y: ability.fx.y,
-          radius: ability.def.radius, color: 0x66e6ff,
-          alpha: (ability.fx.fillAlpha ?? 0.1) * ability.fx.alpha,
-          strokeWidth: 2, strokeAlpha: 0.65, scale: ability.fx.scaleX });
+        visuals.auras.push({
+          id: `${id}-aura`,
+          radius: ability.def.radius,
+          scale: ability.fx.scaleX,
+          alpha: ability.fx.alpha,
+          hitSequence: ability.networkHitSequence,
+          hitTargets: ability.networkHitTargets
+        });
       }
 
       ability.flameZones?.forEach((zone, zoneIndex) => {

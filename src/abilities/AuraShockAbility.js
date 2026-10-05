@@ -13,6 +13,8 @@ export default class AuraShockAbility {
     // multiplicador do "aperto" ao acertar, por cima da escala do jogador
     this._pulseMultiplier = 1;
     this._fxLastMs = null;
+    this.networkHitSequence = 0;
+    this.networkHitTargets = [];
   }
 
   update(time, player, enemyGroup, scene) {
@@ -49,6 +51,8 @@ export default class AuraShockAbility {
       }
     });
     if (hitSomeone) {
+      this.networkHitSequence += 1;
+      this.networkHitTargets = hitEnemies.slice(0, 3).map(({ x, y }) => ({ x, y }));
       this._pulse();
       zapAuraShockFx(this.fx, hitEnemies);
     }

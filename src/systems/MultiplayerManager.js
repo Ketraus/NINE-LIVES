@@ -4,6 +4,15 @@ import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
 import EventBus from './EventBus.js';
+import { hasTornadoFx, createTornadoFx, pulseTornadoFx, updateTornadoFx } from '../fx/TornadoFx.js';
+import { hasAuraShockFx, createAuraShockFx, updateAuraShockFx, zapAuraShockFx } from '../fx/AuraShockFx.js';
+import {
+  hasShieldFx,
+  createShieldFx,
+  updateShieldFx,
+  hitShieldFx,
+  breakShieldFx
+} from '../fx/ShieldFx.js';
 
 const POSITION_INTERVAL_MS = 100;
 const ENEMY_SNAPSHOT_INTERVAL_MS = 200;
@@ -159,6 +168,13 @@ export default class MultiplayerManager {
         damageReductionFraction: this.player.runState.damageReductionFraction || 0,
         shieldCurrent: this.player.shieldSystem?.current || 0,
         shieldMax: this.player.shieldSystem?.maxShield || 0,
+        shieldVisual: this.player.shieldSystem ? {
+          current: this.player.shieldSystem.current,
+          max: this.player.shieldSystem.maxShield,
+          radius: this.player.shieldFx?.getData?.('radius') ?? 38,
+          scale: this.player.scale,
+          regenerating: this.player.shieldSystem.isRegenerating(this.scene.time.now)
+        } : null,
         aimX: this.player.getAimDirection().x,
         aimY: this.player.getAimDirection().y,
         cameraViewWidth: this.scene.cameras.main.width / (this.scene.cameras.main.zoom || 1),
@@ -192,6 +208,7 @@ export default class MultiplayerManager {
       remote.sprite.x = Phaser.Math.Linear(remote.sprite.x, remote.targetX, blend);
       remote.sprite.y = Phaser.Math.Linear(remote.sprite.y, remote.targetY, blend);
       this._drawRemoteStatus(remote);
+      this._updateRemoteAbilityEffects(remote, this.scene.time.now, delta);
     });
     this.remoteEnemies.forEach((enemy) => {
       if (!enemy.active || !Number.isFinite(enemy.targetX)) return;
@@ -426,11 +443,13 @@ export default class MultiplayerManager {
     return enemy.def?.elite ? 'sfx_elite_hit' : 'sfx_hit';
   }
 
-  _sendPlayerDamage(playerId, amount) {
-    if (!this.isRoomHost || !this.mqtt?.connected || amount <= 0) return;
+  _sendPlayerDamage(playerId, amount, shieldCurrent = null) {
+    if (!this.isRoomHost || !this.mqtt?.connected || !Number.isFinite(amount) || amount < 0 ||
+      (amount === 0 && !Number.isFinite(shieldCurrent))) return;
     this.mqtt.publish(`${this.topicPrefix}/${playerId}/damage`, {
       seq: ++this.lastPlayerDamageSequence,
-      amount: Math.min(MAX_DAMAGE_PER_MESSAGE, amount)
+      amount: Math.min(MAX_DAMAGE_PER_MESSAGE, amount),
+      shieldCurrent: Number.isFinite(shieldCurrent) ? Math.max(0, shieldCurrent) : undefined
     });
   }
 
@@ -522,6 +541,151 @@ export default class MultiplayerManager {
     });
   }
 
+  _syncRemoteTornadoes(remote, states) {
+    if (!remote.tornadoEffects) remote.tornadoEffects = new Map();
+    const seen = new Set();
+
+    (Array.isArray(states) ? states.slice(0, 8) : []).forEach((state) => {
+      if (typeof state.id !== 'string' || ![state.x, state.y, state.radius, state.remainingMs].every(Number.isFinite) ||
+        state.remainingMs <= 0) return;
+      seen.add(state.id);
+      let effect = remote.tornadoEffects.get(state.id);
+      if (!effect) {
+        const fx = hasTornadoFx(this.scene)
+          ? createTornadoFx(this.scene, state.x, state.y, state.radius, { remote: true })
+          : this.scene.add.circle(state.x, state.y, state.radius, 0x90ee90, 0.22)
+            .setStrokeStyle(2, 0x90ee90, 0.55).setDepth(8);
+        effect = {
+          id: state.id,
+          fx,
+          hitSequence: Number.isFinite(state.hitSequence) ? state.hitSequence : 0
+        };
+        remote.tornadoEffects.set(state.id, effect);
+      } else if (Number.isFinite(state.hitSequence) && state.hitSequence > effect.hitSequence) {
+        if (hasTornadoFx(this.scene)) pulseTornadoFx(effect.fx);
+        effect.hitSequence = state.hitSequence;
+      }
+      effect.x = state.x;
+      effect.y = state.y;
+      effect.alpha = Number.isFinite(state.alpha) ? Phaser.Math.Clamp(state.alpha, 0, 1) : 1;
+      effect.expiresAt = this.scene.time.now + Phaser.Math.Clamp(state.remainingMs, 0, 10000);
+    });
+
+    remote.tornadoEffects.forEach((effect, id) => {
+      if (seen.has(id)) return;
+      effect.fx.destroy();
+      remote.tornadoEffects.delete(id);
+    });
+  }
+
+  _syncRemoteAuras(remote, states) {
+    if (!remote.auraEffects) remote.auraEffects = new Map();
+    const seen = new Set();
+
+    (Array.isArray(states) ? states.slice(0, 4) : []).forEach((state) => {
+      if (typeof state.id !== 'string' || !Number.isFinite(state.radius)) return;
+      seen.add(state.id);
+      let effect = remote.auraEffects.get(state.id);
+      if (!effect) {
+        const fx = hasAuraShockFx(this.scene)
+          ? createAuraShockFx(this.scene, state.radius)
+          : this.scene.add.circle(0, 0, state.radius, 0x66e6ff, 0.1)
+            .setStrokeStyle(2, 0x66e6ff, 0.65).setDepth(7);
+        effect = { fx, hitSequence: 0, lastUpdateAt: this.scene.time.now };
+        remote.auraEffects.set(state.id, effect);
+      }
+      effect.fx.setPosition(remote.targetX, remote.targetY);
+      effect.scale = Number.isFinite(state.scale) ? Phaser.Math.Clamp(state.scale, 0.5, 3) : 1;
+      effect.alpha = Number.isFinite(state.alpha) ? Phaser.Math.Clamp(state.alpha, 0, 1) : 1;
+      if (Number.isInteger(state.hitSequence) && state.hitSequence > effect.hitSequence) {
+        const targets = Array.isArray(state.hitTargets)
+          ? state.hitTargets
+            .filter((target) => Number.isFinite(target?.x) && Number.isFinite(target?.y))
+            .slice(0, 3)
+            .map(({ x, y }) => ({ active: true, x, y }))
+          : [];
+        if (hasAuraShockFx(this.scene)) zapAuraShockFx(effect.fx, targets);
+        effect.hitSequence = state.hitSequence;
+      }
+    });
+
+    remote.auraEffects.forEach((effect, id) => {
+      if (seen.has(id)) return;
+      effect.fx.destroy();
+      remote.auraEffects.delete(id);
+    });
+  }
+
+  _syncRemoteShield(remote, state) {
+    if (!state || !Number.isFinite(state.max) || state.max <= 0) {
+      if (remote.shieldFx) {
+        remote.shieldFx.destroy();
+        remote.shieldFx = null;
+      }
+      remote.shieldCurrent = 0;
+      remote.shieldMax = 0;
+      return;
+    }
+
+    const current = Number.isFinite(state.current) ? Phaser.Math.Clamp(state.current, 0, state.max) : state.max;
+    if (!remote.shieldFx) {
+      remote.shieldFx = hasShieldFx(this.scene)
+        ? createShieldFx(this.scene, Phaser.Math.Clamp(state.radius || 38, 20, 100))
+        : this.scene.add.circle(0, 0, Phaser.Math.Clamp(state.radius || 38, 20, 100), 0x3aa8ff, 0.18)
+          .setStrokeStyle(2, 0x3aa8ff, 0.8).setDepth(9);
+      remote.shieldCurrent = current;
+    } else if (current < remote.shieldCurrent && hasShieldFx(this.scene)) {
+      hitShieldFx(remote.shieldFx);
+      if (current <= 0) breakShieldFx(remote.shieldFx);
+      remote.shieldCurrent = current;
+    } else {
+      remote.shieldCurrent = current;
+    }
+    remote.shieldMax = state.max;
+    remote.shieldScale = Number.isFinite(state.scale) ? Phaser.Math.Clamp(state.scale, 0.5, 3) : 1;
+    remote.shieldRegenerating = state.regenerating === true;
+  }
+
+  _updateRemoteAbilityEffects(remote, time, delta) {
+    remote.tornadoEffects?.forEach((effect, id) => {
+      if (time >= effect.expiresAt) {
+        effect.fx.destroy();
+        remote.tornadoEffects.delete(id);
+        return;
+      }
+      effect.fx.setPosition(effect.x, effect.y).setAlpha(effect.alpha);
+      if (hasTornadoFx(this.scene)) updateTornadoFx(effect.fx, time, delta);
+    });
+
+    remote.auraEffects?.forEach((effect) => {
+      effect.fx.setPosition(remote.sprite.x, remote.sprite.y)
+        .setScale(effect.scale)
+        .setAlpha(effect.alpha)
+        .setVisible(remote.hp > 0);
+      if (hasAuraShockFx(this.scene)) {
+        updateAuraShockFx(effect.fx, time, Math.min(50, Math.max(0, time - effect.lastUpdateAt)));
+      }
+      effect.lastUpdateAt = time;
+    });
+
+    if (remote.shieldFx) {
+      remote.shieldFx.setPosition(remote.sprite.x, remote.sprite.y)
+        .setScale(remote.shieldScale)
+        .setVisible(remote.hp > 0);
+      if (hasShieldFx(this.scene)) {
+        const dt = remote.shieldFxLastUpdateAt == null
+          ? 16 : Math.min(50, Math.max(0, time - remote.shieldFxLastUpdateAt));
+        updateShieldFx(remote.shieldFx, time, dt);
+      }
+      const ratio = remote.shieldMax > 0 ? remote.shieldCurrent / remote.shieldMax : 0;
+      const alpha = remote.shieldRegenerating
+        ? (Math.floor(time / 80) % 2 === 0 ? 0.9 : 0.25)
+        : 0.25 + Phaser.Math.Clamp(ratio, 0, 1) * 0.6;
+      remote.shieldFx.setAlpha(alpha);
+      remote.shieldFxLastUpdateAt = time;
+    }
+  }
+
   _syncRunEpoch(epoch) {
     if (typeof epoch !== 'string' || epoch.length > 32 || epoch === this.runEpoch) return;
     this.runEpoch = epoch;
@@ -552,7 +716,7 @@ export default class MultiplayerManager {
         const appliedDamage = Math.min(remote.hp, amount);
         remote.hp -= appliedDamage;
         remote.invulnerableUntil = manager.scene.time.now + 350;
-        manager._sendPlayerDamage(playerId, appliedDamage);
+        manager._sendPlayerDamage(playerId, appliedDamage, remote.shieldCurrent);
         return appliedDamage;
       }
     };
@@ -560,7 +724,11 @@ export default class MultiplayerManager {
       absorb(damage) {
         const absorbed = Math.min(remote.shieldCurrent || 0, Math.max(0, damage));
         remote.shieldCurrent = Math.max(0, (remote.shieldCurrent || 0) - absorbed);
-        return damage - absorbed;
+        const remainingDamage = damage - absorbed;
+        if (absorbed > 0 && remainingDamage <= 0) {
+          manager._sendPlayerDamage(playerId, 0, remote.shieldCurrent);
+        }
+        return remainingDamage;
       }
     };
 
@@ -714,6 +882,9 @@ export default class MultiplayerManager {
       sprite.destroy();
       remote.abilitySprites.delete(id);
     });
+
+    this._syncRemoteTornadoes(remote, visuals.tornadoes);
+    this._syncRemoteAuras(remote, visuals.auras);
   }
 
   _publishEnemySnapshot() {
@@ -979,7 +1150,10 @@ export default class MultiplayerManager {
         if (!Number.isInteger(state.seq) || state.seq <= this.lastReceivedPlayerDamageSequence ||
           !Number.isFinite(state.amount)) return;
         this.lastReceivedPlayerDamageSequence = state.seq;
-        this.player.takeDamage(Phaser.Math.Clamp(state.amount, 0, MAX_DAMAGE_PER_MESSAGE));
+        this.player.applyNetworkDamage(
+          Phaser.Math.Clamp(state.amount, 0, MAX_DAMAGE_PER_MESSAGE),
+          state.shieldCurrent
+        );
         return;
       }
       if (playerId === this.playerId) return;
@@ -1041,6 +1215,9 @@ export default class MultiplayerManager {
           cameraViewHeight: null,
           abilityGraphics: null,
           abilitySprites: new Map(),
+          tornadoEffects: new Map(),
+          auraEffects: new Map(),
+          shieldFx: null,
           abilityVisuals: null,
           levelUpChoiceRound: 0,
           levelUpChoiceIds: [],
@@ -1067,8 +1244,12 @@ export default class MultiplayerManager {
         ? state.cameraViewWidth : null;
       remote.cameraViewHeight = Number.isFinite(state.cameraViewHeight) && state.cameraViewHeight > 0
         ? state.cameraViewHeight : null;
-      remote.shieldCurrent = Number.isFinite(state.shieldCurrent) ? Math.max(0, state.shieldCurrent) : 0;
-      remote.shieldMax = Number.isFinite(state.shieldMax) ? Math.max(0, state.shieldMax) : 0;
+      if (state.shieldVisual && typeof state.shieldVisual === 'object') {
+        this._syncRemoteShield(remote, state.shieldVisual);
+      } else {
+        remote.shieldCurrent = Number.isFinite(state.shieldCurrent) ? Math.max(0, state.shieldCurrent) : 0;
+        remote.shieldMax = Number.isFinite(state.shieldMax) ? Math.max(0, state.shieldMax) : 0;
+      }
       remote.combatant.runState.dodgeChance = Number.isFinite(state.dodgeChance) ? state.dodgeChance : 0;
       remote.combatant.runState.damageReductionFraction = Number.isFinite(state.damageReductionFraction)
         ? Phaser.Math.Clamp(state.damageReductionFraction, 0, 0.95)
@@ -1225,6 +1406,9 @@ export default class MultiplayerManager {
     remote.levelLabel.destroy();
     remote.abilityGraphics?.destroy();
     remote.abilitySprites?.forEach((sprite) => sprite.destroy());
+    remote.tornadoEffects?.forEach((effect) => effect.fx.destroy());
+    remote.auraEffects?.forEach((effect) => effect.fx.destroy());
+    remote.shieldFx?.destroy();
   }
 
   destroy() {

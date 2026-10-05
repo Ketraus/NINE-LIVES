@@ -48,6 +48,18 @@ export default class ShieldSystem {
     return damage - absorbed;
   }
 
+  syncCurrent(current, nowMs) {
+    if (!Number.isFinite(current)) return false;
+    const next = Math.max(0, Math.min(this.maxShield, current));
+    if (next === this.current) return false;
+    const wasHit = next < this.current;
+    this.current = next;
+    if (wasHit && Number.isFinite(nowMs)) this.lastDamageMs = this._activeNow(nowMs);
+    this.onChange(this.current, this.maxShield);
+    if (wasHit) this.onHit();
+    return true;
+  }
+
   // Chamado todo frame (ver Player._updateShield) — só faz algo quando há…
   update(rawNowMs) {
     const nowMs = this._activeNow(rawNowMs);
