@@ -1,5 +1,6 @@
 import HealthSystem from '../combat/HealthSystem.js';
 import ShieldSystem from '../combat/ShieldSystem.js';
+import { hasShieldFx, createShieldFx, updateShieldFx, hitShieldFx, breakShieldFx } from '../fx/ShieldFx.js';
 import EventBus from '../systems/EventBus.js';
 
 const BASE_SPEED = 160;
@@ -142,6 +143,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     });
 
     const radius = this._baseRadius + SHIELD_RADIUS_PADDING;
+    if (hasShieldFx(this.scene)) {
+      // bolha ciano com grade hexagonal (ShieldFx); fica acima do gato, translúcida
+      this.shieldFx = createShieldFx(this.scene, radius);
+      this.shieldFx.setPosition(this.x, this.y);
+      return;
+    }
+    // fallback caso a arte não tenha carregado
     this.shieldFx = this.scene.add
       .circle(this.x, this.y, radius, SHIELD_COLOR, 0.18)
       .setStrokeStyle(2, SHIELD_COLOR, 0.8)
@@ -151,6 +159,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   // Flash branco rápido no escudo — mesma linguagem visual que Enemy.play…
   _flashShieldHit() {
     if (!this.shieldFx) return;
+    if (this.shieldFx.getData?.('radius') !== undefined) {
+      hitShieldFx(this.shieldFx);
+      if (this.shieldSystem && this.shieldSystem.current <= 0) breakShieldFx(this.shieldFx);
+      return;
+    }
     this.shieldFx.setFillStyle(0xffffff, 0.45);
     this.shieldFx.setStrokeStyle(3, 0xffffff, 1);
     this.scene.time.delayedCall(SHIELD_HIT_FLASH_MS, () => {
@@ -168,6 +181,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.shieldFx.setPosition(this.x, this.y);
     // o círculo é um objeto à parte do sprite do gato (não um filho dele),
     this.shieldFx.setScale(this.scale);
+    const fxDt = this._shieldFxLastMs == null ? 16 : time - this._shieldFxLastMs;
+    this._shieldFxLastMs = time;
+    updateShieldFx(this.shieldFx, time, fxDt); // no-op no fallback (círculo)
 
     if (this.shieldSystem.isRegenerating(time)) {
       const isBlinkOn = Math.floor(time / SHIELD_BLINK_INTERVAL_MS) % 2 === 0;
