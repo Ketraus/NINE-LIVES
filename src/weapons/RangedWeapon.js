@@ -7,6 +7,12 @@ const DEFAULT_PROJECTILE_TINT = 0x4fd1ff;
 // tamanho (em px) da textura do "raio" gerada em _ensureBulletTexture —
 const LASER_TEX_WIDTH = 20;
 const LASER_TEX_HEIGHT = 8;
+// sprite do tiro da pistola (128x56, cabeça brilhante aponta pra ESQUERDA,
+// por isso a rotação ganha + PI). Escala reduz pro tamanho do tiro.
+const PISTOL_BULLET_SPRITE = 'laser_blue';
+const PISTOL_BULLET_SPRITE_SCALE = 0.16;
+const PISTOL_BULLET_HITBOX_W = 38; // px do sprite original (~6px no mundo)
+const PISTOL_BULLET_HITBOX_H = 25; // (~4px no mundo)
 
 // Arma à distância (pistola, ...): mira automaticamente no inimigo mais
 // quantos "saltos" pra um novo inimigo a evolução "Instinto Caçador"
@@ -109,19 +115,27 @@ export default class RangedWeapon {
     const textureKey = this._ensureBulletTexture(scene, tint);
     const lifetimeMs = overrides.lifetimeMs ?? DEFAULT_PROJECTILE_LIFETIME_MS;
 
-    const bullet = this.bulletGroup.create(player.x, player.y, textureKey);
+    const useSprite = scene.textures.exists(PISTOL_BULLET_SPRITE);
+    const bullet = this.bulletGroup.create(player.x, player.y, useSprite ? PISTOL_BULLET_SPRITE : textureKey);
+    const baseScale = useSprite ? PISTOL_BULLET_SPRITE_SCALE : 1;
     bullet
       .setDepth(15)
-      .setScale((this.def.projectileScale ?? 1) * (overrides.scale ?? 1))
+      .setScale(baseScale * (this.def.projectileScale ?? 1) * (overrides.scale ?? 1))
       // ADD faz o raio "brilhar" contra o fundo em vez de só colar uma
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setRotation(dir.angle());
+      .setRotation(dir.angle() + (useSprite ? Math.PI : 0));
+    bullet.setData('spriteFlip', useSprite);
     bullet.body.setAllowGravity(false);
-    // a textura desenhada é bem mais comprida que o hitbox real do tiro
-    bullet.body.setSize(6, 4, true);
+    if (useSprite) {
+      // hitbox em px do sprite original (o body escala junto com o sprite)
+      bullet.body.setSize(PISTOL_BULLET_HITBOX_W, PISTOL_BULLET_HITBOX_H, true);
+    } else {
+      // a textura desenhada é bem mais comprida que o hitbox real do tiro
+      bullet.body.setSize(6, 4, true);
+    }
     bullet.setVelocity(dir.x * speed, dir.y * speed);
     // brilho extra em volta do sprite (some sozinho se o navegador cair
-    if (bullet.preFX) {
+    if (!useSprite && bullet.preFX) {
       bullet.preFX.addGlow(tint, 0, 1.5, false, 0.2, 6);
     }
     bullet.setData('damage', damage);
@@ -197,7 +211,7 @@ export default class RangedWeapon {
     const dir = new Phaser.Math.Vector2(target.x - bullet.x, target.y - bullet.y).normalize();
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
     bullet.setVelocity(dir.x * speed, dir.y * speed);
-    bullet.setRotation(dir.angle());
+    bullet.setRotation(dir.angle() + (bullet.getData('spriteFlip') ? Math.PI : 0));
     bullet.setData('dirX', dir.x);
     bullet.setData('dirY', dir.y);
   }

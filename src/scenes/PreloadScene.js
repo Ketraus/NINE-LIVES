@@ -116,6 +116,10 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('gato_drone', 'assets/sprites/gato_drone.png');
     this.load.image('gato_drone_catforce', 'assets/sprites/gato_drone_catforce.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
+    // sprites dos disparos do GatoDrone (verde) e do CatForce 2.0 (roxo); azul reservado
+    this.load.image('laser_green', 'assets/fx/laser_green.png');
+    this.load.image('laser_purple', 'assets/fx/laser_purple.png');
+    this.load.image('laser_blue', 'assets/fx/laser_blue.png');
 
     // salvar em assets/music/
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
@@ -277,6 +281,9 @@ export default class PreloadScene extends Phaser.Scene {
     [
       'gato_drone',
       'gato_drone_catforce',
+      'laser_green',
+      'laser_purple',
+      'laser_blue',
       'asset_purification_idle',
       'asset_purification_walk'
     ].forEach((key) => this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST));

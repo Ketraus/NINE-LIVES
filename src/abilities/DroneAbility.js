@@ -13,6 +13,13 @@ const BASE_BULLET_COLOR = 0x53ff9c;
 const BASE_BULLET_TEX_WIDTH = 14;
 const BASE_BULLET_TEX_HEIGHT = 6;
 
+// Sprites dos disparos (128x56, a cabeça brilhante aponta pra ESQUERDA,
+// por isso a rotação ganha + PI em _fire). Escala reduz pro tamanho do tiro.
+const BULLET_SPRITE_BASE = 'laser_green';
+const BULLET_SPRITE_LASER = 'laser_purple';
+const BULLET_SPRITE_SCALE = 0.2;
+const BULLET_HITBOX_SIZE = 36; // px do sprite original (~7px no mundo)
+
 // Posição de escolta de cada cópia relativa ao jogador. Até 3 drones
 const HAT_OFFSETS = [
   { x: 30, y: -30 },
@@ -168,10 +175,13 @@ export default class DroneAbility {
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
     const color = this.laser ? this.laserColor : BASE_BULLET_COLOR; // era 0x7af0ff (bolinha azul antiga)
 
-    // laser evoluído continua no hit_fx esticado (visual próprio dele, não
-    const textureKey = this.laser ? 'hit_fx' : this._ensureBulletTexture(scene, color);
+    // GatoDrone usa o sprite verde; CatForce 2.0 usa o roxo (se o sprite não
+    // carregar, cai nos visuais antigos desenhados por código)
+    const spriteKey = this.laser ? BULLET_SPRITE_LASER : BULLET_SPRITE_BASE;
+    const hasSprite = scene.textures.exists(spriteKey);
+    const textureKey = hasSprite ? spriteKey : (this.laser ? 'hit_fx' : this._ensureBulletTexture(scene, color));
     const bullet = this.bulletGroup.create(this.sprite.x, this.sprite.y, textureKey);
-    bullet.setDepth(15).setRotation(dir.angle());
+    bullet.setDepth(15).setRotation(dir.angle() + (hasSprite ? Math.PI : 0));
     bullet.body.setAllowGravity(false);
     bullet.setVelocity(dir.x * speed, dir.y * speed);
     bullet.setData('damage', this.def.damage);
@@ -179,13 +189,18 @@ export default class DroneAbility {
     bullet.setData('color', color);
     bullet.setData('hitSet', new Set());
 
-    if (this.laser) {
-      // feixe fino e alongado (em vez da bolinha padrão) + blend ADD pra
+    if (hasSprite) {
+      bullet.setScale(BULLET_SPRITE_SCALE).setBlendMode(Phaser.BlendModes.ADD);
+      bullet.body.setSize(BULLET_HITBOX_SIZE, BULLET_HITBOX_SIZE, true);
+      if (this.laser) {
+        this._spawnMuzzleFlash(scene, this.sprite.x, this.sprite.y, color);
+        this._attachLaserTrail(scene, bullet, color);
+      }
+    } else if (this.laser) {
       bullet.setTint(color).setScale(0.85, 0.22).setBlendMode(Phaser.BlendModes.ADD);
       this._spawnMuzzleFlash(scene, this.sprite.x, this.sprite.y, color);
       this._attachLaserTrail(scene, bullet, color);
     } else {
-      // mesmo tratamento do tiro atualizado da pistola: ADD pra brilhar +
       bullet.setScale(1).setBlendMode(Phaser.BlendModes.ADD);
       bullet.body.setSize(4, 3, true);
       if (bullet.preFX) {
@@ -251,13 +266,13 @@ export default class DroneAbility {
       callback: () => {
         if (!bullet.active) return;
         const ghost = scene.add
-          .image(bullet.x, bullet.y, 'hit_fx')
+          .image(bullet.x, bullet.y, bullet.texture.key)
           .setDepth(14)
           .setBlendMode(Phaser.BlendModes.ADD)
-          .setTint(color)
-          .setScale(bullet.scaleX * 0.75, bullet.scaleY * 0.75)
+          .setScale(bullet.scaleX * 0.9, bullet.scaleY * 0.9)
           .setRotation(bullet.rotation)
           .setAlpha(0.4);
+        if (bullet.texture.key === 'hit_fx') ghost.setTint(color);
         scene.tweens.add({
           targets: ghost,
           alpha: 0,
