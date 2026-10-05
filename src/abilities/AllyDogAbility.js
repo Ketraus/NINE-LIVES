@@ -2,6 +2,14 @@ import DamageSystem from '../combat/DamageSystem.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 import { spawnCyberHitFx } from '../fx/BladeCutFx.js';
 import { hasCyberusLaserFx, playCyberusLaser, spawnCyberusLaserHitFx } from '../fx/CyberusLaserFx.js';
+import {
+  hasPlasmaGrenadeFx,
+  createPlasmaGrenadeProjectile,
+  trailPlasmaGrenade,
+  playPlasmaExplosion,
+  createPlasmaFlameZone,
+  destroyPlasmaFlameZone
+} from '../fx/PlasmaGrenadeFx.js';
 
 // o corte azul do Cyberus é desenhado maior que o alcance real do golpe
 const CYBERUS_SLASH_SCALE = 1.3;
@@ -138,10 +146,12 @@ export default class AllyDogAbility {
       GRENADE_MAX_TRAVEL_MS
     );
 
-    const fx = scene.add
-      .circle(startX, startY, GRENADE_PROJECTILE_RADIUS, FLAME_COLOR, 0.95)
-      .setStrokeStyle(2, 0xffffff, 0.7)
-      .setDepth(12); // acima do cachorro (11)
+    const fx = hasPlasmaGrenadeFx(scene)
+      ? createPlasmaGrenadeProjectile(scene, startX, startY)
+      : scene.add
+          .circle(startX, startY, GRENADE_PROJECTILE_RADIUS, FLAME_COLOR, 0.95)
+          .setStrokeStyle(2, 0xffffff, 0.7)
+          .setDepth(12); // acima do cachorro (11)
 
     this.grenadesInFlight.push({ fx, startX, startY, targetX, targetY, startMs: time, durationMs });
   }
@@ -154,23 +164,48 @@ export default class AllyDogAbility {
       // arco: sobe no meio do trajeto e volta a "aterrissar" no fim —
       g.fx.y = Phaser.Math.Linear(g.startY, g.targetY, progress) - Math.sin(progress * Math.PI) * GRENADE_ARC_HEIGHT;
 
+      if (g.fx.lastTrailMs !== undefined) trailPlasmaGrenade(scene, g.fx, time);
+
       const hitEnemy = this._findEnemyNear(g.fx.x, g.fx.y, GRENADE_HIT_RADIUS, enemyGroup);
       if (!hitEnemy && progress < 1) return true; // ainda em voo, sem ninguém no caminho
 
       const explodeX = g.fx.x;
       const explodeY = g.fx.y;
       g.fx.destroy();
-      this._explodeGrenade(scene, explodeX, explodeY, time);
+      this._explodeGrenade(scene, explodeX, explodeY, time, enemyGroup);
       return false;
     });
   }
 
   // Cria a poça de chamas persistente no ponto de detonação — chamado só
-  _explodeGrenade(scene, x, y, time) {
+  _explodeGrenade(scene, x, y, time, enemyGroup) {
     scene.sound.play('sfx_cyberus_explosion', { volume: 0.6, player: true });
 
+    // 1º dano: a explosão em si (instantâneo, raio próprio — maior que a poça)
+    this._damageEnemiesInBlast(scene, x, y, time, enemyGroup);
+
+    // 2º dano: a poça de chamas que fica queimando (ver _advanceFlameZones).
+    // lastTickMs = time: o 1º tick da poça só vem depois de um intervalo,
+    // senão ele colaria no dano da explosão no mesmo frame.
+    if (hasPlasmaGrenadeFx(scene)) playPlasmaExplosion(scene, x, y, this.evoDef.grenadeExplosionRadius);
     const fx = this._createFlameFx(scene, x, y);
-    this.flameZones.push({ x, y, spawnMs: time, lastTickMs: 0, fx });
+    this.flameZones.push({ x, y, spawnMs: time, lastTickMs: time, fx });
+  }
+
+  _damageEnemiesInBlast(scene, x, y, time, enemyGroup) {
+    const radius = this.evoDef.grenadeExplosionRadius;
+    // snapshot: mesma razão do fix em TornadoAbility/SlamAbility/Weapon
+    enemyGroup.getChildren().slice().forEach((enemy) => {
+      if (!enemy?.active) return;
+      const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
+      if (dist > radius) return;
+      // sem `source`: dano do Cyberus, igual à poça e ao contato normal
+      const hit = DamageSystem.applyWeaponHit(enemy, this.evoDef.grenadeExplosionDamage, undefined, time, {
+        kind: 'explosion',
+        color: FLAME_COLOR
+      });
+      if (hit) spawnCyberHitFx(scene, enemy.x, enemy.y, Math.atan2(enemy.y - y, enemy.x - x));
+    });
   }
 
   // 2ª cabeça do Cyberus: um golpe de espada em arco na direção do alvo,
@@ -390,10 +425,12 @@ export default class AllyDogAbility {
 
   _createFlameFx(scene, x, y) {
     const radius = this.evoDef.grenadeRadius;
+    if (hasPlasmaGrenadeFx(scene)) return createPlasmaFlameZone(scene, x, y, radius);
+
+    // fallback procedural (se o sprite do plasma não carregou)
     const outer = scene.add.circle(0, 0, radius, FLAME_COLOR, 0.25).setStrokeStyle(2, FLAME_COLOR, 0.6);
     const inner = scene.add.circle(0, 0, radius * 0.5, FLAME_COLOR, 0.35);
     const container = scene.add.container(x, y, [outer, inner]).setDepth(8);
-
     scene.tweens.add({
       targets: inner,
       scale: { from: 0.85, to: 1.15 },
@@ -402,7 +439,6 @@ export default class AllyDogAbility {
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
-
     return container;
   }
 
@@ -419,8 +455,7 @@ export default class AllyDogAbility {
   }
 
   _destroyFlameFx(fx) {
-    fx.scene?.tweens.killTweensOf([fx, ...fx.list]);
-    fx.destroy();
+    destroyPlasmaFlameZone(fx);
   }
 
   // Acha o inimigo mais próximo dentro de engageRadius. Com evoDef ativo

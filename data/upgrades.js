@@ -562,6 +562,10 @@ export default [
         "grenadeTickIntervalMs": 500,
         "grenadeDurationMs": 4000,
         "grenadeRadius": 46,
+        // dano da EXPLOSÃO (instantâneo, 1x quando a granada detona) — separado
+        // do dano da poça acima (grenadeDamage, a cada grenadeTickIntervalMs)
+        "grenadeExplosionDamage": 18,
+        "grenadeExplosionRadius": 62,
         // 2ª cabeça: golpe de espada em arco (mesmo teste geométrico da
         // katana do jogador, ver Weapon._fireArc), só que num azul bem
         // mais escuro — cor de identidade desta cabeça

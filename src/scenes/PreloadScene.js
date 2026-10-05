@@ -1,5 +1,6 @@
 import { loadSlashSheets, createSlashAnimations } from '../fx/SlashFx.js';
 import { createCyberusLaserTextures } from '../fx/CyberusLaserFx.js';
+import { loadPlasmaExplosionSheet, createPlasmaGrenadeTextures } from '../fx/PlasmaGrenadeFx.js';
 import { loadTornadoSheet, createTornadoAnimation } from '../fx/TornadoFx.js';
 import { loadAuraShockSheet, createAuraShockAnimation } from '../fx/AuraShockFx.js';
 import { loadShieldAssets, createShieldTextures } from '../fx/ShieldFx.js';
@@ -131,6 +132,8 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('cyberus_laser', 'assets/fx/cyberus_laser.png');
     // funil animado do Tornado (4 frames 32x32)
     loadTornadoSheet(this);
+    // explosão de plasma da granada do Cyberus (4 frames 32x32)
+    loadPlasmaExplosionSheet(this);
     // anel de raios da Sobrecarga (4 frames 32x32)
     loadAuraShockSheet(this);
     // bolha da Barreira (escudo)
@@ -285,6 +288,7 @@ export default class PreloadScene extends Phaser.Scene {
     AssetManager.createAnimations(this);
     createSlashAnimations(this);
     createCyberusLaserTextures(this);
+    createPlasmaGrenadeTextures(this);
     createTornadoAnimation(this);
     createAuraShockAnimation(this);
     createShieldTextures(this);
