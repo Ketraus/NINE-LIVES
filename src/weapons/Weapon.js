@@ -1,5 +1,6 @@
 import DamageSystem from '../combat/DamageSystem.js';
 import { hasSlashFx, playSlashFx, spawnSlashHitFx } from '../fx/SlashFx.js';
+import { spawnDanceHitFx, danceCutPlan } from '../fx/BladeCutFx.js';
 
 // Fração do dano principal que cada acerto "avulso" da evolução "Corte
 const STRAY_DAMAGE_FRACTION = 0.5;
@@ -65,6 +66,9 @@ export default class Weapon {
           knockbackMultiplier: style.knockbackMultiplier,
           cameraShakeMultiplier: style.cameraShakeMultiplier,
           isFinisher,
+          // cada corte tem direção própria no visual (cortes que se cruzam)
+          swingIndex: i,
+          baseAngle: aim.angle(),
           // alterna o sentido do corte a cada golpe do combo
           flipSwing: i % 2 === 1,
           slashVariant: isDance ? 'red' : 'white',
@@ -133,7 +137,9 @@ export default class Weapon {
       durationMs: (this.def.fxDurationMs ?? 150) * (options.fxDurationMultiplier ?? 1),
       finisher: !!options.isFinisher,
       variant: useSwordFx ? (options.slashVariant ?? 'white') : undefined,
-      flip: !!options.flipSwing
+      flip: !!options.flipSwing,
+      swingIndex: options.swingIndex,
+      baseAngle: options.baseAngle
     });
 
     let landedHit = false;
@@ -160,6 +166,13 @@ export default class Weapon {
         // golpe final da "Dança de Cortes": além do knockback/shake maiores
         if (hit && options.isFinisher) this._showFinisherImpactFx(scene, enemy.x, enemy.y, options.tint);
         if (hit && options.slashJuice) spawnSlashHitFx(scene, enemy.x, enemy.y, aim.angle());
+        // Dança de Cortes: o risco atravessa o inimigo e se abre
+        if (hit && options.slashVariant === 'red') {
+          const cutAngle = options.isFinisher
+            ? aim.angle()
+            : (options.baseAngle ?? aim.angle()) + Phaser.Math.DegToRad(danceCutPlan(options.swingIndex ?? 0).psi);
+          spawnDanceHitFx(scene, enemy.x, enemy.y, cutAngle, !!options.isFinisher);
+        }
         hitEnemies?.add(enemy);
         landedHit = true;
       }
@@ -252,7 +265,11 @@ export default class Weapon {
         variant,
         durationMs: (this.def.fxDurationMs ?? 200) * (options.fxDurationMultiplier ?? 1),
         flip: !!options.flipSwing,
-        juice: !!options.slashJuice
+        juice: !!options.slashJuice,
+        finisher: !!options.isFinisher,
+        arcDegrees: options.arcDegreesOverride ?? this.def.arcDegrees,
+        baseAngle: options.baseAngle,
+        swingIndex: options.swingIndex ?? 0
       });
       return;
     }

@@ -1,5 +1,6 @@
 import DamageSystem from '../combat/DamageSystem.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
+import { spawnCyberHitFx } from '../fx/BladeCutFx.js';
 import { hasCyberusLaserFx, playCyberusLaser, spawnCyberusLaserHitFx } from '../fx/CyberusLaserFx.js';
 
 // o corte azul do Cyberus é desenhado maior que o alcance real do golpe
@@ -203,10 +204,12 @@ export default class AllyDogAbility {
       if (normalizedAngle > halfArc) return;
 
       // sem `source`: dano do Cyberus, mesmo motivo da granada/contato não
-      DamageSystem.applyWeaponHit(enemy, this.evoDef.swordDamage, undefined, scene.time.now, {
+      const hit = DamageSystem.applyWeaponHit(enemy, this.evoDef.swordDamage, undefined, scene.time.now, {
         kind: 'ability',
         color: this.evoDef.swordTint
       });
+      // descarga elétrica atravessando o inimigo
+      if (hit) spawnCyberHitFx(scene, enemy.x, enemy.y, aim.angle());
     });
   }
 
@@ -227,7 +230,8 @@ export default class AllyDogAbility {
         angle: baseAngle,
         range: range * CYBERUS_SLASH_SCALE,
         variant: 'blue',
-        durationMs: duration
+        durationMs: duration,
+        arcDegrees: this.evoDef.swordArcDegrees
       });
       return;
     }

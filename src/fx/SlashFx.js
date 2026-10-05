@@ -3,6 +3,8 @@
 // num crescente grande apontando pra DIREITA (+x) e se desfaz em fiapos.
 // Variantes: 'white' = katana normal, 'red' = Dança de Cortes, 'blue' = Cyberus.
 
+import { playDanceCut, playCyberCut } from './BladeCutFx.js';
+
 export const SLASH_VARIANTS = ['white', 'red', 'blue'];
 
 const FRAME_W = 64;
@@ -45,7 +47,12 @@ export function createSlashAnimations(scene) {
   });
 }
 
+// 'red' (Dança de Cortes) e 'blue' (Cyberus) são desenhados por código
+// (BladeCutFx.js) e não dependem dos PNGs; só a katana branca usa a folha.
+const PROCEDURAL_VARIANTS = ['red', 'blue'];
+
 export function hasSlashFx(scene, variant) {
+  if (PROCEDURAL_VARIANTS.includes(variant)) return true;
   return SLASH_VARIANTS.includes(variant) && scene.textures.exists(slashTextureKey(variant));
 }
 
@@ -54,7 +61,10 @@ export function hasSlashFx(scene, variant) {
 // sentido do corte (usado pra alternar os golpes do combo). `juice` liga
 // o "suco" extra (só a katana base): estouro de escala, avanço, clarão
 // quente no início, eco atrás do corte e faíscas na ponta.
-export function playSlashFx(scene, { x, y, angle, range, variant, durationMs = 200, flip = false, depth = 20, juice = false }) {
+export function playSlashFx(scene, { x, y, angle, range, variant, durationMs = 200, flip = false, depth = 20, juice = false, finisher = false, arcDegrees, baseAngle, swingIndex = 0 }) {
+  if (variant === 'red') return playDanceCut(scene, { x, y, angle, baseAngle, swingIndex, range, durationMs, flip, depth, finisher, arcDegrees });
+  if (variant === 'blue') return playCyberCut(scene, { x, y, angle, range, durationMs, flip, depth, arcDegrees });
+
   const key = slashTextureKey(variant);
   const scale = range / SPRITE_RADIUS;
   const sx = scale;

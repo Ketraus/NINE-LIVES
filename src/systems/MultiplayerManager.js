@@ -1152,7 +1152,11 @@ export default class MultiplayerManager {
         variant: attack.variant,
         durationMs: duration * (finisher ? 1.6 : 1),
         flip: attack.flip === true,
-        juice: attack.variant === 'white'
+        juice: attack.variant === 'white',
+        finisher,
+        arcDegrees: Number.isFinite(attack.arcDegrees) ? Phaser.Math.Clamp(attack.arcDegrees, 10, 180) : undefined,
+        swingIndex: Number.isInteger(attack.swingIndex) ? Phaser.Math.Clamp(attack.swingIndex, 0, 15) : (attack.flip === true ? 1 : 0),
+        baseAngle: Number.isFinite(attack.baseAngle) ? attack.baseAngle : undefined
       });
       return;
     }
