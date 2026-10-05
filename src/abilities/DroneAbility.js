@@ -1,7 +1,12 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import { launchShotFx, attachShotTrail, spawnShotHitFx } from '../fx/ShotFx.js';
 
 const BULLET_LIFETIME_MS = 1200;
-const DEFAULT_PROJECTILE_SPEED = 320;
+const DEFAULT_PROJECTILE_SPEED = 640; // mesma velocidade do tiro da pistola
+// força do suco visual dos tiros (ShotFx; pistola = 1) — o tiro do drone é
+// pequeno, então precisa de bem mais pra ser sentido. CatForce, mais ainda.
+const SHOT_FX_INTENSITY = 2;
+const LASER_FX_INTENSITY = 2.4;
 
 // Visual/feedback do laser (evolução "CatForce 2.0", ver data/upgrades.…
 const LASER_DEFAULT_COLOR = 0xb26bff;
@@ -17,8 +22,8 @@ const BASE_BULLET_TEX_HEIGHT = 6;
 // por isso a rotação ganha + PI em _fire). Escala reduz pro tamanho do tiro.
 const BULLET_SPRITE_BASE = 'laser_green';
 const BULLET_SPRITE_LASER = 'laser_purple';
-const BULLET_SPRITE_SCALE = 0.2;
-const BULLET_HITBOX_SIZE = 36; // px do sprite original (~7px no mundo)
+const BULLET_SPRITE_SCALE = 0.14;
+const BULLET_HITBOX_SIZE = 50; // px do sprite original (~7px no mundo)
 
 // Posição de escolta de cada cópia relativa ao jogador. Até 3 drones
 const HAT_OFFSETS = [
@@ -121,6 +126,9 @@ export default class DroneAbility {
         kind: 'ability',
         color: this.laser ? this.laserColor : BASE_BULLET_COLOR
       });
+      const hitAngle = Math.atan2(bullet.body.velocity.y, bullet.body.velocity.x);
+      const fxIntensity = this.laser ? LASER_FX_INTENSITY : SHOT_FX_INTENSITY;
+      spawnShotHitFx(this.scene, bullet.x, bullet.y, bullet.getData('color'), hitAngle, fxIntensity);
       if (bullet.getData('pierce')) {
         this._spawnHitSpark(this.scene, enemy.x, enemy.y, bullet.getData('color'));
       } else {
@@ -128,7 +136,17 @@ export default class DroneAbility {
       }
     });
     // bala do drone também não deve atravessar parede
-    scene.mapManager?.addCollider(this.bulletGroup, (bullet) => bullet.destroy());
+    scene.mapManager?.addCollider(this.bulletGroup, (bullet) => {
+      spawnShotHitFx(
+        this.scene,
+        bullet.x,
+        bullet.y,
+        bullet.getData('color'),
+        Math.atan2(bullet.body.velocity.y, bullet.body.velocity.x),
+        this.laser ? LASER_FX_INTENSITY : SHOT_FX_INTENSITY
+      );
+      bullet.destroy();
+    });
   }
 
   _follow(player, time) {
@@ -207,6 +225,19 @@ export default class DroneAbility {
         bullet.preFX.addGlow(color, 0, 1.5, false, 0.2, 6);
       }
     }
+
+    // suco visual: estica ao sair, clarão no cano e rastro de brilho. O laser
+    // roxo mantém também o clarão/rastro próprios (_spawnMuzzleFlash/_attachLaserTrail)
+    const fxIntensity = this.laser ? LASER_FX_INTENSITY : SHOT_FX_INTENSITY;
+    launchShotFx(scene, bullet, {
+      x: this.sprite.x,
+      y: this.sprite.y,
+      angle: dir.angle(),
+      color,
+      muzzle: !this.laser,
+      intensity: fxIntensity
+    });
+    attachShotTrail(scene, bullet, color, { intensity: fxIntensity });
 
     scene.time.delayedCall(BULLET_LIFETIME_MS, () => bullet.destroy());
   }

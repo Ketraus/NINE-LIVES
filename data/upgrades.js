@@ -208,7 +208,8 @@ export default [
     "cooldownMs": 900,
     "damage": 4,
     "range": 200,
-    "projectileSpeed": 320
+    // mesma velocidade do tiro da pistola (data/weapons.js)
+    "projectileSpeed": 640
   },
   {
     "id": "pistol_fragmentation",

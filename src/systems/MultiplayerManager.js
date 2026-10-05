@@ -1151,7 +1151,8 @@ export default class MultiplayerManager {
         range,
         variant: attack.variant,
         durationMs: duration * (finisher ? 1.6 : 1),
-        flip: attack.flip === true
+        flip: attack.flip === true,
+        juice: attack.variant === 'white'
       });
       return;
     }

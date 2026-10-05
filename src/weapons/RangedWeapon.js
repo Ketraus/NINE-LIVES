@@ -1,4 +1,5 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import { launchShotFx, attachShotTrail, spawnShotHitFx } from '../fx/ShotFx.js';
 
 const DEFAULT_PROJECTILE_SPEED = 380;
 const DEFAULT_PROJECTILE_LIFETIME_MS = 1200;
@@ -103,7 +104,8 @@ export default class RangedWeapon {
       const pelletDir = dir.clone().rotate(angleOffset);
       this._spawnBullet(scene, player, enemyGroup, pelletDir, pelletDamage, statMods, {
         lifetimeMs: DEFAULT_PROJECTILE_LIFETIME_MS * FRAGMENTATION_LIFETIME_FRACTION,
-        scale: 0.8
+        scale: 0.8,
+        skipMuzzle: i > 0 // um clarão só por disparo do leque
       });
     }
   }
@@ -138,6 +140,15 @@ export default class RangedWeapon {
     if (!useSprite && bullet.preFX) {
       bullet.preFX.addGlow(tint, 0, 1.5, false, 0.2, 6);
     }
+    // suco visual: clarão no cano, estica ao sair e rastro de brilho
+    launchShotFx(scene, bullet, {
+      x: player.x,
+      y: player.y,
+      angle: dir.angle(),
+      color: tint,
+      muzzle: !overrides.skipMuzzle
+    });
+    attachShotTrail(scene, bullet, tint);
     bullet.setData('damage', damage);
     // guardado pra empurrar o inimigo na hora do impacto (ver knockback
     bullet.setData('dirX', dir.x);
@@ -185,6 +196,13 @@ export default class RangedWeapon {
       if (!hit) return; // desviou/já morreu: bala segue intacta, sem contar como impacto
 
       hitEnemies.push(enemy);
+      spawnShotHitFx(
+        scene,
+        bullet.x,
+        bullet.y,
+        this.def.projectileTint ?? DEFAULT_PROJECTILE_TINT,
+        Math.atan2(bullet.getData('dirY'), bullet.getData('dirX'))
+      );
       if (this.def.knockback) {
         enemy.applyKnockback(bullet.getData('dirX'), bullet.getData('dirY'), this.def.knockback, scene.time.now);
       }
@@ -203,7 +221,16 @@ export default class RangedWeapon {
       bullet.destroy();
     });
     // reaproveita o mapManager que a GameScene já monta — bala não deve
-    scene.mapManager?.addCollider(this.bulletGroup, (bullet) => bullet.destroy());
+    scene.mapManager?.addCollider(this.bulletGroup, (bullet) => {
+      spawnShotHitFx(
+        scene,
+        bullet.x,
+        bullet.y,
+        this.def.projectileTint ?? DEFAULT_PROJECTILE_TINT,
+        Math.atan2(bullet.getData('dirY'), bullet.getData('dirX'))
+      );
+      bullet.destroy();
+    });
   }
 
   // Reaponta uma bala já em voo pro alvo dado, sem recriar o sprite.

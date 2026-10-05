@@ -1,5 +1,5 @@
 import DamageSystem from '../combat/DamageSystem.js';
-import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
+import { hasSlashFx, playSlashFx, spawnSlashHitFx } from '../fx/SlashFx.js';
 
 // Fração do dano principal que cada acerto "avulso" da evolução "Corte
 const STRAY_DAMAGE_FRACTION = 0.5;
@@ -67,7 +67,9 @@ export default class Weapon {
           isFinisher,
           // alterna o sentido do corte a cada golpe do combo
           flipSwing: i % 2 === 1,
-          slashVariant: isDance ? 'red' : 'white'
+          slashVariant: isDance ? 'red' : 'white',
+          // suco extra (avanço, eco, faíscas) só no corte da katana base
+          slashJuice: !isDance
         });
       };
 
@@ -157,6 +159,7 @@ export default class Weapon {
         );
         // golpe final da "Dança de Cortes": além do knockback/shake maiores
         if (hit && options.isFinisher) this._showFinisherImpactFx(scene, enemy.x, enemy.y, options.tint);
+        if (hit && options.slashJuice) spawnSlashHitFx(scene, enemy.x, enemy.y, aim.angle());
         hitEnemies?.add(enemy);
         landedHit = true;
       }
@@ -248,7 +251,8 @@ export default class Weapon {
         range,
         variant,
         durationMs: (this.def.fxDurationMs ?? 200) * (options.fxDurationMultiplier ?? 1),
-        flip: !!options.flipSwing
+        flip: !!options.flipSwing,
+        juice: !!options.slashJuice
       });
       return;
     }
