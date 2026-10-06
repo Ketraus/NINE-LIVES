@@ -1003,6 +1003,22 @@ export default class MultiplayerManager {
     projectileStates.forEach((projectileState) => {
       if (typeof projectileState.id !== 'string' ||
         ![projectileState.x, projectileState.y].every(Number.isFinite)) return;
+      if (projectileState.kind === 'wave' && this.scene.textures.exists('shockwave_wave')) {
+        // onda branca em pixel art (mesma arte do jogador local)
+        let projectile = remote.abilitySprites.get(projectileState.id);
+        if (!projectile) {
+          projectile = this.scene.add.image(projectileState.x, projectileState.y, 'shockwave_wave', 0)
+            .setDepth(16)
+            .setOrigin(0.65, 0.5);
+          remote.abilitySprites.set(projectileState.id, projectile);
+        }
+        projectile.setFrame(Math.floor(this.scene.time.now / 55) % 4)
+          .setPosition(projectileState.x, projectileState.y)
+          .setRotation(Number.isFinite(projectileState.rotation) ? projectileState.rotation : 0)
+          .setScale(projectileState.scaleX || 1, projectileState.scaleY || 1)
+          .setAlpha(Phaser.Math.Clamp(projectileState.alpha ?? 1, 0, 1));
+        return;
+      }
       if (projectileState.kind === 'wave' && this.scene.textures.exists('hit_fx')) {
         let projectile = remote.abilitySprites.get(projectileState.id);
         if (!projectile) {

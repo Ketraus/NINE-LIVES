@@ -1,5 +1,6 @@
 import { loadSlashSheets, createSlashAnimations } from '../fx/SlashFx.js';
 import { loadPunchSheet, createPunchAnimation } from '../fx/PunchFx.js';
+import { loadShockwaveSheet, createShockwaveAnimation } from '../fx/ShockwaveFx.js';
 import { createCyberusLaserTextures } from '../fx/CyberusLaserFx.js';
 import { loadPlasmaExplosionSheet, createPlasmaGrenadeTextures } from '../fx/PlasmaGrenadeFx.js';
 import { loadTornadoSheet, createTornadoAnimation } from '../fx/TornadoFx.js';
@@ -131,6 +132,8 @@ export default class PreloadScene extends Phaser.Scene {
     loadSlashSheets(this);
     // estouro animado do soco base do Paws (4 frames 440x440)
     loadPunchSheet(this);
+    // onda branca do Shockwave (4 frames 32x32)
+    loadShockwaveSheet(this);
     // laser da 3ª cabeça do Cyberus (fatiado em CyberusLaserFx.js)
     this.load.image('cyberus_laser', 'assets/fx/cyberus_laser.png');
     // funil animado do Tornado (4 frames 32x32)
@@ -291,6 +294,7 @@ export default class PreloadScene extends Phaser.Scene {
     AssetManager.createAnimations(this);
     createSlashAnimations(this);
     createPunchAnimation(this);
+    createShockwaveAnimation(this);
     createCyberusLaserTextures(this);
     createPlasmaGrenadeTextures(this);
     createTornadoAnimation(this);

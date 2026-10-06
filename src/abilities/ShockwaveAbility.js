@@ -1,7 +1,17 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import {
+  hasShockwaveFx,
+  SHOCKWAVE_KEY,
+  SHOCKWAVE_ORIGIN_X,
+  SHOCKWAVE_ORIGIN_Y,
+  launchShockwaveFx,
+  attachShockwaveFlight,
+  spawnShockwaveHitFx,
+  spawnShockwaveFadeFx
+} from '../fx/ShockwaveFx.js';
 
 // A onda reaproveita a textura hit_fx esticada (mesma técnica do laser
-const SHOCKWAVE_COLOR = 0xffb199;
+const SHOCKWAVE_COLOR = 0xffffff;
 // Ângulo entre cada onda extra da salva, em graus — todas nascem no MES…
 const SHOCKWAVE_SPREAD_DEG = 22;
 // Cor da explosão da evolução "Blastix" (ver upgrade()) — laranja, pra
@@ -57,11 +67,19 @@ export default class ShockwaveAbility {
         const dir = wave.getData('dir');
         enemy.applyKnockback(dir.x, dir.y, this.def.knockback, scene.time.now);
       }
+      if (hasShockwaveFx(scene)) {
+        spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle());
+      }
       // Blastix: explode NO PONTO de impacto (não fica de área), ferindo
       if (this.evolved) this._explode(scene, player, wave.x, wave.y, enemy);
       wave.destroy();
     });
-    scene.mapManager?.addCollider(this.group, (wave) => wave.destroy());
+    scene.mapManager?.addCollider(this.group, (wave) => {
+      if (hasShockwaveFx(scene)) {
+        spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle(), { small: true });
+      }
+      wave.destroy();
+    });
   }
 
   // Explosão pontual da evolução Blastix ao acertar um inimigo: dano
@@ -100,9 +118,9 @@ export default class ShockwaveAbility {
   // Dispara `this.waveCount` ondas TODAS DE UMA VEZ (sem stagger,
   _fire(scene, player) {
     const aim = player.getAimDirection();
-    this._angleOffsets(this.waveCount).forEach((angleOffset) => {
+    this._angleOffsets(this.waveCount).forEach((angleOffset, index) => {
       const dir = aim.clone().rotate(angleOffset);
-      this._spawnWave(scene, player.x, player.y, dir);
+      this._spawnWave(scene, player.x, player.y, dir, index === 0);
     });
   }
 
@@ -117,10 +135,52 @@ export default class ShockwaveAbility {
     return offsets;
   }
 
+  // Onda com a arte branca em pixel art + FX de ar deslocado (ShockwaveFx).
+  // Hitbox em mundo idêntica à da onda antiga (~92x35 px).
+  _spawnWaveSprite(scene, x, y, dir, firstOfVolley) {
+    const startX = x + dir.x * 16;
+    const startY = y + dir.y * 16;
+    const wave = this.group.create(startX, startY, SHOCKWAVE_KEY, 0);
+    const scale = (this.def.width / 32) * 0.85;
+    wave.setDepth(16);
+    wave.setOrigin(SHOCKWAVE_ORIGIN_X, SHOCKWAVE_ORIGIN_Y);
+    wave.setScale(scale);
+    wave.body.setAllowGravity(false);
+    wave.body.setSize((this.def.width * this.def.width) / 34 / scale, (this.def.width * this.def.width) / 90 / scale, true);
+    wave.setRotation(dir.angle());
+    wave.play(SHOCKWAVE_KEY);
+    wave.setData('damage', this.def.damage);
+    wave.setData('dir', dir.clone());
+    wave.setVelocity(dir.x * this.def.speed, dir.y * this.def.speed);
+
+    launchShockwaveFx(scene, x, y, dir, { shake: firstOfVolley });
+    attachShockwaveFlight(scene, wave, dir);
+
+    // forte durante a maior parte do caminho e some só no final
+    const lifetimeMs = (this.def.distance / this.def.speed) * 1000;
+    scene.tweens.add({
+      targets: wave,
+      alpha: 0,
+      delay: lifetimeMs * 0.55,
+      duration: lifetimeMs * 0.45,
+      onComplete: () => {
+        if (!wave.active) return;
+        spawnShockwaveFadeFx(scene, wave.x, wave.y, dir.angle());
+        wave.destroy();
+      }
+    });
+  }
+
   // Uma única onda de choque, nascendo em (x, y) e viajando na direção
-  _spawnWave(scene, x, y, dir) {
+  _spawnWave(scene, x, y, dir, firstOfVolley = true) {
     scene.sound.play('sfx_shockwave', { volume: 0.5, player: true });
 
+    if (hasShockwaveFx(scene)) {
+      this._spawnWaveSprite(scene, x, y, dir, firstOfVolley);
+      return;
+    }
+
+    // fallback (folha não carregou): onda antiga feita com hit_fx esticado
     const wave = this.group.create(x, y, 'hit_fx');
     wave.setDepth(16);
     wave.body.setAllowGravity(false);

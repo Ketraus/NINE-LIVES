@@ -80,7 +80,7 @@ const PUNCH_STAGGER_MS = 18;
 export const SMEAR_MAX_REACH = 58;
 const START_DIST = 12;
 
-function ensureWindTexture(scene) {
+export function ensureWindTexture(scene) {
   if (scene.textures.exists(WIND_KEY)) return WIND_KEY;
   const g = scene.add.graphics();
   const cx = 6;
