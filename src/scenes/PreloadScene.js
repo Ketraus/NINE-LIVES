@@ -60,6 +60,15 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // gato branco da classe Paws (punhos)
+    this.load.spritesheet('player_white_paws_idle', 'assets/sprites/player_white_paws_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_white_paws_walk', 'assets/sprites/player_white_paws_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('enemy', 'assets/sprites/enemy.png');
     // Grunt: primeiro inimigo comum com sprite próprio (mesmo padrão do
     // Minotauro) — idle é imagem única, walk é spritesheet de verdade.
@@ -385,6 +394,19 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'player-white-walk',
       frames: this.anims.generateFrameNumbers('player_white_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+
+    this.anims.create({
+      key: 'player-white-paws-idle',
+      frames: this.anims.generateFrameNumbers('player_white_paws_idle', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-white-paws-walk',
+      frames: this.anims.generateFrameNumbers('player_white_paws_walk', { start: 0, end: 5 }),
       frameRate: 12,
       repeat: -1
     });

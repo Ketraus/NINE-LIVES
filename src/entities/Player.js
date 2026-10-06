@@ -62,9 +62,17 @@ const SPRITE_SETS = {
   }
 };
 
-// Skin do gato branco (2º jogador do multiplayer). Só tem a Laser Gun por
-// enquanto — classes sem sprite branco usam o sprite preto delas.
+// Skin do gato branco (2º jogador do multiplayer): Laser Gun (default) e
+// Paws (fists). Classes sem sprite branco (Katana) usam o sprite preto delas.
 const WHITE_SPRITE_SETS = {
+  fists: {
+    idleKey: 'player_white_paws_idle',
+    walkKey: 'player_white_paws_walk',
+    idleAnim: 'player-white-paws-idle',
+    walkAnim: 'player-white-paws-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  },
   default: {
     idleKey: 'player_white_idle',
     walkKey: 'player_white_walk',
@@ -76,7 +84,10 @@ const WHITE_SPRITE_SETS = {
 };
 
 export function getPlayerSpriteSet(weaponId, skin = 'default') {
-  if (skin === 'white' && !SPRITE_SETS[weaponId]) return WHITE_SPRITE_SETS.default;
+  if (skin === 'white') {
+    if (WHITE_SPRITE_SETS[weaponId]) return WHITE_SPRITE_SETS[weaponId];
+    if (!SPRITE_SETS[weaponId]) return WHITE_SPRITE_SETS.default;
+  }
   return SPRITE_SETS[weaponId] || SPRITE_SETS.default;
 }
 

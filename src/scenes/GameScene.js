@@ -79,7 +79,7 @@ const MAP_FADE_IN_MS = 220;
 const HUD_FADE_IN_DELAY_MS = 80;
 const HUD_FADE_IN_MS = 180;
 const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
-  'player_idle', 'player_walk', 'player_white_idle', 'player_white_walk', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
+  'player_idle', 'player_walk', 'player_white_idle', 'player_white_walk', 'player_white_paws_idle', 'player_white_paws_walk', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
   'enemy', 'grunt_idle', 'grunt_walk', 'cyber_hound_idle', 'cyber_hound_walk', 'cyber_brute_idle', 'cyber_brute_walk',
   'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
   'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',
