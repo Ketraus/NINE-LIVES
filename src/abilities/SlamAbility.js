@@ -1,5 +1,6 @@
 import DamageSystem from '../combat/DamageSystem.js';
 import { hasSlamFx, playSlamFx } from '../fx/SlamFx.js';
+import { hasQuakeFx, playQuakeImpact, playQuakeWaves, playQuakeClimax, QUAKE_CLIMAX_DELAY_MS } from '../fx/QuakeFx.js';
 
 // Quanto o intervalo entre pancadas diminui a cada cópia extra da carta
 const COOLDOWN_STEP_MS = 500;
@@ -28,12 +29,14 @@ export default class SlamAbility {
 
   // Chamado a cada cópia extra da carta "Pancada Sísmica" (até 4, ver
   restack() {
+    if (this.evolved) return;
     this.cooldownMs = Math.max(MIN_COOLDOWN_MS, this.cooldownMs - COOLDOWN_STEP_MS);
   }
 
   // Chamado pela evolução Terremoto (upgradeAbility, não unlockAbility —
   upgrade(def) {
     this.evolved = true;
+    if (def.cooldownMs) this.cooldownMs = def.cooldownMs;
     this.radiusMultiplier = def.radiusMultiplier ?? 1;
     this.shockwaveRadiusMultiplier = def.shockwaveRadiusMultiplier ?? 0;
     this.shockwaveDamageFraction = def.shockwaveDamageFraction ?? 0;
@@ -75,6 +78,10 @@ export default class SlamAbility {
       color: 0xff5555, alpha: 0.28, scaleFrom: 1, scaleTo: 1.3,
       startAt: scene.time.now, endAt: scene.time.now + 220 });
     // FX limpo: deformação leve, onda, poeira e partículas (SlamFx)
+    if (this.evolved && hasQuakeFx(scene)) {
+      playQuakeImpact(scene, player.x, player.y, radius);
+      return;
+    }
     if (hasSlamFx(scene)) {
       playSlamFx(scene, player.x, player.y, radius);
       return;
@@ -128,6 +135,17 @@ export default class SlamAbility {
     this.networkBursts.push({ kind: 'circle', x: player.x, y: player.y, radius,
       color: TERREMOTO_SHOCKWAVE_COLOR, alpha: 0.24, scaleFrom: 0.2, scaleTo: 1,
       startAt: scene.time.now, endAt: scene.time.now + 340 });
+    // FX novo: ondas concêntricas + rachaduras, e o clímax (tremor da arena
+    // + segundo impacto) logo depois. Só visual.
+    if (hasQuakeFx(scene)) {
+      const x = player.x;
+      const y = player.y;
+      playQuakeWaves(scene, x, y, radius);
+      scene.time.delayedCall(QUAKE_CLIMAX_DELAY_MS, () => {
+        playQuakeClimax(scene, x, y, radius * 0.8);
+      });
+      return;
+    }
     const wave = scene.add
       .circle(player.x, player.y, radius, TERREMOTO_SHOCKWAVE_COLOR, 0.24)
       .setDepth(18)

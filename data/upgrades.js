@@ -514,6 +514,9 @@ export default [
       {
         "type": "upgradeAbility",
         "abilityId": "slam",
+        // intervalo fixo do Terremoto (ms): sem isso ele herdava o cooldown
+        // mínimo das 4 cópias (1,5s) e ficava forte demais
+        "cooldownMs": 3000,
         "radiusMultiplier": 1.4,
         "shockwaveRadiusMultiplier": 1.8,
         "shockwaveDamageFraction": 0.45,
