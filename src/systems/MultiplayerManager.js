@@ -1,5 +1,5 @@
 import MqttClient from './MqttClient.js';
-import { BASE_VISUAL_SCALE } from '../entities/Player.js';
+import { BASE_VISUAL_SCALE, getPlayerSpriteSet } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 import { hasPunchFx, playPunchSmear, WHIFF_POINT } from '../fx/PunchFx.js';
@@ -45,11 +45,6 @@ const PICKUP_KINDS = new Set(['xp', 'medkit', 'gone']);
 // Partidas (runEpoch do Host) que este cliente já viu terminar: se ele reinicia
 // enquanto o Host ainda anuncia "fim", o estado velho não pode encerrar a run nova.
 const staleMatchEpochs = new Set();
-const SPRITE_ANIMATIONS = {
-  katana: { idle: 'player-katana-idle', walk: 'player-katana-walk' },
-  fists: { idle: 'player-paws-idle', walk: 'player-paws-walk' },
-  default: { idle: 'player-idle', walk: 'player-walk' }
-};
 
 function createPlayerId() {
   return `nl${Math.random().toString(36).slice(2, 12)}`;
@@ -176,6 +171,7 @@ export default class MultiplayerManager {
         moving: !this.scene.isPaused && !this.scene.isGameOver &&
           this.player.body.velocity.lengthSq() > 0,
         weaponId: this.player.runState.weaponId,
+        skin: this.scene.skin === 'white' ? 'white' : undefined,
         hp: this.player.healthSystem.current,
         maxHp: this.player.healthSystem.maxHp,
         vx: this.player.body.velocity.x,
@@ -1443,8 +1439,10 @@ export default class MultiplayerManager {
 
       let remote = this.remotePlayers.get(playerId);
       if (!remote) {
-        const spriteSet = SPRITE_ANIMATIONS[state.weaponId] || SPRITE_ANIMATIONS.default;
-        const sprite = this.scene.add.sprite(state.x, state.y, 'player_idle')
+        // skin fixa por jogador: branco = quem entrou na sala, preto = Host original
+        const skinSet = getPlayerSpriteSet(state.weaponId, state.skin === 'white' ? 'white' : 'default');
+        const spriteSet = { idle: skinSet.idleAnim, walk: skinSet.walkAnim };
+        const sprite = this.scene.add.sprite(state.x, state.y, skinSet.idleKey)
           .setScale(BASE_VISUAL_SCALE)
           .setDepth(10);
         const healthBar = this.scene.add.graphics().setDepth(11);

@@ -79,7 +79,7 @@ const MAP_FADE_IN_MS = 220;
 const HUD_FADE_IN_DELAY_MS = 80;
 const HUD_FADE_IN_MS = 180;
 const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
-  'player_idle', 'player_walk', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
+  'player_idle', 'player_walk', 'player_white_idle', 'player_white_walk', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
   'enemy', 'grunt_idle', 'grunt_walk', 'cyber_hound_idle', 'cyber_hound_walk', 'cyber_brute_idle', 'cyber_brute_walk',
   'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
   'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',
@@ -290,7 +290,13 @@ export default class GameScene extends Phaser.Scene {
 
   _buildPlayer() {
     const spawn = this.mapManager.getPlayerSpawn();
-    this.player = new Player(this, spawn.x, spawn.y, this.runState);
+    // Multiplayer: quem ENTRA na sala (não é o Host original) joga de gato
+    // branco; o Host continua preto. Fixado aqui, então não troca se o Host
+    // mudar no meio da partida.
+    const inRoom = this.multiplayerRoom || new URLSearchParams(window.location.search).get('room');
+    const skin = inRoom && !this.isRoomHost ? 'white' : 'default';
+    this.skin = skin;
+    this.player = new Player(this, spawn.x, spawn.y, this.runState, skin);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
     // Zoom-base compensa o BASE_VISUAL_SCALE do Player.js: como o gato/boss
     // agora são 1.5x maiores (fix do mapa novo), sem isso ficariam "gigantes"
