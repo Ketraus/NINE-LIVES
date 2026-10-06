@@ -888,7 +888,7 @@ export default class MultiplayerManager {
 
   _updateRemoteLevelUpFlash(remote, now) {
     if (remote.hp > 0 && now < remote.levelUpInvulnerableUntil) {
-      if (Math.floor(now / 100) % 2 === 0) remote.sprite.setTint(0xffff00);
+      if (Math.floor(now / 100) % 2 === 0) remote.sprite.setTintFill(0xffffcc);
       else remote.sprite.clearTint();
       remote.levelUpFlashActive = true;
     } else if (remote.levelUpFlashActive) {

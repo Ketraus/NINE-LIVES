@@ -306,7 +306,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
     if (now < this._levelUpInvulnerableUntil) {
       this.setAlpha(1);
-      if (Math.floor(now / 100) % 2 === 0) this.setTint(0xffff00);
+      if (Math.floor(now / 100) % 2 === 0) this.setTintFill(0xffffcc);
       else this.clearTint();
       return;
     }
