@@ -138,7 +138,7 @@ export default [
     "abilityId": "slam",
     "cooldownMs": 3000,
     "damage": 20,
-    "radius": 90
+    "radius": 130
   },
   {
     "id": "fists_shockwave",
@@ -509,13 +509,13 @@ export default [
       // principal continuam os mesmos de Pancada Sísmica; só a área do
       // impacto e a onda de choque secundária (nova) mudam. Balanceamento:
       // radiusMultiplier deixa a área ~40% maior; a onda de choque em si
-      // cobre uma área bem maior ainda (2.2x o raio base), mas causa só
+      // cobre uma área bem maior ainda (1.8x o raio base), mas causa só
       // 45% do dano do impacto principal — ela empurra mais do que fere.
       {
         "type": "upgradeAbility",
         "abilityId": "slam",
         "radiusMultiplier": 1.4,
-        "shockwaveRadiusMultiplier": 2.2,
+        "shockwaveRadiusMultiplier": 1.8,
         "shockwaveDamageFraction": 0.45,
         "shockwaveKnockback": 380,
         "shockwaveDelayMs": 160

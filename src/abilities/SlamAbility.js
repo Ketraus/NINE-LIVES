@@ -1,4 +1,5 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import { hasSlamFx, playSlamFx } from '../fx/SlamFx.js';
 
 // Quanto o intervalo entre pancadas diminui a cada cópia extra da carta
 const COOLDOWN_STEP_MS = 500;
@@ -73,6 +74,11 @@ export default class SlamAbility {
     this.networkBursts.push({ kind: 'circle', x: player.x, y: player.y, radius,
       color: 0xff5555, alpha: 0.28, scaleFrom: 1, scaleTo: 1.3,
       startAt: scene.time.now, endAt: scene.time.now + 220 });
+    // FX limpo: deformação leve, onda, poeira e partículas (SlamFx)
+    if (hasSlamFx(scene)) {
+      playSlamFx(scene, player.x, player.y, radius);
+      return;
+    }
     const fx = scene.add
       .circle(player.x, player.y, radius, 0xff5555, 0.28)
       .setDepth(19);
