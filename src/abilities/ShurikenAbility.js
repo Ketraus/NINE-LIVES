@@ -1,4 +1,13 @@
 import DamageSystem from '../combat/DamageSystem.js';
+import {
+  ensureShurikenTexture,
+  SHURIKEN_DISPLAY_SCALE,
+  launchShurikenFx,
+  attachShurikenFlight,
+  spawnShurikenHitFx,
+  spawnChainLightningFx,
+  spawnShurikenFadeFx
+} from '../fx/ShurikenFx.js';
 
 const BULLET_LIFETIME_MS = 1500;
 const DEFAULT_PROJECTILE_SPEED = 380;
@@ -7,13 +16,10 @@ const VOLLEY_STAGGER_MS = 120;
 // giro contínuo do shuriken no ar (puramente visual, não mexe na
 const SPIN_DURATION_MS = 260;
 
-const SHURIKEN_COLOR = 0xd9d9e6;
-const SHURIKEN_TEX_SIZE = 16;
+const SHURIKEN_COLOR = 0xcfe8ff;
 
 // Visual/feedback da evolução "Shurivex" (ver upgrade()) — rastro cyber
 const CHAIN_COLOR_DEFAULT = 0xb26bff;
-const TRAIL_INTERVAL_MS = 45;
-const CHAIN_SPARK_COUNT = 5;
 
 // Habilidade exclusiva da Katana (carta "katana_shuriken"): a cada
 export default class ShurikenAbility {
@@ -60,10 +66,13 @@ export default class ShurikenAbility {
       if (hitSet.has(enemy)) return;
       hitSet.add(enemy);
 
+      const fxColor = this.evolved ? this.chainColor : SHURIKEN_COLOR;
       DamageSystem.applyWeaponHit(enemy, bullet.getData('damage'), player, scene.time.now, {
         kind: 'ability',
-        color: this.evolved ? this.chainColor : SHURIKEN_COLOR
+        color: fxColor
       });
+      const flightAngle = Math.atan2(bullet.body?.velocity.y ?? 0, bullet.body?.velocity.x ?? 1);
+      spawnShurikenHitFx(scene, enemy.x, enemy.y, fxColor, flightAngle, this.evolved);
 
       // Shurivex: ainda tem 1 salto disponível -> procura um segundo alvo
       const chainsLeft = bullet.getData('chainsLeft');
@@ -72,13 +81,16 @@ export default class ShurikenAbility {
         if (next) {
           bullet.setData('chainsLeft', chainsLeft - 1);
           this._redirect(scene, bullet, next);
-          this._spawnChainSpark(scene, enemy.x, enemy.y);
+          spawnChainLightningFx(scene, enemy, next, this.chainColor);
           return;
         }
       }
       bullet.destroy();
     });
-    scene.mapManager?.addCollider(this.bulletGroup, (bullet) => bullet.destroy());
+    scene.mapManager?.addCollider(this.bulletGroup, (bullet) => {
+      spawnShurikenFadeFx(scene, bullet.x, bullet.y, this.evolved ? this.chainColor : SHURIKEN_COLOR);
+      bullet.destroy();
+    });
   }
 
   // Alvos pra uma rajada de `count` shurikens — mesma lógica pra
@@ -137,14 +149,17 @@ export default class ShurikenAbility {
     const dir = new Phaser.Math.Vector2(target.x - player.x, target.y - player.y).normalize();
     const speed = this.def.projectileSpeed ?? DEFAULT_PROJECTILE_SPEED;
 
-    const bullet = this.bulletGroup.create(player.x, player.y, this._ensureTexture(scene));
+    const bullet = this.bulletGroup.create(player.x, player.y, ensureShurikenTexture(scene));
     bullet.setDepth(15);
+    bullet.setScale(SHURIKEN_DISPLAY_SCALE);
     bullet.body.setAllowGravity(false);
-    bullet.body.setSize(6, 6, true);
+    // mesma hitbox de antes (~6px no mundo), compensando a escala do sprite
+    const hb = 6 / SHURIKEN_DISPLAY_SCALE;
+    bullet.body.setSize(hb, hb, true);
     bullet.setVelocity(dir.x * speed, dir.y * speed);
     bullet.setData('damage', this.def.damage);
     bullet.setData('hitSet', new Set());
-    // 1 salto disponível pra shurikens evoluídos (Shurivex); 0 = se
+    // 1 salto disponível pra shurikens evoluídos (Shurivex); 0 = sem salto
     bullet.setData('chainsLeft', this.evolved ? 1 : 0);
 
     // giro contínuo no ar — puro visual (rotation), não mexe na velocity
@@ -156,93 +171,16 @@ export default class ShurikenAbility {
       ease: 'Linear'
     });
 
-    if (this.evolved) {
-      // visual mais "cyber": tint roxo + brilho + rastro de fantasmas
-      bullet.setTint(this.chainColor);
-      if (bullet.preFX) bullet.preFX.addGlow(this.chainColor, 0, 1.2, false, 0.2, 5);
-      this._attachTrail(scene, bullet, this.chainColor);
-    }
+    // VFX: clarão de lançamento + brilho + rastro (aço na base, roxo cyber na NeoShuriken)
+    const fxColor = this.evolved ? this.chainColor : SHURIKEN_COLOR;
+    launchShurikenFx(scene, player.x, player.y, Math.atan2(dir.y, dir.x), fxColor, this.evolved);
+    attachShurikenFlight(scene, bullet, fxColor, this.evolved);
 
-    scene.time.delayedCall(BULLET_LIFETIME_MS, () => bullet.destroy());
-  }
-
-  // Rastro de "fantasmas" desbotando atrás do shuriken enquanto ele viaja
-  _attachTrail(scene, bullet, color) {
-    scene.time.addEvent({
-      delay: TRAIL_INTERVAL_MS,
-      repeat: Math.ceil(BULLET_LIFETIME_MS / TRAIL_INTERVAL_MS),
-      callback: () => {
-        if (!bullet.active) return;
-        const ghost = scene.add
-          .image(bullet.x, bullet.y, 'fx_shuriken')
-          .setDepth(14)
-          .setBlendMode(Phaser.BlendModes.ADD)
-          .setTint(color)
-          .setScale(0.7)
-          .setRotation(bullet.rotation)
-          .setAlpha(0.4);
-        scene.tweens.add({
-          targets: ghost,
-          alpha: 0,
-          scale: 0.35,
-          duration: 180,
-          onComplete: () => ghost.destroy()
-        });
-      }
+    scene.time.delayedCall(BULLET_LIFETIME_MS, () => {
+      if (!bullet.active) return;
+      spawnShurikenFadeFx(scene, bullet.x, bullet.y, fxColor);
+      bullet.destroy();
     });
   }
 
-  // Faísca roxa no instante do salto (Shurivex) — marca bem o "pulo" de
-  _spawnChainSpark(scene, x, y) {
-    for (let i = 0; i < CHAIN_SPARK_COUNT; i++) {
-      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const dist = Phaser.Math.Between(10, 24);
-      const shard = scene.add
-        .image(x, y, 'hit_fx')
-        .setDepth(20)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setScale(Phaser.Math.FloatBetween(0.18, 0.28))
-        .setRotation(angle)
-        .setTint(this.chainColor);
-
-      scene.tweens.add({
-        targets: shard,
-        x: x + Math.cos(angle) * dist,
-        y: y + Math.sin(angle) * dist,
-        alpha: 0,
-        scale: shard.scale * 0.4,
-        duration: Phaser.Math.Between(150, 220),
-        ease: 'Cubic.easeOut',
-        onComplete: () => shard.destroy()
-      });
-    }
-  }
-
-  // Desenha (uma única vez, com Graphics + generateTexture) a textura do
-  _ensureTexture(scene) {
-    const key = 'fx_shuriken';
-    if (scene.textures.exists(key)) return key;
-
-    const s = SHURIKEN_TEX_SIZE;
-    const c = s / 2;
-    const g = scene.add.graphics();
-
-    g.fillStyle(SHURIKEN_COLOR, 1);
-    // 4 pontas (losangos) em cruz, cada uma desenhada como um triângulo
-    const tip = s * 0.5;
-    const wing = s * 0.16;
-    [
-      [c, c - tip, c - wing, c - wing, c + wing, c - wing], // ponta de cima
-      [c, c + tip, c - wing, c + wing, c + wing, c + wing], // ponta de baixo
-      [c - tip, c, c - wing, c - wing, c - wing, c + wing], // ponta da esquerda
-      [c + tip, c, c + wing, c - wing, c + wing, c + wing] // ponta da direita
-    ].forEach(([x1, y1, x2, y2, x3, y3]) => g.fillTriangle(x1, y1, x2, y2, x3, y3));
-
-    g.fillStyle(0x1a1a22, 1);
-    g.fillCircle(c, c, s * 0.14);
-
-    g.generateTexture(key, s, s);
-    g.destroy();
-    return key;
-  }
 }
