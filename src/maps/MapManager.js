@@ -4,15 +4,9 @@ import TiledLoader from './TiledLoader.js';
 const MAP_KEY = 'map';
 
 // Um item por tileset usado no mapa. imageKey precisa ter sido carregado
-// IMPORTANTE: esses nomes têm que bater exatamente com os tilesets que
-// existem dentro do assets/maps/map.json atual (confira no Tiled em
-// Map > Tileset Properties > Name). O map.json exportado atualmente só
-// tem estes 3 tilesets — "tileset"/"darbluegrass"/"deathterrain" eram de
-// uma versão antiga do mapa (mapaa.json) e não existem mais aqui.
+// e o nome precisa bater com o tileset definido no map.json.
 const TILESETS = [
-  { imageKey: 'Tilesetgrass', nameInTiled: 'TX Tileset Grass-1.png' },
-  { imageKey: 'Tilesetprops', nameInTiled: 'TX Props-1.png' },
-  { imageKey: 'Tilesetplant', nameInTiled: 'TX Plant-1.png' }
+  { imageKey: 'Tilesetgrass', nameInTiled: 'TX Tileset Grass-1.png' }
 ];
 
 // O map.json atual só tem uma Tile Layer chamada "chao" (sem "Ground"/

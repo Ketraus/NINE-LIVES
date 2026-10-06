@@ -313,14 +313,11 @@ export default class PreloadScene extends Phaser.Scene {
     // fundo do menu principal (ver MainMenuScene) — foto 1024x1024,
     this.load.image('menu_bg', 'assets/ui/menu_bg.jpg');
 
-    // mapa feito no Tiled (tileset embutido no JSON)
-    this.load.image('tileset', 'assets/maps/tileset.png');
+    // mapa feito no Tiled
     this.load.tilemapTiledJSON('map', 'assets/maps/map.json');
     this.load.image('darbluegrass', 'assets/maps/darbluegrass.png');
     this.load.image('deathterrain', 'assets/maps/deathterrain.png');
     this.load.image('Tilesetgrass', 'assets/maps/TX Tileset Grass-1.png.png');
-    this.load.image('Tilesetplant', 'assets/maps/TX Plant-1.png.png');
-    this.load.image('Tilesetprops', 'assets/maps/TX Props-1.png.png');
     // dados de balanceamento (data/*.json) são importados via ES Modules
   }
 
