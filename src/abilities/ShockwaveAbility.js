@@ -1,13 +1,16 @@
 import DamageSystem from '../combat/DamageSystem.js';
 import {
   hasShockwaveFx,
+  hasShockwaveEvoFx,
   SHOCKWAVE_KEY,
+  SHOCKWAVE_EVO_KEY,
   SHOCKWAVE_ORIGIN_X,
   SHOCKWAVE_ORIGIN_Y,
   launchShockwaveFx,
   attachShockwaveFlight,
   spawnShockwaveHitFx,
-  spawnShockwaveFadeFx
+  spawnShockwaveFadeFx,
+  spawnShockwaveZapFx
 } from '../fx/ShockwaveFx.js';
 
 // A onda reaproveita a textura hit_fx esticada (mesma técnica do laser
@@ -15,7 +18,7 @@ const SHOCKWAVE_COLOR = 0xffffff;
 // Ângulo entre cada onda extra da salva, em graus — todas nascem no MES…
 const SHOCKWAVE_SPREAD_DEG = 22;
 // Cor da explosão da evolução "Blastix" (ver upgrade()) — laranja, pra
-const BLASTIX_EXPLOSION_COLOR = 0xff6a2b;
+const BLASTIX_EXPLOSION_COLOR = 0x8fe9ff;
 
 // Habilidade exclusiva dos Punhos (carta "fists_shockwave"): a cada
 export default class ShockwaveAbility {
@@ -68,7 +71,10 @@ export default class ShockwaveAbility {
         enemy.applyKnockback(dir.x, dir.y, this.def.knockback, scene.time.now);
       }
       if (hasShockwaveFx(scene)) {
-        spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle());
+        spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle(), {
+          evolved: this.evolved && hasShockwaveEvoFx(scene),
+          radius: this.explosionRadius
+        });
       }
       // Blastix: explode NO PONTO de impacto (não fica de área), ferindo
       if (this.evolved) this._explode(scene, player, wave.x, wave.y, enemy);
@@ -76,7 +82,10 @@ export default class ShockwaveAbility {
     });
     scene.mapManager?.addCollider(this.group, (wave) => {
       if (hasShockwaveFx(scene)) {
-        spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle(), { small: true });
+        spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle(), {
+          small: true,
+          evolved: !!wave.getData('evo')
+        });
       }
       wave.destroy();
     });
@@ -85,10 +94,12 @@ export default class ShockwaveAbility {
   // Explosão pontual da evolução Blastix ao acertar um inimigo: dano
   _explode(scene, player, x, y, hitEnemy) {
     const dmg = this.def.damage * this.explosionDamageFraction;
+    const struck = [];
     this.enemyGroup.getChildren().forEach((enemy) => {
       if (enemy === hitEnemy || !enemy.active) return;
       const dist = Phaser.Math.Distance.Between(x, y, enemy.x, enemy.y);
       if (dist <= this.explosionRadius) {
+        struck.push(enemy);
         DamageSystem.applyWeaponHit(enemy, dmg, player, scene.time.now, {
           kind: 'explosion',
           color: BLASTIX_EXPLOSION_COLOR
@@ -96,12 +107,20 @@ export default class ShockwaveAbility {
       }
     });
     this._showExplosionFx(scene, x, y);
+    // VFX: a eletricidade do choque salta até alguns inimigos pegos na explosão
+    if (hasShockwaveEvoFx(scene)) {
+      Phaser.Utils.Array.Shuffle(struck)
+        .slice(0, 4)
+        .forEach((enemy) => spawnShockwaveZapFx(scene, x, y, enemy.x, enemy.y));
+    }
   }
 
   _showExplosionFx(scene, x, y) {
     this.networkBursts.push({ kind: 'circle', x, y, radius: this.explosionRadius,
       color: BLASTIX_EXPLOSION_COLOR, alpha: 0.35, scaleFrom: 1, scaleTo: 1.3,
       startAt: scene.time.now, endAt: scene.time.now + 220 });
+    // com a arte evoluída a explosão visual já nasce no impacto (ShockwaveFx)
+    if (hasShockwaveEvoFx(scene)) return;
     const fx = scene.add
       .circle(x, y, this.explosionRadius, BLASTIX_EXPLOSION_COLOR, 0.35)
       .setBlendMode(Phaser.BlendModes.ADD)
@@ -140,7 +159,10 @@ export default class ShockwaveAbility {
   _spawnWaveSprite(scene, x, y, dir, firstOfVolley) {
     const startX = x + dir.x * 16;
     const startY = y + dir.y * 16;
-    const wave = this.group.create(startX, startY, SHOCKWAVE_KEY, 0);
+    // Blastwave: arte evoluída (branco + arcos elétricos); sem ela, a normal
+    const evo = this.evolved && hasShockwaveEvoFx(scene);
+    const waveKey = evo ? SHOCKWAVE_EVO_KEY : SHOCKWAVE_KEY;
+    const wave = this.group.create(startX, startY, waveKey, 0);
     const scale = (this.def.width / 32) * 0.85;
     wave.setDepth(16);
     wave.setOrigin(SHOCKWAVE_ORIGIN_X, SHOCKWAVE_ORIGIN_Y);
@@ -148,13 +170,14 @@ export default class ShockwaveAbility {
     wave.body.setAllowGravity(false);
     wave.body.setSize((this.def.width * this.def.width) / 34 / scale, (this.def.width * this.def.width) / 90 / scale, true);
     wave.setRotation(dir.angle());
-    wave.play(SHOCKWAVE_KEY);
+    wave.play(waveKey);
+    wave.setData('evo', evo);
     wave.setData('damage', this.def.damage);
     wave.setData('dir', dir.clone());
     wave.setVelocity(dir.x * this.def.speed, dir.y * this.def.speed);
 
-    launchShockwaveFx(scene, x, y, dir, { shake: firstOfVolley });
-    attachShockwaveFlight(scene, wave, dir);
+    launchShockwaveFx(scene, x, y, dir, { shake: firstOfVolley, evolved: evo });
+    attachShockwaveFlight(scene, wave, dir, { evolved: evo });
 
     // forte durante a maior parte do caminho e some só no final
     const lifetimeMs = (this.def.distance / this.def.speed) * 1000;
@@ -165,7 +188,7 @@ export default class ShockwaveAbility {
       duration: lifetimeMs * 0.45,
       onComplete: () => {
         if (!wave.active) return;
-        spawnShockwaveFadeFx(scene, wave.x, wave.y, dir.angle());
+        spawnShockwaveFadeFx(scene, wave.x, wave.y, dir.angle(), { evolved: evo });
         wave.destroy();
       }
     });
