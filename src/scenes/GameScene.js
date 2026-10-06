@@ -440,14 +440,14 @@ export default class GameScene extends Phaser.Scene {
     });
 
     EventBus.on('levelup-opened', () => {
-      this.player.grantLevelUpInvulnerability(LEVEL_UP_INVULNERABILITY_MS);
-      this.multiplayer?.grantLevelUpInvulnerability(LEVEL_UP_INVULNERABILITY_MS);
       this.isPaused = true;
       this.spawnDirector.pause();
       this._setGameplayVisualsPaused(true);
       MusicManager.duckForCards(this);
     });
     EventBus.on('levelup-closed', () => {
+      this.player.grantLevelUpInvulnerability(LEVEL_UP_INVULNERABILITY_MS);
+      this.multiplayer?.grantLevelUpInvulnerability(LEVEL_UP_INVULNERABILITY_MS);
       this.isPaused = false;
       this.spawnDirector.resume();
       this._setGameplayVisualsPaused(false);
