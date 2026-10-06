@@ -63,8 +63,16 @@ const SPRITE_SETS = {
 };
 
 // Skin do gato branco (2º jogador do multiplayer): Laser Gun (default) e
-// Paws (fists). Classes sem sprite branco (Katana) usam o sprite preto delas.
+// Paws (fists) e Katana — as 3 classes têm versão branca.
 const WHITE_SPRITE_SETS = {
+  katana: {
+    idleKey: 'player_white_katana_idle',
+    walkKey: 'player_white_katana_walk',
+    idleAnim: 'player-white-katana-idle',
+    walkAnim: 'player-white-katana-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  },
   fists: {
     idleKey: 'player_white_paws_idle',
     walkKey: 'player_white_paws_walk',
