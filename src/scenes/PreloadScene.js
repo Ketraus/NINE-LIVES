@@ -7,6 +7,7 @@ import { loadTornadoSheet, createTornadoAnimation } from '../fx/TornadoFx.js';
 import { loadAuraShockSheet, createAuraShockAnimation } from '../fx/AuraShockFx.js';
 import { loadShieldAssets, createShieldTextures } from '../fx/ShieldFx.js';
 import { loadSlamFx, createSlamFx } from '../fx/SlamFx.js';
+import { loadEliteMissileSheet, createEliteMissileTextures } from '../fx/EliteMissileFx.js';
 import cardArtIds from '../../data/cardArt.js';
 import AssetManager from '../systems/AssetManager.js';
 
@@ -175,6 +176,8 @@ export default class PreloadScene extends Phaser.Scene {
     loadShieldAssets(this);
     // rachadura da Pancada Sísmica (cratera/poeira são geradas por código)
     loadSlamFx(this);
+    // explosão do míssil do Elite (11 frames 64x64)
+    loadEliteMissileSheet(this);
 
     // salvar em assets/music/
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
@@ -332,6 +335,7 @@ export default class PreloadScene extends Phaser.Scene {
     createAuraShockAnimation(this);
     createShieldTextures(this);
     createSlamFx(this);
+    createEliteMissileTextures(this);
 
     // as artes das cartas de arma não são pixel art, então usam filtro
     const smoothKeys = ['card_fists', 'card_katana', 'card_pistol']

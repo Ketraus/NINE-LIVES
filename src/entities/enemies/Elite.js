@@ -1,5 +1,11 @@
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
+import {
+  hasEliteMissileFx,
+  createEliteMissileProjectile,
+  playEliteMissileLaunch,
+  playEliteMissileExplosion
+} from '../../fx/EliteMissileFx.js';
 
 // Visual do míssil de verdade do Elite (ver _launchMissiles/
 const MISSILE_COLOR = 0xff6633;
@@ -49,9 +55,15 @@ export default class Elite extends Enemy {
 
   syncNetworkVisualState(state, nowMs) {
     if (!state || !['chasing', 'missile_telegraph', 'missile_launch', 'melee_telegraph', 'melee_swing'].includes(state.state)) return;
+    // réplica: quando o míssil deixa de estar em voo, o Host detonou — toca a explosão (só visual)
+    const wasLaunching = this.eliteState === 'missile_launch';
+    const previousPoints = this.eliteMissilePoints;
     this.eliteState = state.state;
+    if (wasLaunching && state.state !== 'missile_launch') this._playMissileExplosions(previousPoints);
     this.eliteMissilePoints = Array.isArray(state.points)
-      ? state.points.filter((point) => Array.isArray(point) && point.every(Number.isFinite))
+      ? state.points
+        .filter((point) => Array.isArray(point) && point.every(Number.isFinite))
+        .map(([x, y]) => ({ x, y })) // réplica usa {x,y} igual ao Host (telegraph/explosão leem p.x/p.y)
       : [];
     this.eliteMissileRevealed = Phaser.Math.Clamp(
       Math.floor(state.revealed || 0), 0, this.eliteMissilePoints.length
@@ -75,11 +87,7 @@ export default class Elite extends Enemy {
       this.networkMissileProjectiles.pop().destroy();
     }
     while (this.networkMissileProjectiles.length < projectiles.length) {
-      this.networkMissileProjectiles.push(
-        this.scene.add.circle(0, 0, MISSILE_RADIUS, MISSILE_COLOR, 0.95)
-          .setStrokeStyle(2, 0xffffff, 0.8)
-          .setDepth(15)
-      );
+      this.networkMissileProjectiles.push(this._makeMissileVisual(this.x, this.y, this.eliteMissilePoints[this.networkMissileProjectiles.length]));
     }
     this.networkMissileProjectiles.forEach((projectile, index) => {
       projectile.setPosition(...projectiles[index]);
@@ -196,11 +204,9 @@ export default class Elite extends Enemy {
     this.eliteLaunchStartMs = nowMs;
     this.eliteLaunchDetonateAt = nowMs + travelMs;
 
+    if (hasEliteMissileFx(this.scene)) playEliteMissileLaunch(this.scene, this.x, this.y);
     this.eliteMissileProjectiles = this.eliteMissilePoints.map((p) => ({
-      fx: this.scene.add
-        .circle(this.x, this.y, MISSILE_RADIUS, MISSILE_COLOR, 0.95)
-        .setStrokeStyle(2, 0xffffff, 0.8)
-        .setDepth(15), // acima do chão/telegraph (4), abaixo de UI
+      fx: this._makeMissileVisual(this.x, this.y, p), // acima do chão/telegraph (4), abaixo de UI
       startX: this.x,
       startY: this.y,
       targetX: p.x,
@@ -218,8 +224,11 @@ export default class Elite extends Enemy {
       1
     );
     this.eliteMissileProjectiles.forEach((m) => {
-      m.fx.x = Phaser.Math.Linear(m.startX, m.targetX, progress);
-      m.fx.y = Phaser.Math.Linear(m.startY, m.targetY, progress) - Math.sin(progress * Math.PI) * MISSILE_ARC_HEIGHT;
+      const mx = Phaser.Math.Linear(m.startX, m.targetX, progress);
+      const my = Phaser.Math.Linear(m.startY, m.targetY, progress) - Math.sin(progress * Math.PI) * MISSILE_ARC_HEIGHT;
+      // setPosition move x e y juntos (o míssil gira pra direção real do voo);
+      // o círculo de fallback não tem setPosition de dois eixos problemático
+      m.fx.setPosition(mx, my);
     });
 
     if (nowMs >= this.eliteLaunchDetonateAt) {
@@ -229,10 +238,31 @@ export default class Elite extends Enemy {
     }
   }
 
+  // Míssil visual: sprite com chama/rastro/sombra (EliteMissileFx). Se a arte
+  // não carregou, cai no círculo laranja antigo pra nunca quebrar o ataque.
+  _makeMissileVisual(x, y, groundTarget) {
+    if (hasEliteMissileFx(this.scene)) return createEliteMissileProjectile(this.scene, x, y, groundTarget);
+    return this.scene.add
+      .circle(x, y, MISSILE_RADIUS, MISSILE_COLOR, 0.95)
+      .setStrokeStyle(2, 0xffffff, 0.8)
+      .setDepth(15);
+  }
+
+  // Explosão visual em cada ponto de impacto (host e réplicas)
+  _playMissileExplosions(points) {
+    if (!hasEliteMissileFx(this.scene) || !points?.length) return;
+    const intensity = points.length > 3 ? 0.65 : 1; // vários ao mesmo tempo: alivia as partículas
+    points.forEach((p) => {
+      playEliteMissileExplosion(this.scene, p.x, p.y, this.def.eliteMissileRadius, intensity);
+    });
+  }
+
   // Passos 5-6: dano alto em área em cada um dos 3 pontos, só se o
   _detonateMissiles(target, nowMs) {
     this.scene.sound.play('sfx_elite_explosion', { volume: 0.6 });
     this.scene.cameras.main.shake(MISSILE_EXPLOSION_SHAKE_MS, MISSILE_EXPLOSION_SHAKE_INTENSITY);
+
+    this._playMissileExplosions(this.eliteMissilePoints);
 
     this.eliteMissilePoints.forEach((p) => {
       if (target.active && !target.healthSystem?.isDead()) {
