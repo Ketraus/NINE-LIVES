@@ -143,7 +143,7 @@ function playDent(scene, x, y, radius) {
 }
 
 // anel de ar/poeira que corre até o raio do dano + poeira empurrada na frente
-function playGroundWave(scene, x, y, radius) {
+function playGroundWave(scene, x, y, radius, q = 1) {
   const ring = scene.add.graphics().setDepth(DEPTH_DUST);
   scene.tweens.addCounter({
     from: 0,
@@ -163,7 +163,7 @@ function playGroundWave(scene, x, y, radius) {
     onComplete: () => ring.destroy()
   });
 
-  const puffs = Phaser.Math.Between(18, 22);
+  const puffs = Math.max(1, Math.round(Phaser.Math.Between(18, 22) * q));
   const puffScale = radius / 110;
   for (let i = 0; i < puffs; i++) {
     const a = (Math.PI * 2 * i) / puffs + rand(-0.15, 0.15);
@@ -195,8 +195,8 @@ function playGroundWave(scene, x, y, radius) {
 }
 
 // fagulhas pálidas disparadas pra fora: rápidas, pequenas, somem sem pousar
-function playSparks(scene, x, y, radius) {
-  const count = 26;
+function playSparks(scene, x, y, radius, q = 1) {
+  const count = Math.max(1, Math.round(26 * q));
   for (let i = 0; i < count; i++) {
     const a = (Math.PI * 2 * i) / count + rand(-0.2, 0.2);
     const start = radius * rand(0.1, 0.3);
@@ -221,10 +221,11 @@ function playSparks(scene, x, y, radius) {
 
 // ---------------------------------------------------------------- público
 // Toca a Pancada Sísmica inteira em (x, y). `radius` = raio real do dano.
-export function playSlamFx(scene, x, y, radius) {
+// `opts` (multiplayer): q = fator de partículas, shake = fator do tremor.
+export function playSlamFx(scene, x, y, radius, { q = 1, shake = 1 } = {}) {
   playFlash(scene, x, y, radius);
   playDent(scene, x, y, radius);
-  playGroundWave(scene, x, y, radius);
-  playSparks(scene, x, y, radius);
-  scene.cameras.main.shake(130, 0.0065);
+  playGroundWave(scene, x, y, radius, q);
+  playSparks(scene, x, y, radius, q);
+  if (shake > 0) scene.cameras.main.shake(130, 0.0065 * shake);
 }

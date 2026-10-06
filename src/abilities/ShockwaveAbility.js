@@ -71,9 +71,16 @@ export default class ShockwaveAbility {
         enemy.applyKnockback(dir.x, dir.y, this.def.knockback, scene.time.now);
       }
       if (hasShockwaveFx(scene)) {
+        const evo = this.evolved && hasShockwaveEvoFx(scene);
         spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle(), {
-          evolved: this.evolved && hasShockwaveEvoFx(scene),
+          evolved: evo,
           radius: this.explosionRadius
+        });
+        // multiplayer: o impacto (e a explosão da evolução) é tocado no outro cliente
+        scene.abilityManager?.emitNetworkFx('swhit', {
+          x: Math.round(wave.x), y: Math.round(wave.y),
+          a: Math.round(wave.getData('dir').angle() * 100) / 100,
+          e: evo ? 1 : 0, r: Math.round(this.explosionRadius)
         });
       }
       // Blastix: explode NO PONTO de impacto (não fica de área), ferindo
@@ -85,6 +92,11 @@ export default class ShockwaveAbility {
         spawnShockwaveHitFx(scene, wave.x, wave.y, wave.getData('dir').angle(), {
           small: true,
           evolved: !!wave.getData('evo')
+        });
+        scene.abilityManager?.emitNetworkFx('swhit', {
+          x: Math.round(wave.x), y: Math.round(wave.y),
+          a: Math.round(wave.getData('dir').angle() * 100) / 100,
+          e: wave.getData('evo') ? 1 : 0, sm: 1
         });
       }
       wave.destroy();
@@ -116,9 +128,6 @@ export default class ShockwaveAbility {
   }
 
   _showExplosionFx(scene, x, y) {
-    this.networkBursts.push({ kind: 'circle', x, y, radius: this.explosionRadius,
-      color: BLASTIX_EXPLOSION_COLOR, alpha: 0.35, scaleFrom: 1, scaleTo: 1.3,
-      startAt: scene.time.now, endAt: scene.time.now + 220 });
     // com a arte evoluída a explosão visual já nasce no impacto (ShockwaveFx)
     if (hasShockwaveEvoFx(scene)) return;
     const fx = scene.add

@@ -12,6 +12,13 @@
 //      que passam da tela, e um SEGUNDO impacto no centro.
 //
 // Usa as texturas geradas pelo SlamFx (slam_dent / slam_dust).
+//
+// MULTIPLAYER: o jogador remoto roda a MESMA sequência localmente via
+// playQuakeSequence() a partir de um único evento (x, y, raios) — nada é
+// transmitido frame a frame. `opts` deixa a versão remota mais leve:
+//   q     -> fator de quantidade de partículas (1 = jogador local)
+//   shake -> fator do tremor de câmera (0 = nenhum)
+//   jolt  -> soco de zoom/balanço de câmera (só no jogador local)
 
 const DENT_KEY = 'slam_dent';
 const DUST_KEY = 'slam_dust';
@@ -162,6 +169,8 @@ function chunk(scene, sx, sy, ex, ey, size, peak, flightMs) {
   });
 }
 
+const scaled = (n, q) => Math.max(1, Math.round(n * q));
+
 function burstChunks(scene, x, y, radius, count, scale = 1) {
   for (let i = 0; i < count; i++) {
     const a = rand(0, Math.PI * 2);
@@ -273,14 +282,14 @@ function strokePartial(g, pts, t, width, color, alpha, ox = 0, oy = 0) {
 }
 
 // ----------------------------------------------------- 1) impacto central
-export function playQuakeImpact(scene, x, y, radius) {
+export function playQuakeImpact(scene, x, y, radius, { q = 1, shake = 1 } = {}) {
   flash(scene, x, y, radius, 1);
   compressionRing(scene, x, y, radius);
   dent(scene, x, y, radius, 1, 420);
-  burstChunks(scene, x, y, radius, 38);
-  sparks(scene, x, y, radius, 30);
-  dustBurst(scene, x, y, radius, 22);
-  scene.cameras.main.shake(190, 0.011);
+  burstChunks(scene, x, y, radius, scaled(38, q));
+  sparks(scene, x, y, radius, scaled(30, q));
+  dustBurst(scene, x, y, radius, scaled(22, q));
+  if (shake > 0) scene.cameras.main.shake(190, 0.011 * shake);
 }
 
 // ------------------------------------------------------- 2) ondas sísmicas
@@ -288,10 +297,10 @@ const WAVE_COUNT = 3;
 const WAVE_STAGGER_MS = 110;
 const WAVE_MS = 400;
 
-function crackField(scene, x, y, radius) {
+function crackField(scene, x, y, radius, q = 1) {
   const g = scene.add.graphics().setDepth(DEPTH_CRACK);
   const base = rand(0, Math.PI * 2);
-  const count = Phaser.Math.Between(9, 11);
+  const count = scaled(Phaser.Math.Between(9, 11), Math.max(0.6, q));
   const fissures = [];
   for (let i = 0; i < count; i++) {
     const a = base + (Math.PI * 2 * i) / count + rand(-0.2, 0.2);
@@ -334,7 +343,7 @@ function crackField(scene, x, y, radius) {
   });
 }
 
-function seismicWave(scene, x, y, radius, reach, strength) {
+function seismicWave(scene, x, y, radius, reach, strength, q = 1) {
   const g = scene.add.graphics().setDepth(DEPTH_DUST);
   const maxR = radius * reach;
   let popped = 0;
@@ -353,7 +362,7 @@ function seismicWave(scene, x, y, radius, reach, strength) {
       g.lineStyle(2.5, 0xffffff, 0.7 * fade); // frente
       g.strokeCircle(x, y, r);
       // pedaços do chão saltando por onde a frente passa
-      const want = Math.floor(t * 14);
+      const want = Math.floor(t * 14 * q);
       for (; popped < want; popped++) {
         const a = rand(0, Math.PI * 2);
         const sx = x + Math.cos(a) * r;
@@ -375,16 +384,16 @@ function seismicWave(scene, x, y, radius, reach, strength) {
   });
 }
 
-export function playQuakeWaves(scene, x, y, radius) {
-  crackField(scene, x, y, radius);
+export function playQuakeWaves(scene, x, y, radius, { q = 1, shake = 1 } = {}) {
+  crackField(scene, x, y, radius, q);
   dent(scene, x, y, radius * 0.55, 0.8, 300);
   for (let i = 0; i < WAVE_COUNT; i++) {
     const reach = [0.7, 0.86, 1][i];
     const strength = [1, 0.85, 0.7][i];
-    scene.time.delayedCall(i * WAVE_STAGGER_MS, () => seismicWave(scene, x, y, radius, reach, strength));
+    scene.time.delayedCall(i * WAVE_STAGGER_MS, () => seismicWave(scene, x, y, radius, reach, strength, q));
   }
-  dustBurst(scene, x, y, radius, 24, 0.8);
-  scene.cameras.main.shake(240, 0.009);
+  dustBurst(scene, x, y, radius, scaled(24, q), 0.8);
+  if (shake > 0) scene.cameras.main.shake(240, 0.009 * shake);
 }
 
 // ---------------------------------------------------------------- 3) clímax
@@ -427,10 +436,10 @@ function arenaJolt(scene) {
 }
 
 // ondulações que atravessam a tela inteira: a arena "balança"
-function arenaRipples(scene, x, y) {
+function arenaRipples(scene, x, y, q = 1) {
   const cam = scene.cameras.main;
   const view = Math.hypot(cam.width, cam.height) / (cam.zoom || 1);
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < (q < 0.8 ? 1 : 2); i++) {
     const g = scene.add.graphics().setDepth(DEPTH_DUST);
     scene.tweens.addCounter({
       from: 0,
@@ -453,15 +462,28 @@ function arenaRipples(scene, x, y) {
   }
 }
 
-export function playQuakeClimax(scene, x, y, radius) {
-  arenaJolt(scene);
-  arenaRipples(scene, x, y);
+export function playQuakeClimax(scene, x, y, radius, { q = 1, shake = 1, jolt = true } = {}) {
+  if (jolt) arenaJolt(scene);
+  arenaRipples(scene, x, y, q);
   // segundo impacto no centro
   flash(scene, x, y, radius * 0.8, 1);
   compressionRing(scene, x, y, radius * 0.6);
   dent(scene, x, y, radius * 0.7, 1, 300);
-  burstChunks(scene, x, y, radius * 0.7, 24, 1.15);
-  sparks(scene, x, y, radius * 0.7, 20);
-  dustBurst(scene, x, y, radius * 0.9, 18, 1);
-  scene.cameras.main.shake(300, 0.015);
+  burstChunks(scene, x, y, radius * 0.7, scaled(24, q), 1.15);
+  sparks(scene, x, y, radius * 0.7, scaled(20, q));
+  dustBurst(scene, x, y, radius * 0.9, scaled(18, q), 1);
+  if (shake > 0) scene.cameras.main.shake(300, 0.015 * shake);
+}
+
+// Sequência completa a partir de UM evento (multiplayer): impacto, ondas
+// `waveDelayMs` depois e clímax `QUAKE_CLIMAX_DELAY_MS` depois das ondas —
+// os mesmos tempos do jogador local.
+export function playQuakeSequence(scene, x, y, radius, waveRadius, waveDelayMs, opts = {}) {
+  playQuakeImpact(scene, x, y, radius, opts);
+  scene.time.delayedCall(waveDelayMs, () => {
+    playQuakeWaves(scene, x, y, waveRadius, opts);
+    scene.time.delayedCall(QUAKE_CLIMAX_DELAY_MS, () => {
+      playQuakeClimax(scene, x, y, waveRadius * 0.8, opts);
+    });
+  });
 }

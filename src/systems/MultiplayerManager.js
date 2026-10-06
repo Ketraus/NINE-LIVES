@@ -5,6 +5,11 @@ import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 import { hasPunchFx, playPunchSmear, WHIFF_POINT } from '../fx/PunchFx.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
 import EventBus from './EventBus.js';
+import { hasSlamFx, playSlamFx } from '../fx/SlamFx.js';
+import { hasQuakeFx, playQuakeSequence } from '../fx/QuakeFx.js';
+import { hasPlasmaGrenadeFx, playPlasmaExplosion } from '../fx/PlasmaGrenadeFx.js';
+import { hasCyberusLaserFx, playCyberusLaser } from '../fx/CyberusLaserFx.js';
+import { hasShockwaveFx, spawnShockwaveHitFx } from '../fx/ShockwaveFx.js';
 import { hasTornadoFx, createTornadoFx, pulseTornadoFx, updateTornadoFx } from '../fx/TornadoFx.js';
 import { hasAuraShockFx, createAuraShockFx, updateAuraShockFx, zapAuraShockFx } from '../fx/AuraShockFx.js';
 import {
@@ -30,6 +35,12 @@ const REPLAY_SNAPSHOTS = 5;
 const REPLAY_MAX_AGE_MS = 5000;
 const REPLAY_MAX_ENTRIES = 80;
 const MAX_PICKUP_STATUS_MS = 10000;
+// FX de habilidades de OUTROS jogadores: só tocam se estiverem perto da câmera
+// local, com menos partículas e tremor reduzido (só quando o aliado está perto).
+const REMOTE_FX_QUALITY = 0.6;
+const REMOTE_FX_MAX_PER_PACKET = 6;
+const REMOTE_FX_SHAKE_RANGE = 450;
+const REMOTE_FX_SHAKE_FACTOR = 0.4;
 const PICKUP_KINDS = new Set(['xp', 'medkit', 'gone']);
 // Partidas (runEpoch do Host) que este cliente já viu terminar: se ele reinicia
 // enquanto o Host ainda anuncia "fim", o estado velho não pode encerrar a run nova.
@@ -926,6 +937,72 @@ export default class MultiplayerManager {
     };
   }
 
+  // Toca localmente os FX pontuais anunciados por outro jogador (ver
+  // AbilityManager.emitNetworkFx). Cada evento chega em vários pacotes seguidos
+  // (reenvio contra perda); `s` crescente garante que toca uma vez só. No
+  // primeiro pacote só memorizamos a sequência: eventos antigos não reprisam.
+  _playRemoteFxEvents(remote, events) {
+    if (!Array.isArray(events) || events.length === 0) return;
+    const firstPacket = remote.lastFxSeq == null;
+    const seen = remote.lastFxSeq ?? 0;
+    let newest = seen;
+    let played = 0;
+    const cam = this.scene.cameras.main;
+    const view = cam.worldView;
+    const player = this.player;
+
+    events.forEach((ev) => {
+      if (!ev || !Number.isFinite(ev.s) || ev.s <= seen) return;
+      newest = Math.max(newest, ev.s);
+      if (firstPacket || played >= REMOTE_FX_MAX_PER_PACKET) return;
+      if (![ev.x, ev.y].every(Number.isFinite) || typeof ev.k !== 'string') return;
+
+      const reach = Phaser.Math.Clamp(Number(ev.wr) || Number(ev.r) || 120, 20, 700);
+      const margin = reach * 1.2 + 80;
+      if (ev.x < view.x - margin || ev.x > view.right + margin ||
+        ev.y < view.y - margin || ev.y > view.bottom + margin) return;
+
+      const near = player && Phaser.Math.Distance.Between(player.x, player.y, ev.x, ev.y) < REMOTE_FX_SHAKE_RANGE;
+      const opts = { q: REMOTE_FX_QUALITY, shake: near ? REMOTE_FX_SHAKE_FACTOR : 0, jolt: false };
+      const r = Phaser.Math.Clamp(Number(ev.r) || 90, 20, 700);
+
+      switch (ev.k) {
+        case 'slam':
+          if (hasSlamFx(this.scene)) playSlamFx(this.scene, ev.x, ev.y, r, opts);
+          break;
+        case 'quake':
+          if (hasQuakeFx(this.scene)) {
+            const wr = Phaser.Math.Clamp(Number(ev.wr) || r * 1.3, 20, 900);
+            const wd = Phaser.Math.Clamp(Number(ev.wd) || 160, 0, 1000);
+            playQuakeSequence(this.scene, ev.x, ev.y, r, wr, wd, opts);
+          }
+          break;
+        case 'plasma':
+          if (hasPlasmaGrenadeFx(this.scene)) playPlasmaExplosion(this.scene, ev.x, ev.y, r);
+          break;
+        case 'laser':
+          if (hasCyberusLaserFx(this.scene) && [ev.x2, ev.y2].every(Number.isFinite)) {
+            playCyberusLaser(this.scene, ev.x, ev.y, ev.x2, ev.y2, Phaser.Math.Clamp(Number(ev.w) || 6, 2, 40));
+          }
+          break;
+        case 'swhit':
+          if (hasShockwaveFx(this.scene) && Number.isFinite(ev.a)) {
+            spawnShockwaveHitFx(this.scene, ev.x, ev.y, ev.a, {
+              small: ev.sm === 1,
+              evolved: ev.e === 1,
+              radius: Number(ev.r) || 70
+            });
+          }
+          break;
+        default:
+          return;
+      }
+      played += 1;
+    });
+
+    remote.lastFxSeq = newest;
+  }
+
   _syncRemoteAbilityVisuals(remote, visuals) {
     if (!visuals || typeof visuals !== 'object') visuals = {};
     if (!remote.abilityGraphics) remote.abilityGraphics = this.scene.add.graphics().setDepth(18);
@@ -1439,6 +1516,7 @@ export default class MultiplayerManager {
       remote.pauseRequested = state.pauseRequested === true;
       remote.isHost = acceptedHost;
       remote.abilityVisuals = state.abilityVisuals;
+      this._playRemoteFxEvents(remote, state.abilityVisuals?.fx);
       remote.lastSeenAt = Date.now();
       remote.sprite.setFlipX(Boolean(state.flipX));
       const animation = state.moving ? remote.spriteSet.walk : remote.spriteSet.idle;

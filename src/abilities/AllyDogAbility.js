@@ -188,17 +188,9 @@ export default class AllyDogAbility {
     // lastTickMs = time: o 1º tick da poça só vem depois de um intervalo,
     // senão ele colaria no dano da explosão no mesmo frame.
     if (hasPlasmaGrenadeFx(scene)) playPlasmaExplosion(scene, x, y, this.evoDef.grenadeExplosionRadius);
-    this._recordNetworkBurst({
-      kind: 'circle',
-      x,
-      y,
-      radius: this.evoDef.grenadeExplosionRadius,
-      color: FLAME_COLOR,
-      alpha: 0.9,
-      scaleFrom: 0.25,
-      scaleTo: 1.5,
-      startAt: time,
-      endAt: time + 320
+    // multiplayer: o outro jogador toca a explosão de plasma localmente
+    scene.abilityManager?.emitNetworkFx('plasma', {
+      x: Math.round(x), y: Math.round(y), r: Math.round(this.evoDef.grenadeExplosionRadius)
     });
     const fx = this._createFlameFx(scene, x, y);
     this.flameZones.push({ x, y, spawnMs: time, lastTickMs: time, fx });
@@ -368,9 +360,11 @@ export default class AllyDogAbility {
   // Visual do laser: um traço grosso roxo bem escuro por baixo (glow) e um
   _showCannonFx(scene, x1, y1, x2, y2) {
     const duration = this.evoDef.cannonFxDurationMs ?? CANNON_BEAM_DURATION_MS;
-    this._recordNetworkBurst({ kind: 'line', x1, y1, x2, y2,
-      color: CANNON_COLOR_CORE, width: this.evoDef.cannonWidth * 2,
-      startAt: scene.time.now, endAt: scene.time.now + duration });
+    // multiplayer: evento curto, o outro jogador toca o feixe animado inteiro
+    scene.abilityManager?.emitNetworkFx('laser', {
+      x: Math.round(x1), y: Math.round(y1), x2: Math.round(x2), y2: Math.round(y2),
+      w: Math.round(this.evoDef.cannonWidth)
+    });
 
     // feixe animado com sprite (fluxo de energia, estouro e pulso)
     if (hasCyberusLaserFx(scene)) {

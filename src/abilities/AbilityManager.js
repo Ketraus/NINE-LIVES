@@ -18,12 +18,19 @@ const ABILITY_CLASSES = {
   shockwave: ShockwaveAbility
 };
 
+// por quanto tempo um evento de FX continua sendo reenviado (≈ 6 pacotes)
+const NETWORK_FX_TTL_MS = 600;
+const NETWORK_FX_MAX = 12;
+
 export default class AbilityManager {
   constructor(scene, player, enemyGroup) {
     this.scene = scene;
     this.player = player;
     this.enemyGroup = enemyGroup;
     this.active = [];
+    // eventos de FX pontuais pro multiplayer (ver emitNetworkFx)
+    this.networkFx = [];
+    this.networkFxSeq = Date.now();
 
     EventBus.on('ability-unlocked', ({ abilityId, def }) => this._unlock(abilityId, def));
     EventBus.on('ability-upgraded', ({ abilityId, def }) => this._upgrade(abilityId, def));
@@ -91,7 +98,20 @@ export default class AbilityManager {
     this.active.forEach((ability) => ability.update(time, this.player, this.enemyGroup, this.scene));
   }
 
+  // Registra um FX pontual (impacto, explosão, laser...) pro multiplayer.
+  // Em vez de transmitir o efeito quadro a quadro, só vai uma linha curta
+  // (tipo + posição + parâmetros): o outro cliente toca o FX completo
+  // localmente. Cada evento é reenviado por NETWORK_FX_TTL_MS (QoS 0 pode
+  // perder pacotes); o `s` (sequência, crescente mesmo após reiniciar a run)
+  // faz o receptor tocar cada um uma vez só.
+  emitNetworkFx(type, data) {
+    this.networkFxSeq = Math.max(this.networkFxSeq + 1, Date.now());
+    this.networkFx.push({ s: this.networkFxSeq, k: type, at: this.scene.time.now, ...data });
+    if (this.networkFx.length > NETWORK_FX_MAX) this.networkFx.shift();
+  }
+
   getNetworkVisualState(time) {
+    this.networkFx = this.networkFx.filter((ev) => time - ev.at < NETWORK_FX_TTL_MS);
     const visuals = {
       sprites: [],
       circles: [],
@@ -198,6 +218,10 @@ export default class AbilityManager {
         }
       });
     });
+
+    if (this.networkFx.length > 0) {
+      visuals.fx = this.networkFx.map(({ at, ...ev }) => ev);
+    }
 
     return visuals;
   }

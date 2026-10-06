@@ -72,11 +72,20 @@ export default class SlamAbility {
     if (this.evolved) this._scheduleShockwave(scene, player, enemyGroup);
   }
 
-  // Onda circular simples se expandindo a partir do jogador.
+  // FX do impacto. No multiplayer vai UM evento curto (o outro jogador toca
+  // o FX inteiro localmente); o Terremoto leva junto o raio e o atraso da
+  // onda de choque pra o receptor reproduzir a sequência completa.
   _showFx(scene, player, radius) {
-    this.networkBursts.push({ kind: 'circle', x: player.x, y: player.y, radius,
-      color: 0xff5555, alpha: 0.28, scaleFrom: 1, scaleTo: 1.3,
-      startAt: scene.time.now, endAt: scene.time.now + 220 });
+    const am = scene.abilityManager;
+    if (this.evolved) {
+      am?.emitNetworkFx('quake', {
+        x: Math.round(player.x), y: Math.round(player.y), r: Math.round(radius),
+        wr: Math.round(this.def.radius * this.shockwaveRadiusMultiplier),
+        wd: this.shockwaveDelayMs
+      });
+    } else {
+      am?.emitNetworkFx('slam', { x: Math.round(player.x), y: Math.round(player.y), r: Math.round(radius) });
+    }
     // FX limpo: deformação leve, onda, poeira e partículas (SlamFx)
     if (this.evolved && hasQuakeFx(scene)) {
       playQuakeImpact(scene, player.x, player.y, radius);
@@ -132,9 +141,6 @@ export default class SlamAbility {
 
   // Segunda fase visual do Terremoto: anel alaranjado se expandindo bem
   _showShockwaveFx(scene, player, radius) {
-    this.networkBursts.push({ kind: 'circle', x: player.x, y: player.y, radius,
-      color: TERREMOTO_SHOCKWAVE_COLOR, alpha: 0.24, scaleFrom: 0.2, scaleTo: 1,
-      startAt: scene.time.now, endAt: scene.time.now + 340 });
     // FX novo: ondas concêntricas + rachaduras, e o clímax (tremor da arena
     // + segundo impacto) logo depois. Só visual.
     if (hasQuakeFx(scene)) {
