@@ -89,6 +89,10 @@ As cartas estão em `data/upgrades.js`. Tem dois tipos principais:
 
 Muito suave mexer.
 
+## Desempenho em hordas grandes
+
+Acima de 150 inimigos, inimigos comuns atualizam a IA em turnos distribuídos (a cada 2, 3 ou 4 frames conforme a horda cresce), enquanto chefes e inimigos especiais continuam atualizando a cada frame. Nesse modo, a separação do enxame substitui a colisão física entre inimigos; sombras e feedback repetitivo de dano também são reduzidos. Dano, efeitos de status e números de dano importantes continuam funcionando.
+
 ---
 
 ## Próximos passos (ideias)

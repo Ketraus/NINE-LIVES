@@ -5,6 +5,7 @@ export default class DamageSystem {
   // 3 variações de grito de dor do Minotauro (ver _hitSfxKey) — sorteadas
   // a cada golpe pra não ficar repetitivo
   static MINOTAUR_HIT_SFX_KEYS = ['sfx_minotaur_hit1', 'sfx_minotaur_hit2', 'sfx_minotaur_hit3'];
+  static _lastDenseHitSfxAt = new WeakMap();
 
   // Dano de contato com cooldown por-alvo (evita tirar vida todo frame
   static applyContactDamage(attacker, target, damage, cooldownMs, nowMs) {
@@ -69,7 +70,7 @@ export default class DamageSystem {
       targetScene.scoreManager?.registerDamage?.(finalDamage);
       DamageNumberManager.show(targetScene, hitX, hitY, finalDamage, target, { ...feedback, isCritical });
       target.playHitReaction?.();
-      targetScene.sound?.play(this._hitSfxKey(target), { volume: 0.5 });
+      this.playHitSound(targetScene, target);
       this._applyLifesteal(source, finalDamage);
       return true;
     }
@@ -83,7 +84,7 @@ export default class DamageSystem {
     }
     target.playHitReaction?.();
     // som de impacto genérico — toca sempre que um golpe de arma/ataque
-    targetScene?.sound?.play(this._hitSfxKey(target), { volume: 0.5 });
+    this.playHitSound(targetScene, target);
     this._applyLifesteal(source, damage);
     this._applyParalyze(target, source, nowMs);
     this._applyBleed(target, source, damage, nowMs);
@@ -98,6 +99,18 @@ export default class DamageSystem {
       return keys[Math.floor(Math.random() * keys.length)];
     }
     return target.def?.elite ? 'sfx_elite_hit' : 'sfx_hit';
+  }
+
+  static playHitSound(scene, target) {
+    if (!scene?.sound) return;
+    const denseBattle = scene.enemySpawner?.denseBattle ?? false;
+    if (denseBattle && !target.def?.boss && !target.def?.elite) {
+      const nowMs = scene.time.now;
+      const lastDenseHitSfxAt = this._lastDenseHitSfxAt.get(scene) ?? -Infinity;
+      if (nowMs - lastDenseHitSfxAt < 45) return;
+      this._lastDenseHitSfxAt.set(scene, nowMs);
+    }
+    scene.sound.play(this._hitSfxKey(target), { volume: 0.5 });
   }
 
   // Cura `source` em uma fração do dano que ele acabou de causar, se ele

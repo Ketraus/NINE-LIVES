@@ -341,7 +341,10 @@ export default class GameScene extends Phaser.Scene {
   _buildEnemies() {
     this.enemySpawner = new EnemySpawner(this, this.mapManager, this.player, enemiesData, flockingConfigData);
     // Inimigos colidem entre si (mas continuam atravessáveis pelo jogador —
-    this.physics.add.collider(this.enemySpawner.group, this.enemySpawner.group);
+    this.enemySpawner.enemyCollisionCollider = this.physics.add.collider(
+      this.enemySpawner.group,
+      this.enemySpawner.group
+    );
     // SpawnDirector cronometra a run e decide quando/quantos inimigos pedir;
     this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData, spawnCurvesData, sealerScheduleData, eliteScheduleData, bossScheduleData);
     this._lastRunTimeSeconds = -1;

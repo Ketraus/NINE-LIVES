@@ -30,7 +30,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.def = def;
     this.name = def.id;
     // id único por instância — usado como chave de cooldown de dano de
-    this.id = `${def.id}_${nextInstanceId++}`;
+    this.instanceNumber = nextInstanceId++;
+    this.id = `${def.id}_${this.instanceNumber}`;
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -109,6 +110,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     // até este timestamp (scene.time.now), chase() não sobrescreve a
     this.knockbackUntil = 0;
+    this.aiUpdatePhase = this.instanceNumber % 4;
+    this._hitFlashTimer = null;
 
     // até este timestamp (scene.time.now), o inimigo está paralisado (carta
     this.paralyzedUntil = 0;
@@ -440,14 +443,18 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   playHitReaction() {
     if (!this.active) return;
 
-    // flash branco rápido (volta pro tint de status certo — normal,
-    this.setTintFill(0xffffff);
-    this.scene.time.delayedCall(70, () => {
-      if (!this.active) return;
-      const nowMs = this.scene.time.now;
-      this._currentStatusTint = null; // força setTint mesmo se o resultado "bater" com o que já estava antes…
-      this._refreshStatusTint(nowMs);
-    });
+    const denseBattle = this.scene.enemySpawner?.denseBattle ?? false;
+    if (denseBattle && (this.instanceNumber + this.scene.enemySpawner.updateFrame) % 4 !== 0) return;
+    if (!this._hitFlashTimer) {
+      this.setTintFill(0xffffff);
+      this._hitFlashTimer = this.scene.time.delayedCall(70, () => {
+        this._hitFlashTimer = null;
+        if (!this.active) return;
+        this._currentStatusTint = null;
+        this._refreshStatusTint(this.scene.time.now);
+      });
+    }
+    if (denseBattle) return;
 
     // "pop" de impacto: estica/encolhe rápido e volta ao normal — sensação
     this.scene.tweens.killTweensOf(this);

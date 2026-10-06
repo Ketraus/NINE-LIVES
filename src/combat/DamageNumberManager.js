@@ -18,6 +18,8 @@ const STROKE_COLOR = '#16131a';
 
 const BASE_FONT_SIZE = 10;
 const BASE_DEPTH = 25;
+const MAX_DENSE_DAMAGE_NUMBERS = 64;
+const MAX_DENSE_IMPORTANT_DAMAGE_NUMBERS = 80;
 
 const sceneNumbers = new WeakMap();
 const sceneCleanupRegistered = new WeakSet();
@@ -123,6 +125,15 @@ export default class DamageNumberManager {
     if (!scene || !scene.add || !scene.sys || !scene.sys.isActive()) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     if (!Number.isFinite(damage) || damage <= 0) return;
+
+    const activeNumbers = sceneNumbers.get(scene);
+    const denseBattle = scene.enemySpawner?.denseBattle ?? false;
+    const importantHit = feedback.isCritical || target?.def?.boss || target?.def?.elite;
+    const activeNumberCount = activeNumbers?.size ?? 0;
+    if (denseBattle && (
+      activeNumberCount >= MAX_DENSE_IMPORTANT_DAMAGE_NUMBERS ||
+      (activeNumberCount >= MAX_DENSE_DAMAGE_NUMBERS && !importantHit)
+    )) return;
 
     _ensureSceneCleanup(scene);
 

@@ -4,6 +4,7 @@ import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 import { hasPunchFx, playPunchSmear, WHIFF_POINT } from '../fx/PunchFx.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
+import DamageSystem from '../combat/DamageSystem.js';
 import EventBus from './EventBus.js';
 import { hasSlamFx, playSlamFx } from '../fx/SlamFx.js';
 import { hasQuakeFx, playQuakeSequence } from '../fx/QuakeFx.js';
@@ -579,7 +580,7 @@ export default class MultiplayerManager {
       if (appliedDamage <= 0) return;
       DamageNumberManager.show(this.scene, hitX, hitY, appliedDamage, enemy);
       enemy.playHitReaction();
-      this.scene.sound.play(this._hitSfxKey(enemy), { volume: 0.5 });
+      DamageSystem.playHitSound(this.scene, enemy);
       this._applyReplicatedStatus(enemy, hit);
     });
   }
@@ -601,14 +602,6 @@ export default class MultiplayerManager {
     if (Number.isFinite(paralyzeMs) && paralyzeMs > 0) {
       enemy.applyParalyze(now, Phaser.Math.Clamp(paralyzeMs, 0, 5000));
     }
-  }
-
-  _hitSfxKey(enemy) {
-    if (enemy.def?.boss) {
-      const keys = ['sfx_minotaur_hit1', 'sfx_minotaur_hit2', 'sfx_minotaur_hit3'];
-      return keys[Math.floor(Math.random() * keys.length)];
-    }
-    return enemy.def?.elite ? 'sfx_elite_hit' : 'sfx_hit';
   }
 
   _sendPlayerDamage(playerId, amount, shieldCurrent = null) {

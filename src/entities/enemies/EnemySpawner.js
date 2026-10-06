@@ -29,6 +29,11 @@ const DEFAULT_MAX_ALIVE = 14; // trava inicial da quantidade simultânea, até o
 // Quanto além da borda da câmera o inimigo precisa nascer pra garantir…
 const SPAWN_MARGIN_BEYOND_VIEW = 80;
 const ABANDONED_DISTANCE_MARGIN = 240;
+const COLLISION_LIMIT = 150;
+// Hordas grandes compartilham o orçamento de IA; inimigos especiais seguem por frame.
+const AI_STRIDE_MEDIUM = 2;
+const AI_STRIDE_HIGH = 3;
+const AI_STRIDE_EXTREME = 4;
 
 // "Vibrada" na tela quando o Elite nasce — feedback bem besta de propós…
 const ELITE_SPAWN_SHAKE_MS = 300;
@@ -67,6 +72,9 @@ export default class EnemySpawner {
     this.maxAlive = DEFAULT_MAX_ALIVE;
     this.nextNetworkId = 1;
     this.swarmSystem = new SwarmSystem(flockingConfig);
+    this.activeEnemies = [];
+    this.updateFrame = 0;
+    this.denseBattle = false;
 
     this.group = scene.physics.add.group({ runChildUpdate: false });
 
@@ -209,6 +217,8 @@ export default class EnemySpawner {
   _createAt(def, pos, networkId = null, networkReplica = false) {
     const EnemyClass = pickEnemyClass(def);
     const enemy = new EnemyClass(this.scene, pos.x, pos.y, def);
+    const isSpecial = def.elite || def.sealer || def.boss || def.special || def.event;
+    enemy.shadow?.setVisible(!this.denseBattle || isSpecial);
     enemy.networkId = networkId ?? this.nextNetworkId++;
     enemy.networkReplica = networkReplica;
     this.nextNetworkId = Math.max(this.nextNetworkId, enemy.networkId + 1);
@@ -427,28 +437,64 @@ export default class EnemySpawner {
   // Chamado no update da GameScene: faz todos perseguirem o jogador com
   updateAll(nowMs) {
     const speedMultiplier = this.scene.slowmoSystem?.getEnemySpeedMultiplier(nowMs) ?? 1;
-    const active = this.group.getChildren().filter((e) => e.active);
+    const children = this.group.getChildren();
+    const active = this.activeEnemies;
+    active.length = 0;
+    for (const enemy of children) {
+      if (enemy.active) active.push(enemy);
+    }
+    const activeCount = active.length;
     const targets = (this.scene.multiplayer?.getEnemyTargets() ?? [this.player])
       .filter((target) => target.active && !target.healthSystem?.isDead());
+    const stride = activeCount > 600 ? AI_STRIDE_EXTREME
+      : activeCount > 300 ? AI_STRIDE_HIGH
+      : activeCount > COLLISION_LIMIT ? AI_STRIDE_MEDIUM
+      : 1;
+    const denseBattle = activeCount > COLLISION_LIMIT;
+    if (denseBattle !== this.denseBattle) {
+      for (const enemy of active) {
+        const isSpecial = enemy.def.elite || enemy.def.sealer || enemy.def.boss || enemy.def.special || enemy.def.event;
+        enemy.shadow?.setVisible(!denseBattle || isSpecial);
+      }
+      this.denseBattle = denseBattle;
+    }
+    // A separação do enxame substitui as colisões físicas quando a horda fica grande.
+    if (this.enemyCollisionCollider) this.enemyCollisionCollider.active = activeCount <= COLLISION_LIMIT;
+    this.updateFrame += 1;
     this.swarmSystem.rebuild(active);
     const view = this._currentCameraView();
     const abandonmentDistance = Math.hypot(view.width, view.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW + ABANDONED_DISTANCE_MARGIN;
 
-    active.forEach((enemy) => {
-      if (targets.length === 0) return;
-      const target = targets.reduce((nearest, candidate) => {
-        const candidateDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, candidate.x, candidate.y);
-        const nearestDistance = Phaser.Math.Distance.Between(enemy.x, enemy.y, nearest.x, nearest.y);
-        return candidateDistance < nearestDistance ? candidate : nearest;
-      });
+    for (const enemy of active) {
+      if (targets.length === 0) continue;
+      let target = targets[0];
+      let nearestDistanceSq = (enemy.x - target.x) ** 2 + (enemy.y - target.y) ** 2;
+      for (let i = 1; i < targets.length; i++) {
+        const candidate = targets[i];
+        const dx = enemy.x - candidate.x;
+        const dy = enemy.y - candidate.y;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq < nearestDistanceSq) {
+          nearestDistanceSq = distanceSq;
+          target = candidate;
+        }
+      }
       if (this.frozen) {
         enemy.setVelocity(0, 0);
-      } else {
+      } else if (
+        stride === 1 ||
+        enemy.def.elite ||
+        enemy.def.sealer ||
+        enemy.def.boss ||
+        enemy.def.special ||
+        enemy.def.event ||
+        this.updateFrame % stride === enemy.aiUpdatePhase % stride
+      ) {
         const moveDir = this.swarmSystem.computeMoveDir(enemy, target);
         enemy.chase(target, nowMs, speedMultiplier, moveDir);
         enemy.updateFacing(nowMs);
         enemy.updateAnimState();
-        if (enemy.updateAbandonment(target, nowMs, abandonmentDistance)) return;
+        if (enemy.updateAbandonment(target, nowMs, abandonmentDistance)) continue;
       }
       if (target !== this.player) {
         const contactRange = (enemy.body?.radius || 20) + (target.body?.radius || 30);
@@ -463,7 +509,7 @@ export default class EnemySpawner {
         }
       }
       enemy.updateBleed(nowMs);
-    });
+    }
   }
 
   // Cheat (DevConsole "freeze"): liga/desliga o congelamento de todos os…

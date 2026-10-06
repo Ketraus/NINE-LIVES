@@ -6,6 +6,7 @@ export default class SwarmSystem {
   constructor(config) {
     this.config = config;
     this.grid = new Map(); // "cellX:cellY" -> Enemy[]
+    this.activeBuckets = [];
   }
 
   _cellKey(x, y) {
@@ -14,40 +15,18 @@ export default class SwarmSystem {
 
   // Reconstrói o grid espacial a partir da lista de inimigos vivos AGORA —
   rebuild(enemies) {
-    this.grid.clear();
-    enemies.forEach((enemy) => {
+    for (const bucket of this.activeBuckets) bucket.length = 0;
+    this.activeBuckets.length = 0;
+    for (const enemy of enemies) {
       const key = this._cellKey(enemy.x, enemy.y);
       let bucket = this.grid.get(key);
       if (!bucket) {
         bucket = [];
         this.grid.set(key, bucket);
       }
+      if (bucket.length === 0) this.activeBuckets.push(bucket);
       bucket.push(enemy);
-    });
-  }
-
-  // Vizinhos de `enemy` dentro de `radius`, varrendo só as células do
-  _neighborsWithin(enemy, radius) {
-    const result = [];
-    const cellRadius = Math.ceil(radius / this.config.cellSize);
-    const cx = Math.floor(enemy.x / this.config.cellSize);
-    const cy = Math.floor(enemy.y / this.config.cellSize);
-    const radiusSq = radius * radius;
-
-    for (let gx = cx - cellRadius; gx <= cx + cellRadius; gx++) {
-      for (let gy = cy - cellRadius; gy <= cy + cellRadius; gy++) {
-        const bucket = this.grid.get(`${gx}:${gy}`);
-        if (!bucket) continue;
-        for (const other of bucket) {
-          if (other === enemy) continue;
-          const dx = other.x - enemy.x;
-          const dy = other.y - enemy.y;
-          const distSq = dx * dx + dy * dy;
-          if (distSq > 0 && distSq <= radiusSq) result.push({ enemy: other, dx, dy, distSq });
-        }
-      }
     }
-    return result;
   }
 
   // Combina as 4 forças pra UM inimigo neste frame, pesadas por
@@ -60,64 +39,73 @@ export default class SwarmSystem {
     const seekDist = Math.hypot(dxSeek, dySeek);
     const seek = seekDist > 0 ? { x: dxSeek / seekDist, y: dySeek / seekDist } : { x: 0, y: 0 };
 
-    const neighbors = this._neighborsWithin(enemy, this.config.neighborRadius);
+    const cellRadius = Math.ceil(this.config.neighborRadius / this.config.cellSize);
+    const cx = Math.floor(enemy.x / this.config.cellSize);
+    const cy = Math.floor(enemy.y / this.config.cellSize);
+    const neighborRadiusSq = this.config.neighborRadius * this.config.neighborRadius;
+    const separationRadiusSq = this.config.separationRadius * this.config.separationRadius;
+    let neighborCount = 0;
+    let sumDx = 0;
+    let sumDy = 0;
+    let sepX = 0;
+    let sepY = 0;
 
-    // Quão "lotado" este inimigo está agora (0..1) — mesma régua da força
-    // de Densidade abaixo, mas calculada aqui incondicionalmente pra
-    // servir de sinal de crowding pro chase()/Enemy.js usar na animação
-    // (ver Enemy.updateAnimState): a velocidade que sai daqui embaixo é
-    // SEMPRE normalizada pra magnitude 1 (nunca desacelera de verdade —
-    // só muda de direção), então o único jeito confiável de saber "esse
-    // inimigo tá espremido" é este número, não a velocidade resultante.
-    const crowding = neighbors.length > 0
-      ? Math.min(1, Math.max(0, neighbors.length - this.config.densityThreshold) / this.config.densitySaturation)
+    for (let gx = cx - cellRadius; gx <= cx + cellRadius; gx++) {
+      for (let gy = cy - cellRadius; gy <= cy + cellRadius; gy++) {
+        const bucket = this.grid.get(`${gx}:${gy}`);
+        if (!bucket) continue;
+        for (const other of bucket) {
+          if (other === enemy) continue;
+          const dx = other.x - enemy.x;
+          const dy = other.y - enemy.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq === 0 || distSq > neighborRadiusSq) continue;
+
+          neighborCount += 1;
+          sumDx += dx;
+          sumDy += dy;
+          if (distSq <= separationRadiusSq) {
+            const inverseDist = 1 / Math.sqrt(distSq);
+            sepX -= dx * inverseDist * inverseDist;
+            sepY -= dy * inverseDist * inverseDist;
+          }
+        }
+      }
+    }
+
+    const crowding = neighborCount > 0
+      ? Math.min(1, Math.max(0, neighborCount - this.config.densityThreshold) / this.config.densitySaturation)
       : 0;
-
-    // Força 2 — Coesão: puxa em direção à posição MÉDIA dos vizinhos
-    let cohesion = { x: 0, y: 0 };
-    // Força 4 — Densidade: só o componente LATERAL (perpendicular ao
-    let density = { x: 0, y: 0 };
-
-    if (neighbors.length > 0) {
-      let sumDx = 0;
-      let sumDy = 0;
-      neighbors.forEach((n) => {
-        sumDx += n.dx;
-        sumDy += n.dy;
-      });
-      const avgDx = sumDx / neighbors.length;
-      const avgDy = sumDy / neighbors.length;
+    let cohesionX = 0;
+    let cohesionY = 0;
+    let densityX = 0;
+    let densityY = 0;
+    if (neighborCount > 0) {
+      const avgDx = sumDx / neighborCount;
+      const avgDy = sumDy / neighborCount;
       const avgDist = Math.hypot(avgDx, avgDy);
-
       if (avgDist > 0) {
-        cohesion = { x: avgDx / avgDist, y: avgDy / avgDist };
-
-        const awayX = -cohesion.x;
-        const awayY = -cohesion.y;
+        cohesionX = avgDx / avgDist;
+        cohesionY = avgDy / avgDist;
+        const awayX = -cohesionX;
+        const awayY = -cohesionY;
         const dot = awayX * seek.x + awayY * seek.y;
         const latX = awayX - dot * seek.x;
         const latY = awayY - dot * seek.y;
         const latLen = Math.hypot(latX, latY);
         if (latLen > 0) {
-          density = { x: (latX / latLen) * crowding, y: (latY / latLen) * crowding };
+          densityX = (latX / latLen) * crowding;
+          densityY = (latY / latLen) * crowding;
         }
       }
     }
 
-    // Força 3 — Separação: só vizinhos bem colados (separationRadius, bem
-    let sepX = 0;
-    let sepY = 0;
-    neighbors.forEach((n) => {
-      if (n.distSq > this.config.separationRadius * this.config.separationRadius) return;
-      const dist = Math.sqrt(n.distSq);
-      sepX -= (n.dx / dist) / dist;
-      sepY -= (n.dy / dist) / dist;
-    });
     const sepLen = Math.hypot(sepX, sepY);
-    const separation = sepLen > 0 ? { x: sepX / sepLen, y: sepY / sepLen } : { x: 0, y: 0 };
+    const separationX = sepLen > 0 ? sepX / sepLen : 0;
+    const separationY = sepLen > 0 ? sepY / sepLen : 0;
 
-    const fx = seek.x * weights.seek + cohesion.x * weights.cohesion + separation.x * weights.separation + density.x * weights.density;
-    const fy = seek.y * weights.seek + cohesion.y * weights.cohesion + separation.y * weights.separation + density.y * weights.density;
+    const fx = seek.x * weights.seek + cohesionX * weights.cohesion + separationX * weights.separation + densityX * weights.density;
+    const fy = seek.y * weights.seek + cohesionY * weights.cohesion + separationY * weights.separation + densityY * weights.density;
     const len = Math.hypot(fx, fy);
     return len > 0 ? { x: fx / len, y: fy / len, crowding } : { ...seek, crowding };
   }
