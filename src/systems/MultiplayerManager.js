@@ -2,6 +2,7 @@ import MqttClient from './MqttClient.js';
 import { BASE_VISUAL_SCALE } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
+import { hasPunchFx, playPunchSmear, WHIFF_POINT } from '../fx/PunchFx.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
 import EventBus from './EventBus.js';
 import { hasTornadoFx, createTornadoFx, pulseTornadoFx, updateTornadoFx } from '../fx/TornadoFx.js';
@@ -1459,6 +1460,11 @@ export default class MultiplayerManager {
       : 150;
 
     if (attack.kind === 'arc') {
+      if (hasPunchFx(this.scene)) {
+        // jogador remoto: só o vulto (o impacto depende de quem foi atingido)
+        playPunchSmear(this.scene, { x: attack.x, y: attack.y, angle, reach: range * WHIFF_POINT, durationMs: duration, tint });
+        return;
+      }
       const fx = this.scene.add.image(
         attack.x + attack.dx * range * 0.5,
         attack.y + attack.dy * range * 0.5,

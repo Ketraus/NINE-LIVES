@@ -1,6 +1,7 @@
 import DamageSystem from '../combat/DamageSystem.js';
 import { hasSlashFx, playSlashFx, spawnSlashHitFx } from '../fx/SlashFx.js';
 import { spawnDanceHitFx, danceCutPlan } from '../fx/BladeCutFx.js';
+import { hasPunchFx, playPunchFx, playPunchSmear, WHIFF_POINT } from '../fx/PunchFx.js';
 
 // Fração do dano principal que cada acerto "avulso" da evolução "Corte
 const STRAY_DAMAGE_FRACTION = 0.5;
@@ -122,7 +123,8 @@ export default class Weapon {
 
     if (useSwordFx) {
       this._showSwordSwingFx(scene, player, aim, range, halfArc, options);
-    } else {
+    } else if (!hasPunchFx(scene)) {
+      // fallback: flash simples (o FX do soco é tocado no contato, mais abaixo)
       this._showArcFx(scene, player, aim, range);
     }
     scene.multiplayer?.sendAttack({
@@ -143,6 +145,7 @@ export default class Weapon {
     });
 
     let landedHit = false;
+    const punchContacts = []; // pontos de contato do soco (FX de impacto, máx. 3)
     // snapshot: applyHit pode matar/remover do grupo e quebrar a iteração l…
     enemyGroup.getChildren().slice().forEach((enemy) => {
       if (!enemy?.active) return;
@@ -166,6 +169,10 @@ export default class Weapon {
         // golpe final da "Dança de Cortes": além do knockback/shake maiores
         if (hit && options.isFinisher) this._showFinisherImpactFx(scene, enemy.x, enemy.y, options.tint);
         if (hit && options.slashJuice) spawnSlashHitFx(scene, enemy.x, enemy.y, aim.angle());
+        // soco: estouro no ponto de contato (um pouco antes do centro do inimigo)
+        if (hit && !useSwordFx && punchContacts.length < 3) {
+          punchContacts.push({ x: enemy.x - aim.x * 8, y: enemy.y - aim.y * 8, dist });
+        }
         // Dança de Cortes: o risco atravessa o inimigo e se abre
         if (hit && options.slashVariant === 'red') {
           const cutAngle = options.isFinisher
@@ -177,6 +184,26 @@ export default class Weapon {
         landedHit = true;
       }
     });
+    // soco: vulto curto da patada saindo do gato; o estouro só aparece no
+    // contato, se acertou
+    if (!useSwordFx && hasPunchFx(scene)) {
+      const fxMs = this.def.fxDurationMs ?? 100;
+      const reach = punchContacts.length
+        ? Phaser.Math.Clamp(Math.min(...punchContacts.map((c) => c.dist)) - 10, 24, range)
+        : range * WHIFF_POINT;
+      playPunchSmear(scene, {
+        x: player.x,
+        y: player.y,
+        owner: player,
+        angle: aim.angle(),
+        reach,
+        durationMs: fxMs,
+        tint: this.def.fxTint ?? 0xffffff,
+        onContact: punchContacts.length
+          ? () => punchContacts.forEach((c) => playPunchFx(scene, { x: c.x, y: c.y, durationMs: fxMs }))
+          : null
+      });
+    }
     return landedHit;
   }
 
