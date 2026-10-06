@@ -300,9 +300,17 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   _updateInvulnerableFlash() {
     const now = this.scene.time.now;
     if (now < this._dodgeFlashUntil) {
+      this.clearTint();
       this.setAlpha(DODGE_ALPHA);
       return;
     }
+    if (now < this._levelUpInvulnerableUntil) {
+      this.setAlpha(1);
+      if (Math.floor(now / 100) % 2 === 0) this.setTint(0xffff00);
+      else this.clearTint();
+      return;
+    }
+    this.clearTint();
     const isInvulnerable = now < this.invulnerableUntil;
     this.setAlpha(isInvulnerable ? (Math.floor(now / 80) % 2 === 0 ? 0.4 : 1) : 1);
   }
@@ -394,6 +402,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
   takeDamage(amount) {
     this.healthSystem.takeDamage(amount);
+  }
+
+  grantLevelUpInvulnerability(durationMs) {
+    if (this.isDead || !Number.isFinite(durationMs) || durationMs <= 0) return;
+    const until = this.scene.time.now + durationMs;
+    this._levelUpInvulnerableUntil = Math.max(this._levelUpInvulnerableUntil || 0, until);
+    this.invulnerableUntil = Math.max(this.invulnerableUntil, until);
   }
 
   applyNetworkDamage(amount, shieldCurrent) {

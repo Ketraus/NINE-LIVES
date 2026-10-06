@@ -226,6 +226,7 @@ export default class MultiplayerManager {
       remote.sprite.x = Phaser.Math.Linear(remote.sprite.x, remote.targetX, blend);
       remote.sprite.y = Phaser.Math.Linear(remote.sprite.y, remote.targetY, blend);
       this._drawRemoteStatus(remote);
+      this._updateRemoteLevelUpFlash(remote, this.scene.time.now);
       this._updateRemoteAbilityEffects(remote, this.scene.time.now, delta);
     });
     this.remoteEnemies.forEach((enemy) => {
@@ -876,6 +877,26 @@ export default class MultiplayerManager {
       .map((remote) => remote.combatant)];
   }
 
+  grantLevelUpInvulnerability(durationMs) {
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return;
+    const until = this.scene.time.now + durationMs;
+    this.remotePlayers.forEach((remote) => {
+      remote.levelUpInvulnerableUntil = Math.max(remote.levelUpInvulnerableUntil || 0, until);
+      remote.combatant.invulnerableUntil = Math.max(remote.combatant.invulnerableUntil, until);
+    });
+  }
+
+  _updateRemoteLevelUpFlash(remote, now) {
+    if (remote.hp > 0 && now < remote.levelUpInvulnerableUntil) {
+      if (Math.floor(now / 100) % 2 === 0) remote.sprite.setTint(0xffff00);
+      else remote.sprite.clearTint();
+      remote.levelUpFlashActive = true;
+    } else if (remote.levelUpFlashActive) {
+      remote.sprite.clearTint();
+      remote.levelUpFlashActive = false;
+    }
+  }
+
   _createRemoteCombatant(remote, playerId) {
     const manager = this;
     const healthSystem = {
@@ -1462,6 +1483,8 @@ export default class MultiplayerManager {
           auraEffects: new Map(),
           shieldFx: null,
           abilityVisuals: null,
+          levelUpInvulnerableUntil: 0,
+          levelUpFlashActive: false,
           levelUpChoiceRound: 0,
           levelUpChoiceIds: [],
           levelUpPendingCount: 0,

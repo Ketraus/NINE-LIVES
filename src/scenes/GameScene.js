@@ -78,6 +78,7 @@ const AMBIENT_SFX_MAX_DELAY_MS = 240000; // 4min
 const MAP_FADE_IN_MS = 220;
 const HUD_FADE_IN_DELAY_MS = 80;
 const HUD_FADE_IN_MS = 180;
+const LEVEL_UP_INVULNERABILITY_MS = 2000;
 const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
   'player_idle', 'player_walk', 'player_white_idle', 'player_white_walk', 'player_white_katana_idle', 'player_white_katana_walk', 'player_white_paws_idle', 'player_white_paws_walk', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
   'enemy', 'grunt_idle', 'grunt_walk', 'cyber_hound_idle', 'cyber_hound_walk', 'cyber_brute_idle', 'cyber_brute_walk',
@@ -439,6 +440,8 @@ export default class GameScene extends Phaser.Scene {
     });
 
     EventBus.on('levelup-opened', () => {
+      this.player.grantLevelUpInvulnerability(LEVEL_UP_INVULNERABILITY_MS);
+      this.multiplayer?.grantLevelUpInvulnerability(LEVEL_UP_INVULNERABILITY_MS);
       this.isPaused = true;
       this.spawnDirector.pause();
       this._setGameplayVisualsPaused(true);
