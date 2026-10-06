@@ -234,8 +234,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   // Ajusta flipX pra virar o sprite conforme a direção horizontal do
-  updateFacing() {
+  updateFacing(nowMs = this.scene.time.now) {
     if (!this.active || !this.body) return; // pode já ter morrido dentro do próprio chase() (ex.: Exploder)
+    if (nowMs < this.knockbackUntil) return; // knockback não deve virar o sprite contra a direção da perseguição
     const vx = this.body.velocity.x;
     // Exploder (def.invertFacing): arte já vem "de frente" com a cabeça
     // do lado oposto ao das outras sprites, então o flip precisa ser

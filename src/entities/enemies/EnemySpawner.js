@@ -446,7 +446,7 @@ export default class EnemySpawner {
       } else {
         const moveDir = this.swarmSystem.computeMoveDir(enemy, target);
         enemy.chase(target, nowMs, speedMultiplier, moveDir);
-        enemy.updateFacing();
+        enemy.updateFacing(nowMs);
         enemy.updateAnimState();
         if (enemy.updateAbandonment(target, nowMs, abandonmentDistance)) return;
       }
