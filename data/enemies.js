@@ -275,7 +275,7 @@ export default [
     // 2.86 (2.2 x 1.3) pra acompanhar o BASE_VISUAL_SCALE do jogador
     // (ver Player.js) e manter a mesma proporção boss:jogador de antes —
     // ajuste este número de novo se ainda não estiver do tamanho certo
-    "scale": 2.86,
+    "scale": 4,
     "flocking": { "seek": 1.0, "cohesion": 0, "separation": 0.3, "density": 0 },
     "boss": true,
     "shadowOffsetX": 0,
@@ -300,7 +300,7 @@ export default [
     // telegraph bem curto de propósito (é o "castigo" de ficar colado
     // nele assim que a investida termina).
     "chargeSwingTelegraphMs": 200,
-    "chargeSwingRadius": 100,
+    "chargeSwingRadius": 150,
     "chargeSwingDamage": 45,
     "chargeVulnerableMs": 2000,
     "chargeVulnerableDamageMultiplier": 1.5,
@@ -322,12 +322,12 @@ export default [
     "axeThrowTelegraphMs": 700,
     "axeThrowFlightMs": 500,
     "axeThrowImpactDamage": 35,
-    "axeThrowImpactRadius": 70,
+    "axeThrowImpactRadius": 110,
     "axeThrowExplosionDamage": 60,
     // área da explosão bem maior que antes (110 → 190) — pedido explícito
     // pra acertar mais área, já que agora dá tempo de sobra (charging +
     // beep) pra ler que a explosão vem aí
-    "axeThrowExplosionRadius": 190,
+    "axeThrowExplosionRadius": 250,
     // levantar a mão + puxar o machado de volta ficaram um pouco mais
     // lentos que antes (350/450) pra dar uma respirada depois da explosão
     // (som mais longo agora) antes de voltar a perseguir
@@ -366,7 +366,7 @@ export default [
     // cone pequeno com um aviso tão longo não fazia sentido, dava tempo
     // demais pra sair de uma área pequena. Ainda um cone (não círculo),
     // só que cobrindo boa parte da tela na direção travada.
-    "cleaveRange": 650,
+    "cleaveRange": 1000,
     "cleaveHalfAngleDeg": 26,
     "cleaveDamage": 110,
     "cleaveRecoverMs": 400,
@@ -384,7 +384,7 @@ export default [
     "stompCooldownMs": 4000,
     "stompRaiseMs": 350,
     "stompPauseMs": 200,
-    "stompImpactRadius": 110,
+    "stompImpactRadius": 150,
     "stompDamage": 15,
     "stompKnockbackForce": 900,
     "stompKnockbackDurationMs": 260

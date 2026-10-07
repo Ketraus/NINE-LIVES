@@ -21,7 +21,7 @@ const CHARGE_FOOTSTEPS_RATE = 1.6;
 
 // Machado Arremessado (2ª habilidade do Minotauro, sorteada 50/50 com a
 const AXE_SPIN_DEG_PER_MS = 0.9;
-const AXE_SPRITE_SCALE = 2.2; // arte ocupa só um canto do canvas 64x64 — aumenta o tamanho visual do machado arremessado
+const AXE_SPRITE_SCALE = 4; // arte ocupa só um canto do canvas 64x64 — aumenta o tamanho visual do machado arremessado
 const AXE_THROW_SHAKE_MS = 90;
 const AXE_THROW_SHAKE_INTENSITY = 0.004;
 const AXE_IMPACT_SHAKE_MS = 160;

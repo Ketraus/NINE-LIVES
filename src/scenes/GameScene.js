@@ -304,7 +304,7 @@ export default class GameScene extends Phaser.Scene {
     // na tela. Dividindo o zoom pela mesma escala, a câmera puxa pra trás na
     // medida exata — a proporção gato:tile nova fica de pé, mas o tamanho do
     // gato na tela volta a ser o de antes (e ainda sobra mais mapa visível).
-    const baseZoom = 1 / BASE_VISUAL_SCALE;
+    const baseZoom = 0.8 / BASE_VISUAL_SCALE;
     // celular: câmera um pouco mais próxima, só estética/sensação de jogo
     // (mesmo bônus relativo de antes — 1.4x mais perto que o desktop)
     const zoom = this.sys.game.device.input.touch ? baseZoom * 1.4 : baseZoom;
