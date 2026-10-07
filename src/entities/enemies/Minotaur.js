@@ -1,6 +1,7 @@
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
 import SettingsManager from '../../systems/SettingsManager.js';
+import { playMinotaurCleave, hasMinotaurCleaveFx } from '../../fx/MinotaurCleaveFx.js';
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
 const CHARGE_LINE_LENGTH = 1400;
@@ -1272,7 +1273,7 @@ export default class Minotaur extends Enemy {
     this.scene.sound.play('sfx_minotaur_axe_whoosh', { volume: 0.8 });
     this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
     this.scene.cameras.main.shake(CLEAVE_SHAKE_MS, CLEAVE_SHAKE_INTENSITY);
-    this.scene.cameras.main.flash(CLEAVE_FLASH_MS, 255, 30, 30);
+    this.scene.cameras.main.flash(CLEAVE_FLASH_MS, 170, 60, 255);
     this._showCleaveExecuteFx();
     if (target.active && !target.healthSystem?.isDead()) {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
@@ -1293,6 +1294,12 @@ export default class Minotaur extends Enemy {
   // mesmo espírito aplicado à explosão do machado).
   _showCleaveExecuteFx() {
     const half = Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg);
+
+    // FX roxo novo (src/fx/MinotaurCleaveFx.js); o antigo abaixo fica de reserva
+    if (hasMinotaurCleaveFx(this.scene)) {
+      playMinotaurCleave(this.scene, this.x, this.y, this.cleaveAngle, this.def.cleaveRange, half);
+      return;
+    }
 
     const flash = this.scene.add.graphics().setDepth(21).setBlendMode(Phaser.BlendModes.ADD);
     flash.fillStyle(0xffffff, 0.95);
