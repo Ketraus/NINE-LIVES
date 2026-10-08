@@ -120,6 +120,13 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Chuva de Meteoros da fase 2: spritesheet de 4 frames (32x32).
+    // Sem este preload o código do Minotauro tenta criar a textura, mas ela não existe.
+    this.load.spritesheet('minotaur_meteor_aqua', 'assets/fx/minotaur_meteor_aqua.png', {
+      frameWidth: 32,
+      frameHeight: 32
+    });
+
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
@@ -362,6 +369,7 @@ export default class PreloadScene extends Phaser.Scene {
       'laser_green',
       'laser_purple',
       'laser_blue',
+      'minotaur_meteor_aqua',
       'asset_purification_idle',
       'asset_purification_walk'
     ].forEach((key) => this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST));
