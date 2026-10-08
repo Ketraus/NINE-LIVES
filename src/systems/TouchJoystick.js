@@ -31,6 +31,12 @@ export default class TouchJoystick {
     // ordem de inserção = ordem de desenho dentro do container: knob por
     this.uiContainer.add([this.base, this.knob]);
 
+    // PauseUI e ResultUI usam câmeras auxiliares. Essas câmeras são criadas
+    // antes do joystick e objetos com scrollFactor(0) aparecem nelas também
+    // se não forem ignorados explicitamente, fazendo o controle parecer
+    // duplicado no celular. O joystick pertence somente à câmera principal.
+    this._hideFromAuxiliaryCameras();
+
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
@@ -53,6 +59,14 @@ export default class TouchJoystick {
   }
 
   // Mesma correção do HUD (ver HUD._applyZoomCompensation em src/ui/HUD.j…
+  _hideFromAuxiliaryCameras() {
+    const mainCamera = this.scene.cameras.main;
+    const joystickObjects = [this.uiContainer, this.base, this.knob];
+    this.scene.cameras.cameras.forEach((camera) => {
+      if (camera !== mainCamera) camera.ignore(joystickObjects);
+    });
+  }
+
   _applyZoomCompensation(container) {
     const cam = this.scene.cameras.main;
     const zoom = cam.zoom || 1;
