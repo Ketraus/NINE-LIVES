@@ -30,6 +30,11 @@ const CHARGE_VULNERABLE_TINT = 0xffaaaa;
 const CHARGE_SWING_COLOR = 0x9a43ee;
 const CHARGE_SWING_SHAKE_MS = 280;
 const CHARGE_SWING_SHAKE_INTENSITY = 0.02;
+// O corte pós-investida não é 360º: ele abre quase um círculo inteiro na
+// DIREÇÃO da investida, deixando uma zona segura estreita atrás do Minotauro.
+// O dano é um SETOR preenchido do centro até o raio — não só a borda visual.
+const CHARGE_SWING_VISUAL_SWEEP = Math.PI * 1.60; // 288º visuais
+const CHARGE_SWING_HIT_SWEEP = Math.PI * (5 / 3); // 300º de hitbox, levemente generosa
 // passos tocam em loop durante o dash (curto e rápido — chargeDurationMs)
 // acelerados pra soarem como uma corrida forte, não uma caminhada
 const CHARGE_FOOTSTEPS_RATE = 1.6;
@@ -656,14 +661,29 @@ export default class Minotaur extends Enemy {
     if (nowMs >= this.bossSwingUntil) this._resolveSwing(target, nowMs);
   }
 
-  // Dano em área (def.chargeSwingRadius/chargeSwingDamage) + a tremida
+  // Dano do corte: setor quase completo, orientado pela direção travada da
+  // investida. Qualquer ponto DENTRO do setor toma dano (do centro à borda);
+  // a única zona segura é a abertura estreita atrás do Minotauro.
   _resolveSwing(target, nowMs) {
     this._clearBossTelegraph();
     this.scene.cameras.main.shake(CHARGE_SWING_SHAKE_MS, CHARGE_SWING_SHAKE_INTENSITY);
     const swingRadius = this.def.chargeSwingRadius * 1.3;
-    playMinotaurChargeSwing(this.scene, this.x, this.y, swingRadius, this.isEnraged);
-    const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
-    if (dist <= swingRadius && target.active && !target.healthSystem?.isDead()) {
+    playMinotaurChargeSwing(this.scene, this.x, this.y, swingRadius, this.isEnraged, this.bossChargeDir);
+
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const distSq = dx * dx + dy * dy;
+    let insideSwing = distSq <= swingRadius * swingRadius;
+
+    if (insideSwing && distSq > 1) {
+      const facing = Math.atan2(this.bossChargeDir.y, this.bossChargeDir.x);
+      const targetAngle = Math.atan2(dy, dx);
+      // Menor diferença angular em [-PI, PI].
+      const delta = Math.atan2(Math.sin(targetAngle - facing), Math.cos(targetAngle - facing));
+      insideSwing = Math.abs(delta) <= CHARGE_SWING_HIT_SWEEP * 0.5;
+    }
+
+    if (insideSwing && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.chargeSwingDamage), this, nowMs);
     }
     this._endCharge(nowMs);
@@ -719,15 +739,49 @@ export default class Minotaur extends Enemy {
     const palette = this._telegraphPalette();
     const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
     g.setAlpha(Phaser.Math.Linear(0.5, 1, blinkT));
+
     const radius = this.def.chargeSwingRadius * 1.3;
-    const key = `swing:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${radius}`;
+    const facing = Math.atan2(this.bossChargeDir.y, this.bossChargeDir.x);
+    const start = facing - CHARGE_SWING_VISUAL_SWEEP * 0.5;
+    const segments = 42;
+    const key = `swing:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${radius}:${facing.toFixed(3)}`;
     if (!this._prepareStaticTelegraph(key)) return;
-    g.fillStyle(palette.main, 0.32);
-    g.fillCircle(this.x, this.y, radius);
-    g.lineStyle(5, palette.dark, 0.5);
-    g.strokeCircle(this.x, this.y, radius);
-    g.lineStyle(2.5, palette.bright, 1);
-    g.strokeCircle(this.x, this.y, radius - 3);
+
+    // Área preenchida: deixa explícito que o golpe acerta também perto do
+    // Minotauro, e a abertura atrás mostra a zona segura.
+    const sector = [{ x: this.x, y: this.y }];
+    for (let i = 0; i <= segments; i++) {
+      const a = start + CHARGE_SWING_VISUAL_SWEEP * (i / segments);
+      sector.push({ x: this.x + Math.cos(a) * radius, y: this.y + Math.sin(a) * radius });
+    }
+    g.fillStyle(palette.main, 0.27);
+    g.fillPoints(sector, true);
+
+    // Contorno externo + núcleo claro, mantendo a linguagem neon dos
+    // telegraphs otimizados do Minotauro sem voltar a redesenhar por frame.
+    const strokeArc = (r, width, color, alpha) => {
+      g.lineStyle(width, color, alpha);
+      g.beginPath();
+      for (let i = 0; i <= segments; i++) {
+        const a = start + CHARGE_SWING_VISUAL_SWEEP * (i / segments);
+        const px = this.x + Math.cos(a) * r;
+        const py = this.y + Math.sin(a) * r;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.strokePath();
+    };
+    strokeArc(radius, 6, palette.dark, 0.58);
+    strokeArc(radius - 3, 2.5, palette.bright, 1);
+
+    // Duas pontas curtas ajudam a ler instantaneamente onde o arco termina.
+    const end = start + CHARGE_SWING_VISUAL_SWEEP;
+    g.lineStyle(3, palette.main, 0.72);
+    g.beginPath();
+    g.moveTo(this.x + Math.cos(start) * radius * 0.78, this.y + Math.sin(start) * radius * 0.78);
+    g.lineTo(this.x + Math.cos(start) * radius, this.y + Math.sin(start) * radius);
+    g.moveTo(this.x + Math.cos(end) * radius * 0.78, this.y + Math.sin(end) * radius * 0.78);
+    g.lineTo(this.x + Math.cos(end) * radius, this.y + Math.sin(end) * radius);
+    g.strokePath();
   }
 
   // Passos 1-3: para, trava o ALVO (posição do jogador AGORA, igual à

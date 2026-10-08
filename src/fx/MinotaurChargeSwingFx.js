@@ -1,6 +1,23 @@
 // Corte circular pós-investida do Minotauro.
 // Usa a arte enviada pelo artista, mas com um boost de brilho/legibilidade na 2ª fase.
 const KEY = 'minotaur_charge_swing';
+const SWING_SWEEP = Math.PI * 1.60; // 288º: abertura estreita fica atrás do dash
+
+function getDirectionAngle(direction) {
+  if (!direction || (!Number.isFinite(direction.x) && !Number.isFinite(direction.y))) return 0;
+  return Math.atan2(direction.y || 0, direction.x || 0);
+}
+
+function strokeEllipseArc(g, x, y, rx, ry, start, sweep, segments = 44) {
+  g.beginPath();
+  for (let i = 0; i <= segments; i++) {
+    const a = start + sweep * (i / segments);
+    const px = x + Math.cos(a) * rx;
+    const py = y + Math.sin(a) * ry;
+    if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+  }
+  g.strokePath();
+}
 
 export function loadMinotaurChargeSwing(scene) {
   scene.load.image(KEY, 'assets/fx/minotaur_charge_swing.png');
@@ -12,9 +29,11 @@ export function prepareMinotaurChargeSwing(scene) {
   if (scene.textures.exists(KEY + '_rage')) scene.textures.get(KEY + '_rage').setFilter(Phaser.Textures.FilterMode.NEAREST);
 }
 
-export function playMinotaurChargeSwing(scene, x, y, radius, rage = false) {
+export function playMinotaurChargeSwing(scene, x, y, radius, rage = false, direction = { x: 1, y: 0 }) {
   if (!scene.textures.exists(KEY)) return;
-  leaveChargeSwingScar(scene, x, y, radius, rage);
+  const facing = getDirectionAngle(direction);
+  const arcStart = facing - SWING_SWEEP * 0.5;
+  leaveChargeSwingScar(scene, x, y, radius, rage, facing);
 
   const imgKey = rage ? KEY + '_rage' : KEY;
 
@@ -38,23 +57,26 @@ export function playMinotaurChargeSwing(scene, x, y, radius, rage = false) {
 
   // Elos do desenho giram e se expandem como a lâmina circular.
   const layers = [
-    { start: 0.44, alpha: 1.0, rot: 0, dur: 240, target: 2.08 },
-    { start: 0.52, alpha: rage ? 0.88 : 0.72, rot: Math.PI / 2, dur: 320, target: 2.02 },
-    { start: 0.36, alpha: rage ? 0.52 : 0.36, rot: Math.PI / 4, dur: 210, target: 1.88 }
+    { start: 0.44, alpha: 1.0, rot: -0.18 * Math.PI, dur: 240, target: 2.08 },
+    { start: 0.52, alpha: rage ? 0.88 : 0.72, rot: 0.08 * Math.PI, dur: 320, target: 2.02 },
+    { start: 0.36, alpha: rage ? 0.52 : 0.36, rot: 0.28 * Math.PI, dur: 210, target: 1.88 }
   ];
 
   layers.forEach((cfg, i) => {
+    const baseRotation = facing + cfg.rot;
     const ring = scene.add.image(x, y, imgKey)
       .setDepth(20 + i)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(cfg.start)
       .setAlpha(cfg.alpha)
-      .setRotation(cfg.rot);
+      .setRotation(baseRotation);
     scene.tweens.add({
       targets: ring,
       scaleX: radius * cfg.target / ring.width,
       scaleY: radius * (rage ? cfg.target * 0.95 : cfg.target * 0.9) / ring.height,
-      rotation: cfg.rot + (i % 2 === 0 ? 1 : -1) * Math.PI * (rage ? 1.45 : 1.2),
+      // O giro é curto e agressivo, mas não dá uma volta inteira: a abertura
+      // visual continua ancorada atrás da direção da investida.
+      rotation: baseRotation + (i % 2 === 0 ? 1 : -1) * Math.PI * 0.22,
       alpha: 0,
       duration: cfg.dur,
       ease: 'Cubic.easeOut',
@@ -77,11 +99,11 @@ export function playMinotaurChargeSwing(scene, x, y, radius, rage = false) {
       const midColor = rage ? 0x39ded0 : 0xd9a2ff;
       const innerColor = rage ? 0xf2fffd : 0xf6dbff;
       g.lineStyle(rage ? 16 : 12, outerColor, state.a * (rage ? 0.34 : 0.44));
-      g.strokeEllipse(x, y, state.r * 2.06, state.r * 1.86);
+      strokeEllipseArc(g, x, y, state.r * 1.03, state.r * 0.93, arcStart, SWING_SWEEP);
       g.lineStyle(rage ? 8 : 4, midColor, state.a * 0.95);
-      g.strokeEllipse(x, y, state.r * 1.98, state.r * 1.78);
+      strokeEllipseArc(g, x, y, state.r * 0.99, state.r * 0.89, arcStart, SWING_SWEEP);
       g.lineStyle(rage ? 3 : 2, innerColor, state.a);
-      g.strokeEllipse(x, y, state.r * 1.84, state.r * 1.64);
+      strokeEllipseArc(g, x, y, state.r * 0.92, state.r * 0.82, arcStart, SWING_SWEEP);
     },
     onComplete: () => g.destroy()
   });
@@ -89,7 +111,7 @@ export function playMinotaurChargeSwing(scene, x, y, radius, rage = false) {
   // Faíscas mais intensas na 2ª fase.
   const sparkCount = rage ? 22 : 16;
   for (let i = 0; i < sparkCount; i++) {
-    const a = (i / sparkCount) * Math.PI * 2 + Math.random() * 0.18;
+    const a = arcStart + SWING_SWEEP * ((i + Math.random() * 0.35) / sparkCount);
     const d = radius * (0.5 + Math.random() * 0.52);
     const spark = scene.add.rectangle(
       x + Math.cos(a) * radius * 0.26,
@@ -117,10 +139,10 @@ export function playMinotaurChargeSwing(scene, x, y, radius, rage = false) {
 
 // Cicatriz física do impacto: sulcos e rachaduras no chão.
 // Na 2ª fase, o desenho fica mais claro e menos apagado.
-function leaveChargeSwingScar(scene, x, y, radius, rage = false) {
+function leaveChargeSwingScar(scene, x, y, radius, rage = false, facing = 0) {
   const scar = scene.add.graphics().setDepth(1);
-  const angle = Math.random() * Math.PI * 2;
-  const sweep = Math.PI * 1.58;
+  const sweep = SWING_SWEEP;
+  const angle = facing - sweep * 0.5;
   const draw = (opacity) => {
     scar.clear();
     const segments = 32;
