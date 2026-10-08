@@ -1,4 +1,10 @@
 import { playMeteorImpact } from '../../fx/MinotaurMeteorFx.js';
+import {
+  playMinotaurChargeWindup,
+  playMinotaurChargeLaunch,
+  emitMinotaurChargeTrail,
+  playMinotaurChargeStop
+} from '../../fx/MinotaurChargeFx.js';
 import { playMinotaurChargeSwing } from '../../fx/MinotaurChargeSwingFx.js';
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
@@ -14,10 +20,10 @@ import {
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
 const CHARGE_LINE_LENGTH = 1400;
-const CHARGE_LAUNCH_SHAKE_MS = 120;
-const CHARGE_LAUNCH_SHAKE_INTENSITY = 0.006;
-const CHARGE_IMPACT_SHAKE_MS = 260;
-const CHARGE_IMPACT_SHAKE_INTENSITY = 0.018;
+const CHARGE_LAUNCH_SHAKE_MS = 240;
+const CHARGE_LAUNCH_SHAKE_INTENSITY = 0.02;
+const CHARGE_IMPACT_SHAKE_MS = 300;
+const CHARGE_IMPACT_SHAKE_INTENSITY = 0.023;
 // tint "atordoado" durante a janela vulnerável pós-investida (ver
 const CHARGE_VULNERABLE_TINT = 0xffaaaa;
 // Corte (evolução da Investida — ver _startSwing/_resolveSwing): o golpe
@@ -118,6 +124,9 @@ export default class Minotaur extends Enemy {
     // Investida: passos em loop durante o dash — ver _launchCharge/
     // _stopChargeFootsteps
     this.chargeFootsteps = null;
+    this.chargeFxLastTrailAt = 0;
+    this.chargeFxStepSide = 1;
+    this.chargeFxStep = 0;
     // Machado Arremessado: ver _startAxeThrow e afins. axeSprite é o
     this.axeSprite = null;
     this.networkAxeSprite = null;
@@ -498,6 +507,10 @@ export default class Minotaur extends Enemy {
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     // telegraph + pequena pausa contam juntos aqui: a linha fica visível
     this.bossChargeTelegraphUntil = nowMs + this._bossTelegraph(this.def.chargeTelegraphMs + this.def.chargePauseMs);
+    playMinotaurChargeWindup(
+      this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged,
+      Math.max(240, this.bossChargeTelegraphUntil - nowMs)
+    );
     this.scene.sound.play('sfx_minotaur_charge', { volume: 0.75 });
   }
 
@@ -515,6 +528,10 @@ export default class Minotaur extends Enemy {
     this.bossChargeDashUntil = nowMs + this.def.chargeDurationMs;
     this._moveTo(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
     this.scene.cameras.main.shake(CHARGE_LAUNCH_SHAKE_MS, CHARGE_LAUNCH_SHAKE_INTENSITY);
+    playMinotaurChargeLaunch(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged);
+    this.chargeFxLastTrailAt = nowMs - 100;
+    this.chargeFxStepSide = Math.random() < 0.5 ? -1 : 1;
+    this.chargeFxStep = 0;
     this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
     // passos em loop acompanhando o dash — acelerados (CHARGE_FOOTSTEPS_RATE)
     // pra soarem como a corrida rápida que é, mesmo sendo bem curta
@@ -528,6 +545,12 @@ export default class Minotaur extends Enemy {
   // Mantém a velocidade reta em linha (chase() normal não roda neste
   _updateChargeDash(target, nowMs) {
     this._moveTo(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
+    if (nowMs - this.chargeFxLastTrailAt >= 52) {
+      this.chargeFxLastTrailAt = nowMs;
+      emitMinotaurChargeTrail(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged, this.chargeFxStepSide, this.chargeFxStep);
+      this.chargeFxStepSide *= -1;
+      this.chargeFxStep += 1;
+    }
     if (!this.bossChargeHasHit) {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
       if (dist <= this.def.chargeHitRadius && target.active && !target.healthSystem?.isDead()) {
@@ -537,6 +560,7 @@ export default class Minotaur extends Enemy {
       }
     }
     if (nowMs >= this.bossChargeDashUntil) {
+      playMinotaurChargeStop(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged);
       // Sem machado na mão não há Corte pra dar ao fim da investida (a menos
       // que def.axeOverlapChargeSwing ligue isso) — vai direto pro cansaço.
       if (this.axePhase && !this.def.axeOverlapChargeSwing) {
