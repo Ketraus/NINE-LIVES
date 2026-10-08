@@ -10,6 +10,7 @@ import { loadSlamFx, createSlamFx } from '../fx/SlamFx.js';
 import { loadEliteMissileSheet, createEliteMissileTextures } from '../fx/EliteMissileFx.js';
 import { loadMinotaurCleaveSheet, createMinotaurCleaveTextures } from '../fx/MinotaurCleaveFx.js';
 import { loadMinotaurStompSheet, createMinotaurStompTextures } from '../fx/MinotaurStompFx.js';
+import { loadMinotaurChargeSwing, prepareMinotaurChargeSwing } from '../fx/MinotaurChargeSwingFx.js';
 import cardArtIds from '../../data/cardArt.js';
 import AssetManager from '../systems/AssetManager.js';
 
@@ -185,6 +186,8 @@ export default class PreloadScene extends Phaser.Scene {
     loadMinotaurCleaveSheet(this);
     // Pisão do Minotauro (4 frames roxos 32x32; cratera/poeira/detritos são gerados por código)
     loadMinotaurStompSheet(this);
+    // Corte circular pós-investida do Minotauro.
+    loadMinotaurChargeSwing(this);
 
     // salvar em assets/music/
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');
@@ -342,6 +345,7 @@ export default class PreloadScene extends Phaser.Scene {
     createEliteMissileTextures(this);
     createMinotaurCleaveTextures(this);
     createMinotaurStompTextures(this);
+    prepareMinotaurChargeSwing(this);
 
     // as artes das cartas de arma não são pixel art, então usam filtro
     const smoothKeys = ['card_fists', 'card_katana', 'card_pistol']
