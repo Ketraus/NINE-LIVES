@@ -1,3 +1,4 @@
+import { loadMinotaurChargeSwing, prepareMinotaurChargeSwing } from '../fx/MinotaurChargeSwingFx.js';
 import { loadSlashSheets, createSlashAnimations } from '../fx/SlashFx.js';
 import { loadPunchSheet, createPunchAnimation } from '../fx/PunchFx.js';
 import { loadShockwaveSheet, createShockwaveAnimation } from '../fx/ShockwaveFx.js';
@@ -182,6 +183,7 @@ export default class PreloadScene extends Phaser.Scene {
     loadEliteMissileSheet(this);
     // Corte do Minotauro (3 frames roxos 32x72: cometa, arco, chama)
     loadMinotaurCleaveSheet(this);
+    loadMinotaurChargeSwing(this);
     // Pisão do Minotauro (4 frames roxos 32x32; cratera/poeira/detritos são gerados por código)
     loadMinotaurStompSheet(this);
 
@@ -340,6 +342,7 @@ export default class PreloadScene extends Phaser.Scene {
     createSlamFx(this);
     createEliteMissileTextures(this);
     createMinotaurCleaveTextures(this);
+    prepareMinotaurChargeSwing(this);
     createMinotaurStompTextures(this);
 
     // as artes das cartas de arma não são pixel art, então usam filtro

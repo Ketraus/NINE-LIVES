@@ -1,3 +1,4 @@
+import { playMinotaurChargeSwing } from '../../fx/MinotaurChargeSwingFx.js';
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
 import SettingsManager from '../../systems/SettingsManager.js';
@@ -18,7 +19,7 @@ const CHARGE_IMPACT_SHAKE_INTENSITY = 0.018;
 // tint "atordoado" durante a janela vulnerável pós-investida (ver
 const CHARGE_VULNERABLE_TINT = 0xffaaaa;
 // Corte (evolução da Investida — ver _startSwing/_resolveSwing): o golpe
-const CHARGE_SWING_COLOR = 0xff8800;
+const CHARGE_SWING_COLOR = 0x9a43ee;
 const CHARGE_SWING_SHAKE_MS = 280;
 const CHARGE_SWING_SHAKE_INTENSITY = 0.02;
 // passos tocam em loop durante o dash (curto e rápido — chargeDurationMs)
@@ -563,8 +564,10 @@ export default class Minotaur extends Enemy {
   _resolveSwing(target, nowMs) {
     this.bossTelegraphGraphics.clear();
     this.scene.cameras.main.shake(CHARGE_SWING_SHAKE_MS, CHARGE_SWING_SHAKE_INTENSITY);
+    const swingRadius = this.def.chargeSwingRadius * 1.3;
+    playMinotaurChargeSwing(this.scene, this.x, this.y, swingRadius);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
-    if (dist <= this.def.chargeSwingRadius && target.active && !target.healthSystem?.isDead()) {
+    if (dist <= swingRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.chargeSwingDamage), this, nowMs);
     }
     this._endCharge(nowMs);
@@ -613,9 +616,9 @@ export default class Minotaur extends Enemy {
     const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.15, MISSILE_BLINK_ALPHA_MAX + 0.15, blinkT);
     const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
     g.fillStyle(CHARGE_SWING_COLOR, fillAlpha);
-    g.fillCircle(this.x, this.y, this.def.chargeSwingRadius);
+    g.fillCircle(this.x, this.y, this.def.chargeSwingRadius * 1.3);
     g.lineStyle(3, CHARGE_SWING_COLOR, strokeAlpha);
-    g.strokeCircle(this.x, this.y, this.def.chargeSwingRadius);
+    g.strokeCircle(this.x, this.y, this.def.chargeSwingRadius * 1.3);
   }
 
   // Passos 1-3: para, trava o ALVO (posição do jogador AGORA, igual à
