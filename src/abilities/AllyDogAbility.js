@@ -102,8 +102,17 @@ export default class AllyDogAbility {
     // Fazemos isso depois dos ataques para a correção visual não roubar o hit.
     const swarm = scene.enemySpawner?.swarmSystem;
     if (swarm) {
-      if (this.evoDef) swarm.separateExternal(this.dog, 0.9, 0.92);
-      else swarm.separateExternal(this.dog, 0.62, 0.62);
+      if (this.evoDef) {
+        swarm.separateExternal(this.dog, 0.9, 0.92);
+      } else {
+        // O Dog Purify precisa realmente ENCOSTAR para aplicar o dano. Na v2,
+        // o spacing calculado podia ficar maior que contactRange (principalmente
+        // contra inimigos grandes), então a própria separação impedia a mordida.
+        // Mantém o anti-overlap, mas nunca cria uma distância mínima maior que
+        // alguns pixels abaixo do alcance real do ataque.
+        const biteSpacing = Math.max(10, this.def.contactRange - 4);
+        swarm.separateExternal(this.dog, 0.55, 0.58, biteSpacing);
+      }
     }
   }
 

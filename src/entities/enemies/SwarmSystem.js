@@ -6,6 +6,10 @@ const DEFAULT_WEIGHTS = { seek: 1, cohesion: 0, separation: 0.8, density: 0 };
 const MAX_STEERING_NEIGHBORS = 28;
 const MAX_OVERLAP_PAIRS_PER_ENEMY = 12;
 const MAX_POSITION_CORRECTION = 2.2;
+// Evita o 'direita/esquerda/direita/esquerda' sem mudar a física da v2.
+// O inimigo escolhe um corredor lateral por alguns ms antes de poder trocar.
+const LANE_SIDE_LOCK_MS = 360;
+const LANE_SWITCH_SIGNAL = 0.42;
 
 // Comportamento de enxame (boids) dos inimigos.
 // O objetivo é manter a sensação de horda SEM deixar os sprites virarem uma pilha
@@ -204,10 +208,39 @@ export default class SwarmSystem {
     const sepLen = Math.hypot(sepX, sepY);
     const separationX = sepLen > 0 ? sepX / sepLen : 0;
     const separationY = sepLen > 0 ? sepY / sepLen : 0;
-    const laneLen = Math.hypot(laneX, laneY);
-    const laneStrength = laneLen > 0 ? Math.min(1, laneLen) * (0.55 + crowding * 0.55) : 0;
-    const laneNX = laneLen > 0 ? laneX / laneLen : 0;
-    const laneNY = laneLen > 0 ? laneY / laneLen : 0;
+
+    // A v2 calculava o lado do desvio a partir do frame atual. Quando dois
+    // vizinhos trocavam levemente de posição, o sinal podia inverter no frame
+    // seguinte e o sprite ficava "decidindo" esquerda/direita sem parar.
+    // Mantemos TODA a lógica/força da v2, mas travamos temporariamente o lado.
+    const rawLaneAmount = laneX * perpX + laneY * perpY;
+    const rawLaneStrength = Math.min(1, Math.abs(rawLaneAmount));
+    const desiredSide = Math.abs(rawLaneAmount) > 0.08 ? (rawLaneAmount >= 0 ? 1 : -1) : 0;
+    const nowMs = enemy.scene?.time?.now ?? 0;
+
+    if (enemy._swarmLaneSide !== -1 && enemy._swarmLaneSide !== 1) {
+      const id = enemy.instanceNumber ?? enemy._swarmGridIndex ?? 0;
+      enemy._swarmLaneSide = desiredSide || ((id & 1) === 0 ? 1 : -1);
+      enemy._swarmLaneLockUntil = nowMs + LANE_SIDE_LOCK_MS;
+    } else if (
+      desiredSide !== 0 &&
+      desiredSide !== enemy._swarmLaneSide &&
+      rawLaneStrength >= LANE_SWITCH_SIGNAL &&
+      nowMs >= (enemy._swarmLaneLockUntil ?? 0)
+    ) {
+      enemy._swarmLaneSide = desiredSide;
+      enemy._swarmLaneLockUntil = nowMs + LANE_SIDE_LOCK_MS;
+    }
+
+    // Muito perto do jogador não vale a pena fazer uma manobra lateral forte:
+    // nessa região o objetivo é só chegar nele, e o resolveOverlaps cuida da
+    // penetração visual. Isso também evita a 'dança' ao redor do alvo.
+    const nearTargetLaneScale = seekDist <= 45
+      ? 0.18
+      : Phaser.Math.Clamp((seekDist - 45) / 70, 0.18, 1);
+    const laneStrength = rawLaneStrength * (0.55 + crowding * 0.55) * nearTargetLaneScale;
+    const laneNX = perpX * enemy._swarmLaneSide;
+    const laneNY = perpY * enemy._swarmLaneSide;
 
     const separationWeight = Math.max(weights.separation, 0.88 + crowding * 0.28);
     let fx = seek.x * weights.seek
@@ -334,7 +367,7 @@ export default class SwarmSystem {
   // Entidades aliadas não vivem no grupo de inimigos. spacingScale permite que
   // o cachorro normal chegue perto o bastante pra dar dano de contato sem ficar
   // com o centro exatamente dentro do inimigo; Cyberus usa separação maior.
-  separateExternal(entity, strength = 1, spacingScale = 1) {
+  separateExternal(entity, strength = 1, spacingScale = 1, maxSpacing = Infinity) {
     if (!entity?.active || !entity.body) return;
     const ownRadius = this._worldRadius(entity);
     const searchRadius = Math.max(this.config.separationRadius, (ownRadius + this.maxWorldRadius) * 0.9);
@@ -355,7 +388,7 @@ export default class SwarmSystem {
           if (!other.active || other.untargetable) continue;
           const dx = entity.x - other.x;
           const dy = entity.y - other.y;
-          const minDist = this._pairMinDistance(entity, other, spacingScale);
+          const minDist = Math.min(this._pairMinDistance(entity, other, spacingScale), maxSpacing);
           const distSq = dx * dx + dy * dy;
           if (distSq >= minDist * minDist) continue;
 
