@@ -1,4 +1,6 @@
 import { playMeteorImpact } from '../../fx/MinotaurMeteorFx.js';
+import { playMinotaurDeathSequence } from '../../fx/MinotaurDeathFx.js';
+import EventBus from '../../systems/EventBus.js';
 import {
   playMinotaurChargeWindup,
   playMinotaurChargeLaunch,
@@ -137,6 +139,7 @@ export default class Minotaur extends Enemy {
     this.isDisarmed = false;
     this.isEnraged = false;
     this.rageHpThreshold = def.rageHpThreshold || 0;
+    this._deathSequenceStarted = false;
 
     // Boss/Minotauro (def.boss = true, ver data/enemies.js): TRÊS
     this.bossState = 'chasing';
@@ -210,6 +213,46 @@ export default class Minotaur extends Enemy {
     if (!this.isEnraged && this.rageHpThreshold > 0 && current <= max * this.rageHpThreshold) {
       this._triggerRage();
     }
+  }
+
+  // Morte do boss é uma sequência própria: o objeto continua ativo por ~2,5s
+  // para a coreografia terminar. XP/score/drop e fade da música só acontecem
+  // no estouro final, em vez de cortarem o clímax no frame em que HP chega a 0.
+  die() {
+    if (!this.active || this._deathSequenceStarted) return;
+    this._deathSequenceStarted = true;
+
+    this.scene.tweens.killTweensOf(this);
+    const deathX = this.x;
+    const deathY = this.y;
+    this._clearMeteors();
+    this._clearLeap();
+    this._clearBossTelegraph();
+    this._cleanupSpecial();
+    this._stopChargeFootsteps();
+
+    this.bossState = 'dead';
+    this.fleeing = false;
+    this.untargetable = true;
+    this.setVelocity(0, 0);
+    this._wantsToMove = false;
+    this.isIdleVisual = true;
+    if (this.body) this.body.enable = false;
+    this.anims.stop();
+
+    playMinotaurDeathSequence(this.scene, this, () => {
+      if (!this.active) return;
+      EventBus.emit('enemy-died', {
+        enemyId: this.def.id,
+        networkId: this.networkId,
+        killerPlayerId: this.killerPlayerId || null,
+        x: deathX,
+        y: deathY,
+        xpReward: this.def.xpReward,
+        color: this.def.color
+      });
+      this.destroy();
+    });
   }
 
   // Garante que meteoros e aura do salto somem junto quando o boss é destruído.
