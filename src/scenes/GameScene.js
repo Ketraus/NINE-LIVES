@@ -19,6 +19,7 @@ import DevConsole from '../systems/DevConsole.js';
 import TouchJoystick from '../systems/TouchJoystick.js';
 import SlowmoSystem from '../systems/SlowmoSystem.js';
 import MultiplayerManager from '../systems/MultiplayerManager.js';
+import MedkitRareFx from '../fx/MedkitRareFx.js';
 
 import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
@@ -35,8 +36,8 @@ const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa 
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 const MEDKIT_HEAL_AMOUNT = 20;
 const MEDKIT_BRUTE_DROP_CHANCE = 0.01;
-const MEDKIT_SCALE = 0.6;
-const MEDKIT_PULSE_SCALE = 1.04;
+const MEDKIT_SCALE = 0.86;
+const MEDKIT_PULSE_SCALE = 1.07;
 const MEDKIT_PULSE_DURATION_MS = 850;
 const MEDKIT_DROP_OFFSET_MIN = 42;
 const MEDKIT_DROP_OFFSET_MAX = 56;
@@ -85,7 +86,7 @@ const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
   'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
   'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',
   'minotaur_walk_rage', 'minotaur_idle_rage_noaxe', 'minotaur_walk_rage_noaxe', 'minotaur_axe_thrown',
-  'minotaur_axe_thrown_rage', 'xp_verde', 'xp_azul', 'xp_vermelho', 'xp_roxo', 'hit_fx'
+  'minotaur_axe_thrown_rage', 'xp_verde', 'xp_azul', 'xp_vermelho', 'xp_roxo', 'medkit', 'hit_fx'
 ];
 
 export default class GameScene extends Phaser.Scene {
@@ -160,12 +161,21 @@ export default class GameScene extends Phaser.Scene {
     this.abilityManager.update(this.time.now);
     this._updateXpOrbMagnet();
     this._updateXpGlows();
+    this._updateMedkitRareFx(time);
   }
 
   // o halo não tem física: só copia a posição da gema (que pode estar sendo puxada pelo ímã)
   _updateXpGlows() {
     this.xpOrbGroup.getChildren().forEach((orb) => {
       orb.getData('glow')?.setPosition(orb.x, orb.y);
+    });
+  }
+
+  // Medkit é um drop raro/importante: mantém o contorno, a seta sobre o item
+  // e o indicador de borda sincronizados mesmo enquanto ele é puxado pelo ímã.
+  _updateMedkitRareFx(time) {
+    this.medkitGroup?.getChildren().forEach((medkit) => {
+      medkit.getData('rareFx')?.update(time);
     });
   }
 
@@ -687,6 +697,11 @@ export default class GameScene extends Phaser.Scene {
     const radius = Math.min(medkit.width, medkit.height) * 0.42;
     medkit.body.setCircle(radius, medkit.width / 2 - radius, medkit.height / 2 - radius);
     this.medkitGroup.add(medkit);
+
+    const rareFx = new MedkitRareFx(this, medkit);
+    medkit.setData('rareFx', rareFx);
+    medkit.once('destroy', () => rareFx.destroy());
+
     this.tweens.add({
       targets: medkit,
       scale: MEDKIT_SCALE * MEDKIT_PULSE_SCALE,
