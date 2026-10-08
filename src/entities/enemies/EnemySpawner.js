@@ -29,7 +29,7 @@ const DEFAULT_MAX_ALIVE = 14; // trava inicial da quantidade simultânea, até o
 // Quanto além da borda da câmera o inimigo precisa nascer pra garantir…
 const SPAWN_MARGIN_BEYOND_VIEW = 80;
 const ABANDONED_DISTANCE_MARGIN = 240;
-const COLLISION_LIMIT = 150;
+const COLLISION_LIMIT = 64;
 // Hordas grandes compartilham o orçamento de IA; inimigos especiais seguem por frame.
 const AI_STRIDE_MEDIUM = 2;
 const AI_STRIDE_HIGH = 3;
@@ -53,7 +53,9 @@ const BOSS_SPAWN_ANGLE_OFFSETS_DEG = [0, 30, -30, 60, -60, 90, -90, 135, -135, 1
 // Fatias de 360° ao redor do jogador usadas pra decidir "de que lado" c…
 const SPAWN_SECTOR_COUNT = 8;
 // Quanto espalhar o ângulo de cada inimigo DENTRO do grupo (pra não nas…
-const GROUP_SPREAD_DEG = 18;
+const GROUP_SPREAD_DEG = 22;
+const SPAWN_RADIAL_JITTER = 140;
+const SPAWN_TANGENT_JITTER = 70;
 // Tamanhos possíveis de um grupo de spawn e o peso relativo de cada um…
 const GROUP_SIZE_WEIGHTS = [
   { size: 1, weight: 5 },
@@ -407,8 +409,16 @@ export default class EnemySpawner {
       const angle = baseAngle == null
         ? Phaser.Math.FloatBetween(0, Math.PI * 2)
         : baseAngle + Phaser.Math.FloatBetween(-spreadRad, spreadRad);
-      const x = Phaser.Math.Clamp(origin.x + Math.cos(angle) * minDist, margin, bounds.width - margin);
-      const y = Phaser.Math.Clamp(origin.y + Math.sin(angle) * minDist, margin, bounds.height - margin);
+
+      // Não spawna todo o grupo no mesmo arco perfeito. Distância radial +
+      // deslocamento tangencial evitam principalmente a "linha no teto" quando
+      // muitos inimigos vêm de cima e a posição seria clampada na borda do mapa.
+      const spawnDist = minDist + Phaser.Math.FloatBetween(0, SPAWN_RADIAL_JITTER);
+      const tangent = Phaser.Math.FloatBetween(-SPAWN_TANGENT_JITTER, SPAWN_TANGENT_JITTER);
+      const rawX = origin.x + Math.cos(angle) * spawnDist - Math.sin(angle) * tangent;
+      const rawY = origin.y + Math.sin(angle) * spawnDist + Math.cos(angle) * tangent;
+      const x = Phaser.Math.Clamp(rawX, margin, bounds.width - margin);
+      const y = Phaser.Math.Clamp(rawY, margin, bounds.height - margin);
 
       if (!views.some((playerView) => playerView.contains(x, y))) {
         return { x, y };
@@ -459,6 +469,8 @@ export default class EnemySpawner {
       this.denseBattle = denseBattle;
     }
     // A separação do enxame substitui as colisões físicas quando a horda fica grande.
+    // O collider Arcade entre centenas de corpos fica caro; acima de 64 usamos
+    // apenas o grid espacial + correção local do SwarmSystem.
     if (this.enemyCollisionCollider) this.enemyCollisionCollider.active = activeCount <= COLLISION_LIMIT;
     this.updateFrame += 1;
     this.swarmSystem.rebuild(active);
@@ -510,6 +522,11 @@ export default class EnemySpawner {
       }
       enemy.updateBleed(nowMs);
     }
+
+    // Resolve sobreposições DEPOIS de todos definirem a velocity. O método usa
+    // o mesmo spatial hash reconstruído acima, processa apenas vizinhos locais
+    // e cada par só uma vez. Mantém a horda encorpada sem virar uma pilha.
+    if (!this.frozen && active.length > 1) this.swarmSystem.resolveOverlaps(active);
   }
 
   // Cheat (DevConsole "freeze"): liga/desliga o congelamento de todos os…

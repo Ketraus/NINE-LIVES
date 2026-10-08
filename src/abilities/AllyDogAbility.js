@@ -95,6 +95,16 @@ export default class AllyDogAbility {
       this._updateSword(time, target, enemyGroup, scene);
       this._updateCannon(time, target, enemyGroup, scene);
     }
+
+    // Tanto o Dog Purify normal quanto o Cyberus precisam participar da
+    // separação. O cachorro base usa spacing menor porque precisa ENCOSTAR
+    // (contactRange) pra atacar; Cyberus pode manter uma folga maior.
+    // Fazemos isso depois dos ataques para a correção visual não roubar o hit.
+    const swarm = scene.enemySpawner?.swarmSystem;
+    if (swarm) {
+      if (this.evoDef) swarm.separateExternal(this.dog, 0.9, 0.92);
+      else swarm.separateExternal(this.dog, 0.62, 0.62);
+    }
   }
 
   // Liga as cabeças já obtidas do Cyberus (granada + espada) e aplica o
