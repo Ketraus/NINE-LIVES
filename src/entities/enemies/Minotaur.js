@@ -91,6 +91,28 @@ const STOMP_IMPACT_COLOR = 0xdddddd;
 const STOMP_SHAKE_MS = 140;
 const STOMP_SHAKE_INTENSITY = 0.01;
 
+// Paleta ÚNICA dos avisos do Minotauro. A fase 1 usa roxo/rosa neon;
+// a fase 2 usa o aqua do machado rage. Assim nenhum ataque volta para
+// vermelho/amarelo/branco por engano e o jogador lê o boss como um kit só.
+const MINO_TELEGRAPH_PHASE1 = Object.freeze({
+  main: 0xe044ff,
+  bright: 0xffb2ff,
+  dark: 0x52105f,
+  pale: 0xffdcff
+});
+const MINO_TELEGRAPH_PHASE2 = Object.freeze({
+  main: 0x32e9d6,
+  bright: 0xbafff1,
+  dark: 0x0d5860,
+  pale: 0xe2fffb
+});
+
+// Phaser.Graphics precisa reconstruir/triangular a geometria a cada clear()+draw.
+// Telegraphs estáticos agora são desenhados uma única vez e só mudam alpha.
+// Os dois avisos realmente geométricos (pisão/salto) atualizam a 25 FPS,
+// visualmente suave, mas muito mais barato que reconstruir tudo a 60/120 FPS.
+const TELEGRAPH_DYNAMIC_REDRAW_MS = 40;
+
 
 // Minotauro (def.boss = true, ver data/enemies.js): o boss — Investida, Machado
 // Arremessado, Corte, Pisão, Chuva de Meteoros (rage) e Salto de Perseguição.
@@ -121,6 +143,8 @@ export default class Minotaur extends Enemy {
     this.bossSwingUntil = 0;
     this.bossVulnerableUntil = 0;
     this.bossTelegraphGraphics = null;
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
     // Investida: passos em loop durante o dash — ver _launchCharge/
     // _stopChargeFootsteps
     this.chargeFootsteps = null;
@@ -216,7 +240,7 @@ export default class Minotaur extends Enemy {
   _cancelActionsForFlee() {
     // Boss/Minotauro no meio de uma habilidade (Investida, Machado ou
     if ((this.bossState && this.bossState !== 'chasing') || this.axePhase) {
-      this.bossTelegraphGraphics?.clear();
+      this._clearBossTelegraph();
       this.axeSprite?.setVisible(false);
       this._setDisarmed(false); // interrompeu no meio do arremesso — não pode fugir sem o machado
       this.axePhase = null;
@@ -318,7 +342,7 @@ export default class Minotaur extends Enemy {
         this._drawStompTelegraph(nowMs, state.stompProgress);
       }
     } else {
-      this.bossTelegraphGraphics?.clear();
+      this._clearBossTelegraph();
     }
 
     const axe = state.axe;
@@ -497,8 +521,51 @@ export default class Minotaur extends Enemy {
   }
 
   // Para, trava a direção da investida NO INSTANTE ATUAL do jogador (o
+  _telegraphPalette() {
+    return this.isEnraged ? MINO_TELEGRAPH_PHASE2 : MINO_TELEGRAPH_PHASE1;
+  }
+
+  _clearBossTelegraph() {
+    if (this.bossTelegraphGraphics) {
+      this.bossTelegraphGraphics.clear();
+      this.bossTelegraphGraphics.setAlpha(1);
+    }
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
+  }
+
+  // Retorna true só quando a geometria estática precisa ser reconstruída.
+  // O pulso do aviso continua rodando a cada frame via setAlpha(), que não
+  // retriangula Graphics e é muito mais barato.
+  _prepareStaticTelegraph(key) {
+    if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    if (this._bossTelegraphVisualKey === key) return false;
+    this.bossTelegraphGraphics.clear();
+    this.bossTelegraphGraphics.setAlpha(1);
+    this._bossTelegraphVisualKey = key;
+    this._bossTelegraphNextDynamicDrawAt = 0;
+    return true;
+  }
+
+  // Telegraphs que mudam de tamanho realmente precisam redesenhar a geometria,
+  // mas não precisam fazer isso em toda atualização lógica/render.
+  _prepareDynamicTelegraph(key, nowMs, intervalMs = TELEGRAPH_DYNAMIC_REDRAW_MS) {
+    if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    if (this._bossTelegraphVisualKey !== key) {
+      this.bossTelegraphGraphics.clear();
+      this.bossTelegraphGraphics.setAlpha(1);
+      this._bossTelegraphVisualKey = key;
+      this._bossTelegraphNextDynamicDrawAt = 0;
+    }
+    if (nowMs < this._bossTelegraphNextDynamicDrawAt) return false;
+    this._bossTelegraphNextDynamicDrawAt = nowMs + intervalMs;
+    return true;
+  }
+
   _startCharge(target, nowMs) {
     this.bossState = 'charge_telegraph';
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
     this._moveTo(0, 0);
     const dx = target.x - this.x;
     const dy = target.y - this.y;
@@ -523,7 +590,7 @@ export default class Minotaur extends Enemy {
   // Fim do aviso: dispara de verdade na direção travada em _startCharge,
   _launchCharge(nowMs) {
     this.bossState = 'charge_dash';
-    this.bossTelegraphGraphics.clear();
+    this._clearBossTelegraph();
     this.bossChargeHasHit = false;
     this.bossChargeDashUntil = nowMs + this.def.chargeDurationMs;
     this._moveTo(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
@@ -575,6 +642,8 @@ export default class Minotaur extends Enemy {
   // Corte (evolução da Investida): IMEDIATAMENTE ao fim da investida,
   _startSwing(nowMs) {
     this.bossState = 'charge_swing_telegraph';
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
     this._moveTo(0, 0);
     this.bossSwingUntil = nowMs + this.def.chargeSwingTelegraphMs;
     this._stopChargeFootsteps(); // parou de correr, para os passos
@@ -589,7 +658,7 @@ export default class Minotaur extends Enemy {
 
   // Dano em área (def.chargeSwingRadius/chargeSwingDamage) + a tremida
   _resolveSwing(target, nowMs) {
-    this.bossTelegraphGraphics.clear();
+    this._clearBossTelegraph();
     this.scene.cameras.main.shake(CHARGE_SWING_SHAKE_MS, CHARGE_SWING_SHAKE_INTENSITY);
     const swingRadius = this.def.chargeSwingRadius * 1.3;
     playMinotaurChargeSwing(this.scene, this.x, this.y, swingRadius, this.isEnraged);
@@ -625,32 +694,47 @@ export default class Minotaur extends Enemy {
   // Linha reta piscando (mesmo piscar do Elite, ver MISSILE_BLINK_*) na
   _drawChargeTelegraph(nowMs) {
     const g = this.bossTelegraphGraphics;
-    g.clear();
-    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
-    const alpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.3, MISSILE_BLINK_ALPHA_MAX + 0.3, blinkT);
-    g.lineStyle(5, 0xff2222, alpha);
+    if (!g) return;
+    const palette = this._telegraphPalette();
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    g.setAlpha(Phaser.Math.Linear(0.52, 1, blinkT));
+
+    const key = `charge:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${this.bossChargeDir.x.toFixed(3)}:${this.bossChargeDir.y.toFixed(3)}`;
+    if (!this._prepareStaticTelegraph(key)) return;
+    g.lineStyle(7, palette.dark, 0.42);
+    g.beginPath();
+    g.moveTo(this.x, this.y);
+    g.lineTo(this.x + this.bossChargeDir.x * CHARGE_LINE_LENGTH, this.y + this.bossChargeDir.y * CHARGE_LINE_LENGTH);
+    g.strokePath();
+    g.lineStyle(4, palette.main, 1);
     g.beginPath();
     g.moveTo(this.x, this.y);
     g.lineTo(this.x + this.bossChargeDir.x * CHARGE_LINE_LENGTH, this.y + this.bossChargeDir.y * CHARGE_LINE_LENGTH);
     g.strokePath();
   }
 
-  // Área do Corte (laranja, pra não confundir com a linha vermelha da
   _drawSwingTelegraph(nowMs) {
     const g = this.bossTelegraphGraphics;
-    g.clear();
-    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
-    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.15, MISSILE_BLINK_ALPHA_MAX + 0.15, blinkT);
-    const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
-    g.fillStyle((this.isEnraged ? 0x21c7bd : CHARGE_SWING_COLOR), fillAlpha);
-    g.fillCircle(this.x, this.y, this.def.chargeSwingRadius * 1.3);
-    g.lineStyle(3, (this.isEnraged ? 0x21c7bd : CHARGE_SWING_COLOR), strokeAlpha);
-    g.strokeCircle(this.x, this.y, this.def.chargeSwingRadius * 1.3);
+    if (!g) return;
+    const palette = this._telegraphPalette();
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    g.setAlpha(Phaser.Math.Linear(0.5, 1, blinkT));
+    const radius = this.def.chargeSwingRadius * 1.3;
+    const key = `swing:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${radius}`;
+    if (!this._prepareStaticTelegraph(key)) return;
+    g.fillStyle(palette.main, 0.32);
+    g.fillCircle(this.x, this.y, radius);
+    g.lineStyle(5, palette.dark, 0.5);
+    g.strokeCircle(this.x, this.y, radius);
+    g.lineStyle(2.5, palette.bright, 1);
+    g.strokeCircle(this.x, this.y, radius - 3);
   }
 
   // Passos 1-3: para, trava o ALVO (posição do jogador AGORA, igual à
   _startAxeThrow(target, nowMs) {
     this.bossState = 'axe_telegraph';
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
     this._moveTo(0, 0);
     this.axeTargetX = target.x;
     this.axeTargetY = target.y;
@@ -668,19 +752,29 @@ export default class Minotaur extends Enemy {
   // Mesmo piscar (alarme) das outras marcações — linha até o ponto
   _drawAxeTelegraph(nowMs) {
     const g = this.bossTelegraphGraphics;
-    g.clear();
-    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
-    const lineAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.3, MISSILE_BLINK_ALPHA_MAX + 0.3, blinkT);
-    const areaAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX, blinkT);
-    g.lineStyle(4, (this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR), lineAlpha);
+    if (!g) return;
+    const palette = this._telegraphPalette();
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    g.setAlpha(Phaser.Math.Linear(0.48, 1, blinkT));
+    const key = `axe:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${this.axeTargetX.toFixed(1)}:${this.axeTargetY.toFixed(1)}`;
+    if (!this._prepareStaticTelegraph(key)) return;
+
+    g.lineStyle(6, palette.dark, 0.42);
     g.beginPath();
     g.moveTo(this.x, this.y);
     g.lineTo(this.axeTargetX, this.axeTargetY);
     g.strokePath();
-    g.fillStyle((this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR), areaAlpha);
+    g.lineStyle(3, palette.main, 1);
+    g.beginPath();
+    g.moveTo(this.x, this.y);
+    g.lineTo(this.axeTargetX, this.axeTargetY);
+    g.strokePath();
+    g.fillStyle(palette.main, 0.3);
     g.fillCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius);
-    g.lineStyle(2, (this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR), Phaser.Math.Linear(0.55, 1, blinkT));
+    g.lineStyle(4, palette.dark, 0.52);
     g.strokeCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius);
+    g.lineStyle(2, palette.bright, 1);
+    g.strokeCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius - 2);
   }
 
   // Passo 4: fim do preparo — o machado sai de verdade do Minotauro até o
@@ -693,7 +787,7 @@ export default class Minotaur extends Enemy {
     this.bossState = 'chasing';
     this.axePhase = 'outbound';
     this.bossChargeReadyAt = nowMs + this._bossCooldown(this.def.axeOverlapDelayMs);
-    this.bossTelegraphGraphics.clear();
+    this._clearBossTelegraph();
     this.axeOriginX = this.x;
     this.axeOriginY = this.y;
     this.axeFlightStartMs = nowMs;
@@ -1089,6 +1183,8 @@ export default class Minotaur extends Enemy {
   // Passo 1: agacha e ruge (jogador vê que vem coisa)
   _startLeap(nowMs) {
     this.bossState = 'leap_crouch';
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
     this._moveTo(0, 0);
     this.leapFleeSince = null;
     this.leapPhaseUntil = nowMs + this.def.leapWindupMs;
@@ -1100,18 +1196,26 @@ export default class Minotaur extends Enemy {
     this._moveTo(0, 0);
     const p = Phaser.Math.Clamp(1 - (this.leapPhaseUntil - nowMs) / this.def.leapWindupMs, 0, 1);
     this.setScale(this.baseScale * (1 + 0.15 * p), this.baseScale * (1 - 0.2 * p));
-    // anel vermelho se fechando em volta dele (carregando o salto)
+    // Anel convergente: geometria atualizada a 25 FPS; alpha/escala do sprite
+    // continuam suaves. Evita clear()+strokeCircle em 60/120 FPS.
     const g = this.bossTelegraphGraphics;
-    g.clear();
-    g.lineStyle(4, (this.isEnraged ? 0x20c6ba : LEAP_COLOR), 0.35 + 0.5 * p);
-    g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, p));
+    const palette = this._telegraphPalette();
+    g.setAlpha(0.55 + 0.45 * p);
+    const key = `leap:${this.isEnraged ? 1 : 0}`;
+    if (this._prepareDynamicTelegraph(key, nowMs)) {
+      g.clear();
+      g.lineStyle(6, palette.dark, 0.45);
+      g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, p));
+      g.lineStyle(3, palette.bright, 1);
+      g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, p) - 3);
+    }
     if (nowMs >= this.leapPhaseUntil) this._startLeapRise(nowMs);
   }
 
   // Passo 2: decola — sobe esticando até sair da câmera
   _startLeapRise(nowMs) {
     this.bossState = 'leap_rise';
-    this.bossTelegraphGraphics.clear();
+    this._clearBossTelegraph();
     this.leapGroundX = this.x;
     this.leapGroundY = this.y;
     this.leapPhaseUntil = nowMs + this.def.leapRiseMs;
@@ -1120,7 +1224,7 @@ export default class Minotaur extends Enemy {
     this.shadow?.setVisible(false);
     this.scene.cameras.main.shake(LEAP_TAKEOFF_SHAKE_MS, LEAP_TAKEOFF_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
-    this._flashCircle(this.leapGroundX, this.leapGroundY, 100, (this.isEnraged ? 0x20c6ba : LEAP_COLOR));
+    this._flashCircle(this.leapGroundX, this.leapGroundY, 100, this._telegraphPalette().main);
   }
 
   _updateLeapRise(nowMs) {
@@ -1201,7 +1305,7 @@ export default class Minotaur extends Enemy {
     this.setScale(this.baseScale * 1.15, this.baseScale * 0.85); // amassado no impacto
     this.shadow?.setVisible(true);
     this.untargetable = false;
-    this.bossTelegraphGraphics.clear();
+    this._clearBossTelegraph();
 
     const radius = this.def.leapImpactRadius;
     const cam = this.scene.cameras.main;
@@ -1302,6 +1406,8 @@ export default class Minotaur extends Enemy {
   // Passos 1-4: para, trava a DIREÇÃO no instante atual (igual a
   _startCleave(target, nowMs) {
     this.bossState = 'cleave_telegraph';
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
     this._moveTo(0, 0);
     const dx = target.x - this.x;
     const dy = target.y - this.y;
@@ -1323,14 +1429,22 @@ export default class Minotaur extends Enemy {
   // Cone de perigo (Graphics.slice = pizza/leque, mais simples que
   _drawCleaveTelegraph(progress) {
     const g = this.bossTelegraphGraphics;
-    g.clear();
-    const alpha = Phaser.Math.Linear(CLEAVE_TELEGRAPH_ALPHA_START, CLEAVE_TELEGRAPH_ALPHA_END, progress);
+    if (!g) return;
+    const palette = this._telegraphPalette();
+    const p = Phaser.Math.Clamp(progress, 0, 1);
+    g.setAlpha(Phaser.Math.Linear(0.48, 1, p));
     const half = Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg);
-    g.fillStyle((this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR), alpha);
+    const key = `cleave:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${this.cleaveAngle.toFixed(3)}:${this.def.cleaveRange}:${this.def.cleaveHalfAngleDeg}`;
+    if (!this._prepareStaticTelegraph(key)) return;
+
+    g.fillStyle(palette.main, 0.38);
     g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
     g.fillPath();
-    g.lineStyle(3, (this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR), Math.min(alpha + 0.35, 1));
+    g.lineStyle(6, palette.dark, 0.48);
     g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    g.strokePath();
+    g.lineStyle(2.5, palette.bright, 1);
+    g.slice(this.x, this.y, this.def.cleaveRange - 2, this.cleaveAngle - half, this.cleaveAngle + half, false);
     g.strokePath();
   }
 
@@ -1348,7 +1462,7 @@ export default class Minotaur extends Enemy {
 
   // Passos 6-9: CORTE de verdade — dano altíssimo em todo mundo dentro do
   _executeCleave(target, nowMs) {
-    this.bossTelegraphGraphics.clear();
+    this._clearBossTelegraph();
     // whoosh do machado cortando o ar + impacto pesado juntos — é o golpe
     // mais forte do Minotauro, o feedback tem que condizer
     this.scene.sound.play('sfx_minotaur_axe_whoosh', { volume: 0.8 });
@@ -1481,6 +1595,8 @@ export default class Minotaur extends Enemy {
   // Passo 1: jogador detectado muito perto (ver _updateBossAbility) —
   _startStomp(nowMs) {
     this.bossState = 'stomp_raise';
+    this._bossTelegraphVisualKey = null;
+    this._bossTelegraphNextDynamicDrawAt = 0;
     this._moveTo(0, 0);
     if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     this.stompRaiseDurationMs = this._bossTelegraph(this.def.stompRaiseMs + this.def.stompPauseMs);
@@ -1497,27 +1613,37 @@ export default class Minotaur extends Enemy {
   // Círculo de aviso (área de impacto) no próprio Minotauro, crescendo
   _drawStompTelegraph(nowMs, progressOverride = null) {
     const g = this.bossTelegraphGraphics;
-    g.clear();
+    if (!g) return;
     const progress = Number.isFinite(progressOverride)
       ? Phaser.Math.Clamp(progressOverride, 0, 1)
       : Phaser.Math.Clamp(1 - (this.stompRaiseUntil - nowMs) / this.stompRaiseDurationMs, 0, 1);
-    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
-    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.1, MISSILE_BLINK_ALPHA_MAX + 0.1, blinkT);
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    g.setAlpha(Phaser.Math.Linear(0.56, 1, blinkT));
+
+    const key = `stomp:${this.isEnraged ? 1 : 0}`;
+    if (!this._prepareDynamicTelegraph(key, nowMs)) return;
+    g.clear();
     const radius = Phaser.Math.Linear(this.def.stompImpactRadius * 0.3, this.def.stompImpactRadius, progress);
+    const palette = this._telegraphPalette();
     if (hasMinotaurStompFx(this.scene)) {
       setMinotaurStompFxRage(this.isEnraged);
-      drawMinotaurStompTelegraph(g, this.x, this.y, radius, this.def.stompImpactRadius, progress, fillAlpha);
+      drawMinotaurStompTelegraph(
+        g, this.x, this.y, radius, this.def.stompImpactRadius, progress, 0.38,
+        palette
+      );
       return;
     }
-    g.fillStyle((this.isEnraged ? 0x32e9d6 : STOMP_TELEGRAPH_COLOR), fillAlpha);
+    g.fillStyle(palette.main, 0.36);
     g.fillCircle(this.x, this.y, radius);
-    g.lineStyle(3, (this.isEnraged ? 0x32e9d6 : STOMP_TELEGRAPH_COLOR), Math.min(fillAlpha + 0.4, 1));
+    g.lineStyle(5, palette.dark, 0.48);
     g.strokeCircle(this.x, this.y, radius);
+    g.lineStyle(2.5, palette.bright, 1);
+    g.strokeCircle(this.x, this.y, radius - 2);
   }
 
   // PISA: dano baixo em área pequena ao redor dele + knockback MUITO
   _resolveStomp(target, nowMs) {
-    this.bossTelegraphGraphics.clear();
+    this._clearBossTelegraph();
     this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.7 });
     // FX roxo novo (src/fx/MinotaurStompFx.js: explosão, cratera, poeira, detritos, tremor);
     // o visual simples antigo fica de reserva se o FX não carregou

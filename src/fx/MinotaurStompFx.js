@@ -733,16 +733,26 @@ export function playMinotaurStomp(scene, x, y, radius, { q = 1, shake = 1 } = {}
 // aviso (cresce até o raio do dano), `fullRadius` = raio real do dano.
 const TELEGRAPH_CRACK_ANGLES = Array.from({ length: 9 }, (_, i) => (i / 9) * Math.PI * 2 + ((i * 37) % 11) * 0.03);
 
-export function drawMinotaurStompTelegraph(g, x, y, radius, fullRadius, progress, fillAlpha) {
-  g.fillStyle(PURPLE, fillAlpha);
+export function drawMinotaurStompTelegraph(g, x, y, radius, fullRadius, progress, fillAlpha, palette = null) {
+  // A paleta pode vir do Minotaur.js para manter TODOS os avisos da fase
+  // com a mesma linguagem visual. Sem palette, preserva o comportamento
+  // antigo para qualquer chamada externa.
+  const main = palette?.main ?? PURPLE;
+  const dark = palette?.dark ?? DARK;
+  const bright = palette?.bright ?? BRIGHT;
+  const pale = palette?.pale ?? PALE;
+
+  g.fillStyle(main, fillAlpha);
   g.fillCircle(x, y, radius);
-  g.fillStyle(DARK, fillAlpha * 0.5);
+  g.fillStyle(dark, fillAlpha * 0.45);
   g.fillCircle(x, y, radius * 0.55 * progress);
-  g.lineStyle(3, BRIGHT, Math.min(fillAlpha + 0.4, 1));
+  g.lineStyle(4, dark, 0.52);
   g.strokeCircle(x, y, radius);
+  g.lineStyle(2.5, bright, 1);
+  g.strokeCircle(x, y, Math.max(2, radius - 2));
   // anel externo fecha em cima do raio real conforme o pisão se aproxima
   const outer = fullRadius * (1 + 0.28 * (1 - progress));
-  g.lineStyle(2, PALE, 0.35 + 0.5 * progress);
+  g.lineStyle(2, pale, 0.7);
   g.strokeCircle(x, y, outer);
   // rachaduras nascendo do centro
   TELEGRAPH_CRACK_ANGLES.forEach((a, i) => {
@@ -751,10 +761,10 @@ export function drawMinotaurStompTelegraph(g, x, y, radius, fullRadius, progress
     const my = y + Math.sin(a + 0.12) * len * 0.55;
     const ex = x + Math.cos(a) * len;
     const ey = y + Math.sin(a) * len;
-    g.lineStyle(4, DARK, 0.8);
+    g.lineStyle(4, dark, 0.72);
     g.lineBetween(x, y, mx, my);
     g.lineBetween(mx, my, ex, ey);
-    g.lineStyle(1.5, BRIGHT, 0.5 + 0.5 * progress);
+    g.lineStyle(1.5, bright, 0.82);
     g.lineBetween(x, y, mx, my);
     g.lineBetween(mx, my, ex, ey);
   });

@@ -14,6 +14,7 @@ export default class Sealer extends Enemy {
     this.arenaRadius = null;
     this.arenaProgress = 0;
     this.arenaGraphics = null;
+    this.arenaNextVisualUpdateAt = 0;
     this.arenaNextCrushTickAt = 0;
     // Movimento em "rajadas" (ver _updateSealerMovement/_decideSealerMoveDi…
     this.sealerMoveDir = { x: 0, y: 0 };
@@ -54,7 +55,7 @@ export default class Sealer extends Enemy {
     const radius = Phaser.Math.Linear(this.def.arenaStartRadius, this.def.arenaMinRadius, t);
     this.arenaRadius = radius;
     this.arenaProgress = t;
-    this._drawArena(radius, t);
+    this._drawArena(radius, t, nowMs);
 
     // Foge da horda (nunca do jogador — é assim que ele fica mais fácil
     if (nowMs >= this.knockbackUntil) {
@@ -151,23 +152,29 @@ export default class Sealer extends Enemy {
     this.arenaRadius = radius;
     this.arenaProgress = Phaser.Math.Clamp(progress, 0, 1);
     if (!this.arenaGraphics) this.arenaGraphics = this.scene.add.graphics().setDepth(4);
-    this._drawArena(this.arenaRadius, this.arenaProgress);
+    this._drawArena(this.arenaRadius, this.arenaProgress, this.scene.time.now, true);
     if (this.arenaTargetPlayerId === this.scene.multiplayer?.playerId) {
       this._containWithinArena(this.scene.player, this.arenaRadius);
     }
   }
 
   // Desenha o anel da arena — vai de um roxo frio (recém-aberta) pra um
-  _drawArena(radius, t) {
+  _drawArena(radius, t, nowMs = this.scene.time.now, force = false) {
     const g = this.arenaGraphics;
     if (!g || !this.arenaCenter) return;
+    // O anel encolhe por vários segundos; reconstruir o Graphics a cada frame
+    // não muda a leitura e custa caro. 30 FPS visuais são mais que suficientes.
+    if (!force && nowMs < this.arenaNextVisualUpdateAt) return;
+    this.arenaNextVisualUpdateAt = nowMs + 33;
+
     g.clear();
-    const color = Phaser.Display.Color.Interpolate.ColorWithColor(
-      new Phaser.Display.Color(0x9b, 0x30, 0xff),
-      new Phaser.Display.Color(0xff, 0x1a, 0x1a),
-      100, Math.floor(t * 100)
-    );
-    const stroke = Phaser.Display.Color.GetColor(color.r, color.g, color.b);
+    // Interpolação manual evita criar dois Phaser.Display.Color + resultado
+    // em toda atualização visual.
+    const p = Phaser.Math.Clamp(t, 0, 1);
+    const r = Math.round(0x9b + (0xff - 0x9b) * p);
+    const gr = Math.round(0x30 + (0x1a - 0x30) * p);
+    const b = Math.round(0xff + (0x1a - 0xff) * p);
+    const stroke = (r << 16) | (gr << 8) | b;
     g.lineStyle(6, stroke, 0.85);
     g.strokeCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
   }

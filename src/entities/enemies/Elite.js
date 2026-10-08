@@ -33,6 +33,8 @@ export default class Elite extends Enemy {
     this.eliteState = 'chasing';
     this.eliteNextAttackAt = scene.time.now + Phaser.Math.Between(800, 1800);
     this.eliteTelegraphGraphics = null;
+    this._eliteTelegraphDirty = true;
+    this._eliteTelegraphMode = null;
     this.eliteMissilePoints = [];
     this.eliteMissileRevealed = 0;
     this.eliteMissileNextStepAt = 0;
@@ -42,6 +44,26 @@ export default class Elite extends Enemy {
     this.eliteMissileProjectiles = []; // bolas visuais em voo, ver _launchMissiles
     this.networkMissileProjectiles = [];
     this.eliteMeleeTelegraphUntil = 0;
+  }
+
+  _clearEliteTelegraph() {
+    if (this.eliteTelegraphGraphics) {
+      this.eliteTelegraphGraphics.clear();
+      this.eliteTelegraphGraphics.setAlpha(1);
+    }
+    this._eliteTelegraphDirty = true;
+    this._eliteTelegraphMode = null;
+  }
+
+  _ensureEliteTelegraph(mode) {
+    if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
+    if (this._eliteTelegraphMode !== mode) {
+      this.eliteTelegraphGraphics.clear();
+      this.eliteTelegraphGraphics.setAlpha(1);
+      this._eliteTelegraphMode = mode;
+      this._eliteTelegraphDirty = true;
+    }
+    return this.eliteTelegraphGraphics;
   }
 
   getNetworkVisualState() {
@@ -68,6 +90,9 @@ export default class Elite extends Enemy {
     this.eliteMissileRevealed = Phaser.Math.Clamp(
       Math.floor(state.revealed || 0), 0, this.eliteMissilePoints.length
     );
+    // Snapshots chegam bem menos vezes que frames. Se os pontos/revealed mudaram,
+    // reconstruímos a geometria uma vez neste snapshot; o piscar continua via alpha.
+    this._eliteTelegraphDirty = true;
 
     if (['missile_telegraph', 'missile_launch', 'melee_telegraph', 'melee_swing'].includes(this.eliteState)) {
       if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
@@ -77,7 +102,7 @@ export default class Elite extends Enemy {
         this._drawMissileTelegraph(nowMs);
       }
     } else {
-      this.eliteTelegraphGraphics?.clear();
+      this._clearEliteTelegraph();
     }
 
     const projectiles = this.eliteState === 'missile_launch' && Array.isArray(state.projectiles)
@@ -102,7 +127,7 @@ export default class Elite extends Enemy {
   _cancelActionsForFlee() {
     // Elite no meio de um ataque: cancela o telegraph/míssil em voo e
     if (this.eliteState && this.eliteState !== 'chasing') {
-      this.eliteTelegraphGraphics?.clear();
+      this._clearEliteTelegraph();
       this.eliteMissileProjectiles?.forEach((m) => m.fx.destroy());
       this.eliteMissileProjectiles = [];
       this.eliteState = 'chasing';
@@ -156,6 +181,8 @@ export default class Elite extends Enemy {
       this.eliteMissilePoints.push({ x: target.x + Math.cos(angle) * dist, y: target.y + Math.sin(angle) * dist });
     }
     this.eliteMissileRevealed = 0;
+    this._eliteTelegraphMode = null;
+    this._eliteTelegraphDirty = true;
     this.eliteMissileNextStepAt = nowMs; // revela a 1ª área já neste frame
     this.eliteMissileDetonateAt = null; // só definido depois que a última área aparecer
   }
@@ -165,6 +192,7 @@ export default class Elite extends Enemy {
     this._moveTo(0, 0);
     if (this.eliteMissileRevealed < this.eliteMissilePoints.length && nowMs >= this.eliteMissileNextStepAt) {
       this.eliteMissileRevealed += 1;
+      this._eliteTelegraphDirty = true;
       this.eliteMissileNextStepAt = nowMs + this.def.eliteMissileStepGapMs;
       if (this.eliteMissileRevealed === this.eliteMissilePoints.length) {
         this.eliteMissileDetonateAt = nowMs + this.def.eliteMissileWarnAfterMs;
@@ -180,20 +208,22 @@ export default class Elite extends Enemy {
 
   // Áreas vermelhas piscando (não opacidade fixa) — alterna entre
   _drawMissileTelegraph(nowMs) {
-    const g = this.eliteTelegraphGraphics;
+    const g = this._ensureEliteTelegraph('missile');
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    // O piscar agora é alpha do objeto inteiro: muito barato e não recria a
+    // malha de todos os círculos em 60/120 FPS.
+    g.setAlpha(Phaser.Math.Linear(0.42, 1, blinkT));
+    if (!this._eliteTelegraphDirty) return;
+
     g.clear();
-
-    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
-    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX, blinkT);
-    const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
-
+    g.fillStyle(0xff2222, MISSILE_BLINK_ALPHA_MAX);
+    g.lineStyle(3, 0xff5555, 1);
     for (let i = 0; i < this.eliteMissileRevealed; i++) {
       const p = this.eliteMissilePoints[i];
-      g.fillStyle(0xff2222, fillAlpha);
       g.fillCircle(p.x, p.y, this.def.eliteMissileRadius);
-      g.lineStyle(3, 0xff4444, strokeAlpha);
       g.strokeCircle(p.x, p.y, this.def.eliteMissileRadius);
     }
+    this._eliteTelegraphDirty = false;
   }
 
   // Fim do aviso: o míssil sai de verdade. Toca o som de lançamento e usa
@@ -272,7 +302,7 @@ export default class Elite extends Enemy {
         }
       }
     });
-    this.eliteTelegraphGraphics.clear();
+    this._clearEliteTelegraph();
     this.eliteState = 'chasing';
     this.eliteNextAttackAt = nowMs + this.def.eliteAttackIntervalMs;
   }
@@ -280,6 +310,8 @@ export default class Elite extends Enemy {
   // Início do golpe corpo a corpo: aviso em vermelho ao redor do próprio
   _startEliteMelee(target, nowMs) {
     this.eliteState = 'melee_telegraph';
+    this._eliteTelegraphMode = null;
+    this._eliteTelegraphDirty = true;
     this._moveTo(0, 0);
     if (!this.eliteTelegraphGraphics) this.eliteTelegraphGraphics = this.scene.add.graphics().setDepth(4);
     this.eliteMeleeTelegraphUntil = nowMs + this.def.eliteMeleeTelegraphMs;
@@ -306,22 +338,22 @@ export default class Elite extends Enemy {
 
   // Mesmo piscar (alarme) do telegraph de mísseis, ver
   _drawMeleeTelegraph(nowMs) {
-    const g = this.eliteTelegraphGraphics;
+    const g = this._ensureEliteTelegraph('melee');
+    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
+    g.setAlpha(Phaser.Math.Linear(0.42, 1, blinkT));
+    if (!this._eliteTelegraphDirty) return;
+
     g.clear();
-
-    const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
-    const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX, blinkT);
-    const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
-
-    g.fillStyle(0xff2222, fillAlpha);
+    g.fillStyle(0xff2222, MISSILE_BLINK_ALPHA_MAX);
     g.fillCircle(this.x, this.y, this.def.eliteMeleeRange);
-    g.lineStyle(3, 0xff4444, strokeAlpha);
+    g.lineStyle(3, 0xff5555, 1);
     g.strokeCircle(this.x, this.y, this.def.eliteMeleeRange);
+    this._eliteTelegraphDirty = false;
   }
 
   // Dano alto corpo a corpo (só se o jogador ainda estiver no alcance —
   _resolveMelee(target, nowMs) {
-    this.eliteTelegraphGraphics.clear();
+    this._clearEliteTelegraph();
     this.scene.cameras.main.shake(MELEE_SHAKE_MS, MELEE_SHAKE_INTENSITY);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.eliteMeleeRange && target.active && !target.healthSystem?.isDead()) {
