@@ -2,6 +2,12 @@ import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_
 import DamageSystem from '../../combat/DamageSystem.js';
 import SettingsManager from '../../systems/SettingsManager.js';
 import { playMinotaurCleave, hasMinotaurCleaveFx } from '../../fx/MinotaurCleaveFx.js';
+import {
+  playMinotaurStomp,
+  playMinotaurStompLaunch,
+  drawMinotaurStompTelegraph,
+  hasMinotaurStompFx
+} from '../../fx/MinotaurStompFx.js';
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
 const CHARGE_LINE_LENGTH = 1400;
@@ -21,7 +27,7 @@ const CHARGE_FOOTSTEPS_RATE = 1.6;
 
 // Machado Arremessado (2ª habilidade do Minotauro, sorteada 50/50 com a
 const AXE_SPIN_DEG_PER_MS = 0.9;
-const AXE_SPRITE_SCALE = 4; // arte ocupa só um canto do canvas 64x64 — aumenta o tamanho visual do machado arremessado
+const AXE_SPRITE_SCALE = 2.2; // arte ocupa só um canto do canvas 64x64 — aumenta o tamanho visual do machado arremessado
 const AXE_THROW_SHAKE_MS = 90;
 const AXE_THROW_SHAKE_INTENSITY = 0.004;
 const AXE_IMPACT_SHAKE_MS = 160;
@@ -258,6 +264,14 @@ export default class Minotaur extends Enemy {
 
   syncNetworkVisualState(state, nowMs) {
     if (!state || typeof state.bossState !== 'string') return;
+    // Pisão no cliente: o dano é do host, então o impacto visual (cratera, poeira...)
+    // toca aqui quando o estado sai de 'stomp_raise'. Tremor só se estiver perto.
+    if (this._netPrevBossState === 'stomp_raise' && state.bossState !== 'stomp_raise') {
+      const p = this.scene.player;
+      const near = p && Phaser.Math.Distance.Between(p.x, p.y, this.x, this.y) < 450;
+      playMinotaurStomp(this.scene, this.x, this.y, this.def.stompImpactRadius, { q: 0.6, shake: near ? 0.6 : 0 });
+    }
+    this._netPrevBossState = state.bossState;
     if (this.isEnraged !== (state.isEnraged === true) || this.isDisarmed !== (state.isDisarmed === true)) {
       this.isEnraged = state.isEnraged === true;
       this.isDisarmed = state.isDisarmed === true;
@@ -1422,6 +1436,10 @@ export default class Minotaur extends Enemy {
     const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
     const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.1, MISSILE_BLINK_ALPHA_MAX + 0.1, blinkT);
     const radius = Phaser.Math.Linear(this.def.stompImpactRadius * 0.3, this.def.stompImpactRadius, progress);
+    if (hasMinotaurStompFx(this.scene)) {
+      drawMinotaurStompTelegraph(g, this.x, this.y, radius, this.def.stompImpactRadius, progress, fillAlpha);
+      return;
+    }
     g.fillStyle(STOMP_TELEGRAPH_COLOR, fillAlpha);
     g.fillCircle(this.x, this.y, radius);
     g.lineStyle(3, STOMP_TELEGRAPH_COLOR, Math.min(fillAlpha + 0.4, 1));
@@ -1431,9 +1449,13 @@ export default class Minotaur extends Enemy {
   // PISA: dano baixo em área pequena ao redor dele + knockback MUITO
   _resolveStomp(target, nowMs) {
     this.bossTelegraphGraphics.clear();
-    this.scene.cameras.main.shake(STOMP_SHAKE_MS, STOMP_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.7 });
-    this._flashCircle(this.x, this.y, this.def.stompImpactRadius, STOMP_IMPACT_COLOR);
+    // FX roxo novo (src/fx/MinotaurStompFx.js: explosão, cratera, poeira, detritos, tremor);
+    // o visual simples antigo fica de reserva se o FX não carregou
+    if (!playMinotaurStomp(this.scene, this.x, this.y, this.def.stompImpactRadius)) {
+      this.scene.cameras.main.shake(STOMP_SHAKE_MS, STOMP_SHAKE_INTENSITY);
+      this._flashCircle(this.x, this.y, this.def.stompImpactRadius, STOMP_IMPACT_COLOR);
+    }
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.stompImpactRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.stompDamage), this, nowMs);
@@ -1441,6 +1463,7 @@ export default class Minotaur extends Enemy {
       const dy = (target.y - this.y) || 0;
       const len = Math.hypot(dx, dy) || 1;
       target.applyKnockback?.(dx / len, dy / len, this.def.stompKnockbackForce, nowMs, this.def.stompKnockbackDurationMs);
+      playMinotaurStompLaunch(this.scene, target, dx / len, dy / len, this.def.stompKnockbackDurationMs);
     }
     this.bossState = 'chasing';
     this.stompReadyAt = nowMs + this._bossCooldown(this.def.stompCooldownMs);
