@@ -121,6 +121,7 @@ export default class PreloadScene extends Phaser.Scene {
       frameHeight: 64
     });
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
+    this.load.spritesheet('minotaur_meteor_aqua', 'assets/fx/minotaur_meteor_aqua.png', { frameWidth: 32, frameHeight: 32 });
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
     this.load.spritesheet('minotaur_walk', 'assets/sprites/minotaur_walk.png', {

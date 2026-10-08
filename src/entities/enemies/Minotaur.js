@@ -1,3 +1,4 @@
+import { playMeteorImpact } from '../../fx/MinotaurMeteorFx.js';
 import { playMinotaurChargeSwing } from '../../fx/MinotaurChargeSwingFx.js';
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
@@ -48,9 +49,9 @@ const AXE_STUCK_PULSE_SCALE_URGENT = 0.3;
 // amarelo (impacto) e laranja-avermelhado (explosão) — bem diferentes do
 const AXE_TELEGRAPH_COLOR = 0xffcc00;
 // Chuva de Meteoros (habilidade do rage, ver _updateMeteorRain e afins)
-const METEOR_WARN_COLOR = 0xff2200;
-const METEOR_ROCK_COLOR = 0xff6a00;
-const METEOR_CORE_COLOR = 0xffe08a;
+const METEOR_WARN_COLOR = 0x27d8c8;
+const METEOR_ROCK_COLOR = 0x128e9a;
+const METEOR_CORE_COLOR = 0xbafff1;
 const METEOR_FALL_OFFSET_X = -220; // de onde o meteoro "nasce" em relação ao ponto de impacto
 const METEOR_FALL_OFFSET_Y = -720;
 const METEOR_SHAKE_MS = 140;
@@ -905,6 +906,8 @@ export default class Minotaur extends Enemy {
 
       // pedra: cai em diagonal (ease-in, acelera perto do chão)
       const fall = t * t;
+      m.rock.list[0]?.setFrame(Math.min(3, Math.floor(nowMs / 95) % 4));
+      m.rock.setRotation(t * 9);
       m.rock.setPosition(
         m.x + METEOR_FALL_OFFSET_X * (1 - fall),
         m.y + METEOR_FALL_OFFSET_Y * (1 - fall)
@@ -937,8 +940,8 @@ export default class Minotaur extends Enemy {
       .setDepth(4)
       .setScale(0.35);
     const rock = this.scene.add.container(0, 0, [
-      this.scene.add.circle(0, 0, 16, METEOR_ROCK_COLOR, 1),
-      this.scene.add.circle(0, 0, 8, METEOR_CORE_COLOR, 1)
+      this.scene.add.image(0, 0, 'minotaur_meteor_aqua', 0).setScale(1.65),
+      this.scene.add.circle(0, 0, 5, METEOR_CORE_COLOR, 0.4)
     ]).setDepth(15);
     rock.setPosition(x + METEOR_FALL_OFFSET_X, y + METEOR_FALL_OFFSET_Y);
 
@@ -950,7 +953,7 @@ export default class Minotaur extends Enemy {
     m.rock.destroy();
     this.scene.cameras.main.shake(METEOR_SHAKE_MS, METEOR_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_axe_explosion', { volume: 0.35 });
-    this._flashCircle(m.x, m.y, this.def.meteorImpactRadius, METEOR_ROCK_COLOR);
+    playMeteorImpact(this.scene, m.x, m.y, this.def.meteorImpactRadius);
     const dist = Phaser.Math.Distance.Between(m.x, m.y, target.x, target.y);
     if (dist <= this.def.meteorImpactRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.meteorDamage), this, nowMs);
