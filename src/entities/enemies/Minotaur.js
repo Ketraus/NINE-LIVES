@@ -906,16 +906,37 @@ export default class Minotaur extends Enemy {
       m.warn.setScale(Phaser.Math.Linear(0.35, 1, t));
       m.warn.setAlpha(Phaser.Math.Linear(0.25, 0.6, blink));
 
-      // pedra: cai em diagonal (ease-in, acelera perto do chão)
+      // pedra: cai em diagonal (ease-in, acelera perto do chão).
+      // Fica menor e mais legível, com um rastro curto pra vender melhor a queda.
       const fall = t * t;
-      m.rock.list[0]?.setFrame(Math.min(3, Math.floor(nowMs / 95) % 4));
-      m.rock.setRotation(t * 5);
-      m.rock.setAlpha(Math.min(1, 0.45 + t * 2));
-      m.rock.setPosition(
-        m.x + METEOR_FALL_OFFSET_X * (1 - fall),
-        m.y + METEOR_FALL_OFFSET_Y * (1 - fall)
-      );
-      m.rock.setScale(Phaser.Math.Linear(0.82, 1.08, t));
+      const rockX = m.x + METEOR_FALL_OFFSET_X * (1 - fall);
+      const rockY = m.y + METEOR_FALL_OFFSET_Y * (1 - fall);
+      m.sprite?.setFrame(Math.min(3, Math.floor(nowMs / 85) % 4));
+      m.rock.setRotation(t * 5.6);
+      m.rock.setAlpha(Math.min(1, 0.35 + t * 2.1));
+      m.rock.setPosition(rockX, rockY);
+      m.rock.setScale(Phaser.Math.Linear(0.44, 0.78, t));
+      if (m.glow) m.glow.setScale(Phaser.Math.Linear(0.26, 0.42, t));
+      if (m.headGlow) m.headGlow.setScale(Phaser.Math.Linear(0.12, 0.18, t), Phaser.Math.Linear(0.28, 0.42, t));
+      if (m.tail) {
+        const tailLen = Phaser.Math.Linear(26, 58, t);
+        const len = Math.hypot(METEOR_FALL_OFFSET_X, METEOR_FALL_OFFSET_Y) || 1;
+        const dirX = METEOR_FALL_OFFSET_X / len;
+        const dirY = METEOR_FALL_OFFSET_Y / len;
+        m.tail.clear();
+        m.tail.lineStyle(10, 0x102832, 0.16 + t * 0.06);
+        m.tail.beginPath();
+        m.tail.moveTo(rockX + dirX * 6, rockY + dirY * 6);
+        m.tail.lineTo(rockX + dirX * tailLen, rockY + dirY * tailLen);
+        m.tail.strokePath();
+        m.tail.lineStyle(5, 0x27d8c8, 0.24 + t * 0.18);
+        m.tail.beginPath();
+        m.tail.moveTo(rockX + dirX * 4, rockY + dirY * 4);
+        m.tail.lineTo(rockX + dirX * (tailLen * 0.72), rockY + dirY * (tailLen * 0.72));
+        m.tail.strokePath();
+        m.tail.fillStyle(0xbafff1, 0.55 + t * 0.18);
+        m.tail.fillCircle(rockX, rockY, 2.2 + t * 1.4);
+      }
 
       if (nowMs >= m.impactAt) {
         this._impactMeteor(m, target, nowMs);
@@ -943,16 +964,29 @@ export default class Minotaur extends Enemy {
       .setStrokeStyle(3, METEOR_WARN_COLOR, 0.9)
       .setDepth(4)
       .setScale(0.35);
-    const rock = this.scene.add.container(0, 0, [
-      this.scene.add.image(0, 0, 'minotaur_meteor_aqua', 0).setScale(0.95)
-    ]).setDepth(15);
+
+    const tail = this.scene.add.graphics().setDepth(14);
+    const glow = this.scene.add.image(-2, -1, 'hit_fx')
+      .setScale(0.3)
+      .setTint(0x38d8cb)
+      .setAlpha(0.48)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const sprite = this.scene.add.image(0, 0, 'minotaur_meteor_aqua', 0).setScale(0.88);
+    const headGlow = this.scene.add.image(-7, -8, 'hit_fx')
+      .setScale(0.13, 0.3)
+      .setTint(0xeaffff)
+      .setAlpha(0.75)
+      .setRotation(-0.35)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const rock = this.scene.add.container(0, 0, [glow, sprite, headGlow]).setDepth(15);
     rock.setPosition(x + METEOR_FALL_OFFSET_X, y + METEOR_FALL_OFFSET_Y);
 
-    this.meteors.push({ x, y, warn, rock, startAt: nowMs, impactAt: nowMs + this.def.meteorFallMs });
+    this.meteors.push({ x, y, warn, rock, tail, sprite, glow, headGlow, startAt: nowMs, impactAt: nowMs + this.def.meteorFallMs });
   }
 
   _impactMeteor(m, target, nowMs) {
     m.warn.destroy();
+    m.tail?.destroy();
     m.rock.destroy();
     this.scene.cameras.main.shake(METEOR_SHAKE_MS, METEOR_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_axe_explosion', { volume: 0.35 });
@@ -965,7 +999,7 @@ export default class Minotaur extends Enemy {
 
   // Apaga meteoros ainda no ar (morte/fuga do boss — ver destroy()).
   _clearMeteors() {
-    this.meteors?.forEach((m) => { m.warn.destroy(); m.rock.destroy(); });
+    this.meteors?.forEach((m) => { m.warn.destroy(); m.tail?.destroy(); m.rock.destroy(); });
     if (this.meteors) this.meteors.length = 0;
     this.meteorRainActive = false;
   }
