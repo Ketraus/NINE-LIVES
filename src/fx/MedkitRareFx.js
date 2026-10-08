@@ -50,15 +50,16 @@ function ensureArrowTexture(scene) {
 // Visual "item raro" do medkit. Tudo é puramente gráfico: não altera drop,
 // cura, física ou autoridade de multiplayer.
 export default class MedkitRareFx {
-  constructor(scene, medkit) {
+  constructor(scene, medkit, textureKey = 'medkit') {
     this.scene = scene;
     this.medkit = medkit;
+    this.textureKey = textureKey;
     this.destroyed = false;
 
     ensureArrowTexture(scene);
 
     this.outline = OUTLINE_OFFSETS.map(([ox, oy], index) => {
-      const sprite = scene.add.image(medkit.x + ox, medkit.y + oy, 'medkit')
+      const sprite = scene.add.image(medkit.x + ox, medkit.y + oy, this.textureKey)
         .setDepth(4.72)
         .setScale(medkit.scaleX * 1.02)
         .setBlendMode(Phaser.BlendModes.ADD)
@@ -68,12 +69,12 @@ export default class MedkitRareFx {
 
     // Halo duplo: uma cópia mais fechada para engrossar o contorno e outra
     // maior/mais fraca para o brilho respirar sem apagar o pixel art.
-    this.innerHalo = scene.add.image(medkit.x, medkit.y, 'medkit')
+    this.innerHalo = scene.add.image(medkit.x, medkit.y, this.textureKey)
       .setDepth(4.68)
       .setScale(medkit.scaleX * 1.18)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setAlpha(0.16);
-    this.outerHalo = scene.add.image(medkit.x, medkit.y, 'medkit')
+    this.outerHalo = scene.add.image(medkit.x, medkit.y, this.textureKey)
       .setDepth(4.64)
       .setScale(medkit.scaleX * 1.45)
       .setBlendMode(Phaser.BlendModes.ADD)

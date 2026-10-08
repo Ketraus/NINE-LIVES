@@ -1,4 +1,3 @@
-import { loadMinotaurChargeSwing, prepareMinotaurChargeSwing } from '../fx/MinotaurChargeSwingFx.js';
 import { loadSlashSheets, createSlashAnimations } from '../fx/SlashFx.js';
 import { loadPunchSheet, createPunchAnimation } from '../fx/PunchFx.js';
 import { loadShockwaveSheet, createShockwaveAnimation } from '../fx/ShockwaveFx.js';
@@ -121,7 +120,6 @@ export default class PreloadScene extends Phaser.Scene {
       frameHeight: 64
     });
     // Minotauro parado (idle) — imagem única (64x64), só troca de textura
-    this.load.spritesheet('minotaur_meteor_aqua', 'assets/fx/minotaur_meteor_aqua.png', { frameWidth: 32, frameHeight: 32 });
     this.load.image('minotaur_idle', 'assets/sprites/minotaur_idle.png');
     // Minotauro (boss): sprite definitivo do Cybertaur, 6 frames de 64x64
     this.load.spritesheet('minotaur_walk', 'assets/sprites/minotaur_walk.png', {
@@ -155,6 +153,7 @@ export default class PreloadScene extends Phaser.Scene {
     this.load.image('xp_vermelho', 'assets/sprites/xp_vermelho.png');
     this.load.image('xp_roxo', 'assets/sprites/xp_roxo.png');
     this.load.image('medkit', 'assets/sprites/medkit.png');
+    this.load.image('magnet', 'assets/sprites/magnet.png');
     this.load.image('gato_drone', 'assets/sprites/gato_drone.png');
     this.load.image('gato_drone_catforce', 'assets/sprites/gato_drone_catforce.png');
     this.load.image('hit_fx', 'assets/sprites/hit_fx.png');
@@ -184,7 +183,6 @@ export default class PreloadScene extends Phaser.Scene {
     loadEliteMissileSheet(this);
     // Corte do Minotauro (3 frames roxos 32x72: cometa, arco, chama)
     loadMinotaurCleaveSheet(this);
-    loadMinotaurChargeSwing(this);
     // Pisão do Minotauro (4 frames roxos 32x32; cratera/poeira/detritos são gerados por código)
     loadMinotaurStompSheet(this);
 
@@ -343,7 +341,6 @@ export default class PreloadScene extends Phaser.Scene {
     createSlamFx(this);
     createEliteMissileTextures(this);
     createMinotaurCleaveTextures(this);
-    prepareMinotaurChargeSwing(this);
     createMinotaurStompTextures(this);
 
     // as artes das cartas de arma não são pixel art, então usam filtro

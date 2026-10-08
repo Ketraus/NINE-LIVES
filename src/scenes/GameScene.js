@@ -41,6 +41,28 @@ const MEDKIT_PULSE_SCALE = 1.07;
 const MEDKIT_PULSE_DURATION_MS = 850;
 const MEDKIT_DROP_OFFSET_MIN = 42;
 const MEDKIT_DROP_OFFSET_MAX = 56;
+
+// Ímã raro: puxa TODO o XP existente no mapa. As chances seguem o id real
+// dos inimigos (CyberHound é o Runner em data/enemies.js).
+const MAGNET_DROP_CHANCES = Object.freeze({
+  cyber_brute: 0.03, // 3%
+  grunt: 0.001, // 0,1%
+  cyber_hound: 0.001, // 0,1% — Runner
+  sealer: 0.15 // 15%
+});
+const MAGNET_SCALE = 0.92;
+const MAGNET_PULSE_SCALE = 1.07;
+const MAGNET_PULSE_DURATION_MS = 780;
+const MAGNET_DROP_OFFSET_MIN = 44;
+const MAGNET_DROP_OFFSET_MAX = 62;
+const MAGNET_FORCE_DROP_LEAD_MS = 40000; // 5:20 numa run em que o Mino vem aos 6:00
+const MAGNET_HARD_GUARANTEE_LEAD_MS = 20000; // fallback absoluto: 5:40
+const MAGNET_ALL_XP_MIN_SPEED = 680;
+const MAGNET_ALL_XP_MAX_SPEED = 1450;
+const MAGNET_ALL_XP_DISTANCE_SPEED = 0.42;
+const MAGNET_ALL_XP_STAGGER_MS = 180;
+const PICKUP_MAGNET_UPDATE_INTERVAL_MS = 33; // ~30 Hz: centenas de gemas sem recalcular todo frame
+const XP_COLLECT_SFX_MIN_INTERVAL_MS = 45; // evita centenas de instâncias de áudio quando o ímã junta tudo
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
 const PICKUP_CLAIM_RETRY_MS = 600; // cliente repete o pedido de coleta se o Host não confirmar
 
@@ -86,7 +108,7 @@ const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
   'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
   'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',
   'minotaur_walk_rage', 'minotaur_idle_rage_noaxe', 'minotaur_walk_rage_noaxe', 'minotaur_axe_thrown',
-  'minotaur_axe_thrown_rage', 'xp_verde', 'xp_azul', 'xp_vermelho', 'xp_roxo', 'medkit', 'hit_fx'
+  'minotaur_axe_thrown_rage', 'xp_verde', 'xp_azul', 'xp_vermelho', 'xp_roxo', 'medkit', 'magnet', 'hit_fx'
 ];
 
 export default class GameScene extends Phaser.Scene {
@@ -159,9 +181,10 @@ export default class GameScene extends Phaser.Scene {
       this.enemySpawner.updateAll(this.time.now);
     }
     this.abilityManager.update(this.time.now);
-    this._updateXpOrbMagnet();
+    this._updateXpOrbMagnet(time);
     this._updateXpGlows();
-    this._updateMedkitRareFx(time);
+    this._updateRarePickupFx(time);
+    this._updateMagnetGuarantee();
   }
 
   // o halo não tem física: só copia a posição da gema (que pode estar sendo puxada pelo ímã)
@@ -171,27 +194,80 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  // Medkit é um drop raro/importante: mantém o contorno, a seta sobre o item
-  // e o indicador de borda sincronizados mesmo enquanto ele é puxado pelo ímã.
-  _updateMedkitRareFx(time) {
-    this.medkitGroup?.getChildren().forEach((medkit) => {
-      medkit.getData('rareFx')?.update(time);
+  // Medkit e ímã compartilham a mesma linguagem de item raro: contorno
+  // rainbow, seta no mundo e indicador na borda quando saem da câmera.
+  _updateRarePickupFx(time) {
+    [this.medkitGroup, this.magnetGroup].forEach((group) => {
+      group?.getChildren().forEach((pickup) => pickup.getData('rareFx')?.update(time));
     });
   }
 
-  // "Ímã" de XP: todo orb dentro de XP_ORB_MAGNET_RANGE do jogador passa a
-  _updateXpOrbMagnet() {
-    [this.xpOrbGroup, this.medkitGroup].forEach((group) => {
-      group.children.each((pickup) => {
+  // Magnetismo comum (curta distância) + o efeito do item Ímã, que marca
+  // somente os cristais de XP para virem do mapa inteiro. O cálculo de
+  // direção é limitado a ~30 Hz; a física continua suave entre atualizações.
+  _updateXpOrbMagnet(time) {
+    if (time < (this._nextPickupMagnetUpdateAt || 0)) return;
+    this._nextPickupMagnetUpdateAt = time + PICKUP_MAGNET_UPDATE_INTERVAL_MS;
+
+    this.xpOrbGroup.children.each((orb) => {
+      if (!orb?.active) return;
+      const distance = Phaser.Math.Distance.Between(orb.x, orb.y, this.player.x, this.player.y);
+      const mapMagnetActive = orb.getData('mapMagnet') === true && time >= (orb.getData('mapMagnetWakeAt') || 0);
+
+      if (mapMagnetActive) {
+        const speed = Phaser.Math.Clamp(
+          MAGNET_ALL_XP_MIN_SPEED + distance * MAGNET_ALL_XP_DISTANCE_SPEED,
+          MAGNET_ALL_XP_MIN_SPEED,
+          MAGNET_ALL_XP_MAX_SPEED
+        );
+        this.physics.moveToObject(orb, this.player, speed);
+      } else if (distance <= XP_ORB_MAGNET_RANGE) {
+        this.physics.moveToObject(orb, this.player, XP_ORB_MAGNET_SPEED);
+      } else if (orb.body.velocity.x !== 0 || orb.body.velocity.y !== 0) {
+        orb.setVelocity(0, 0);
+      }
+    });
+
+    // Medkit e o próprio ímã continuam com o magnetismo local normal.
+    [this.medkitGroup, this.magnetGroup].forEach((group) => {
+      group?.children.each((pickup) => {
+        if (!pickup?.active) return;
         const distance = Phaser.Math.Distance.Between(pickup.x, pickup.y, this.player.x, this.player.y);
         if (distance <= XP_ORB_MAGNET_RANGE) {
           this.physics.moveToObject(pickup, this.player, XP_ORB_MAGNET_SPEED);
         } else if (pickup.body.velocity.x !== 0 || pickup.body.velocity.y !== 0) {
-          // saiu do alcance (ex.: jogador se afastou rápido) -> para de voar
           pickup.setVelocity(0, 0);
         }
       });
     });
+  }
+
+  // A chance normal continua valendo a run inteira. Esta proteção existe só
+  // para impedir uma run azarada de chegar ao Minotauro sem NUNCA ter visto
+  // um ímã. Aos 40 s antes do boss, o próximo inimigo elegível força o drop;
+  // se até 20 s antes ninguém elegível morreu, o jogo coloca um no chão perto
+  // do jogador como fallback absoluto.
+  _updateMagnetGuarantee() {
+    if (this.multiplayer?.isMultiplayer || this._magnetHasAppeared) return;
+    const bossAt = Number(bossScheduleData?.t);
+    const elapsed = this.spawnDirector?.getElapsedMs?.() || 0;
+    if (!Number.isFinite(bossAt) || bossAt <= 0) return;
+
+    if (elapsed >= bossAt - MAGNET_FORCE_DROP_LEAD_MS) {
+      this._forceNextMagnetDrop = true;
+    }
+
+    if (elapsed < bossAt - MAGNET_HARD_GUARANTEE_LEAD_MS) return;
+
+    const bounds = this.physics.world.bounds;
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const distance = Phaser.Math.Between(105, 145);
+    const margin = 28;
+    const x = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * distance, bounds.left + margin, bounds.right - margin);
+    const y = Phaser.Math.Clamp(this.player.y + Math.sin(angle) * distance, bounds.top + margin, bounds.bottom - margin);
+    this._spawnMagnet(Math.round(x), Math.round(y), this.nextPickupId++);
+    this._magnetHasAppeared = true;
+    this._forceNextMagnetDrop = false;
   }
 
   // Emite o tempo de run decorrido (em segundos inteiros) só quando ele
@@ -384,6 +460,11 @@ export default class GameScene extends Phaser.Scene {
   _buildPickups() {
     this.xpOrbGroup = this.physics.add.group();
     this.medkitGroup = this.physics.add.group();
+    this.magnetGroup = this.physics.add.group();
+    this._magnetHasAppeared = false;
+    this._forceNextMagnetDrop = false;
+    this._nextPickupMagnetUpdateAt = 0;
+    this._nextXpCollectSfxAt = 0;
     this.pickupsById = new Map(); // id (decidido pelo Host) -> sprite
     this.nextPickupId = 1; // só o Host/solo atribui ids
     this.runManager = new RunManager(this.runState, this.player, upgradesData);
@@ -434,6 +515,7 @@ export default class GameScene extends Phaser.Scene {
     // jogador encosta em orb de xp -> coleta
     this.physics.add.overlap(this.player, this.xpOrbGroup, (player, orb) => this._onPickupOverlap(orb));
     this.physics.add.overlap(this.player, this.medkitGroup, (player, medkit) => this._onPickupOverlap(medkit));
+    this.physics.add.overlap(this.player, this.magnetGroup, (player, magnet) => this._onPickupOverlap(magnet));
 
     // inimigo morre -> registra abate, dropa orb de xp e explode em FX
     EventBus.on('enemy-died', (death) => this._handleEnemyDeath(death, true));
@@ -493,9 +575,10 @@ export default class GameScene extends Phaser.Scene {
     this._spawnDeathFx(x, y, color);
   }
 
-  // Só o Host/solo chama. drops = { orbId, medkit: [id, x, y] | null }
+  // Só o Host/solo chama. O ímã fica desativado no multiplayer por
+  // enquanto; quando formos sincronizá-lo, entra no mesmo pacote de drops.
   _rollDrops(death) {
-    const drops = { orbId: this.nextPickupId++, medkit: null };
+    const drops = { orbId: this.nextPickupId++, medkit: null, magnet: null };
     if (death.enemyId === 'elite' ||
       (death.enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -506,6 +589,24 @@ export default class GameScene extends Phaser.Scene {
         Math.round(death.y + Math.sin(angle) * offset)
       ];
     }
+
+    if (!this.multiplayer?.isMultiplayer) {
+      const chance = MAGNET_DROP_CHANCES[death.enemyId] || 0;
+      const eligible = chance > 0;
+      const force = eligible && this._forceNextMagnetDrop && !this._magnetHasAppeared;
+      if (eligible && (force || Math.random() < chance)) {
+        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const offset = Phaser.Math.Between(MAGNET_DROP_OFFSET_MIN, MAGNET_DROP_OFFSET_MAX);
+        drops.magnet = [
+          this.nextPickupId++,
+          Math.round(death.x + Math.cos(angle) * offset),
+          Math.round(death.y + Math.sin(angle) * offset)
+        ];
+        this._magnetHasAppeared = true;
+        this._forceNextMagnetDrop = false;
+      }
+    }
+
     return drops;
   }
 
@@ -522,9 +623,14 @@ export default class GameScene extends Phaser.Scene {
       Number.isFinite(medkit[2]) && this._canSpawnPickup(medkit[0])) {
       this._spawnMedkit(medkit[1], medkit[2], medkit[0]);
     }
+    const magnet = drops?.magnet;
+    if (Array.isArray(magnet) && Number.isInteger(magnet[0]) && Number.isFinite(magnet[1]) &&
+      Number.isFinite(magnet[2]) && this._canSpawnPickup(magnet[0])) {
+      this._spawnMagnet(magnet[1], magnet[2], magnet[0]);
+    }
   }
 
-  // ---------- coleta de orbs/medkits ----------
+  // ---------- coleta de orbs/medkits/ímã ----------
 
   _registerPickup(id, sprite, kind, value) {
     sprite.setData({ pickupId: id, pickupKind: kind, pickupValue: value });
@@ -569,12 +675,80 @@ export default class GameScene extends Phaser.Scene {
     if (this.isGameOver) return;
     if (kind === 'xp') {
       this.runManager.collectXp(value);
-      this.sound.play('sfx_xp_collect', { volume: 0.4 });
+      // Um ímã pode trazer centenas de gemas quase juntas. Limitar só o SFX
+      // mantém a sensação de "chuva de XP" sem criar centenas de vozes de áudio.
+      if (this.time.now >= (this._nextXpCollectSfxAt || 0)) {
+        this._nextXpCollectSfxAt = this.time.now + XP_COLLECT_SFX_MIN_INTERVAL_MS;
+        this.sound.play('sfx_xp_collect', { volume: 0.4 });
+      }
     } else if (kind === 'medkit') {
       const healed = this.player.healthSystem.heal(value);
       if (healed > 0) {
         DamageNumberManager.show(this, this.player.x, this.player.y, healed, this.player, { kind: 'heal' });
       }
+    } else if (kind === 'magnet') {
+      this._activateMapXpMagnet();
+    }
+  }
+
+  _activateMapXpMagnet() {
+    const now = this.time.now;
+    const orbs = this.xpOrbGroup?.getChildren?.().filter((orb) => orb?.active) || [];
+
+    // Stagger curtíssimo: em vez de centenas de corpos mudarem de direção no
+    // mesmo tick, a nuvem inteira começa a vir em uma "onda" de ~180 ms.
+    orbs.forEach((orb, index) => {
+      orb.setData('mapMagnet', true);
+      // Distribuição estável e barata; evita criar centenas de timers/tweens.
+      const stagger = orbs.length > 1
+        ? Math.round((index % 24) / 23 * MAGNET_ALL_XP_STAGGER_MS)
+        : 0;
+      orb.setData('mapMagnetWakeAt', now + stagger);
+    });
+
+    this._playMagnetCollectFx(orbs.length);
+  }
+
+  _playMagnetCollectFx(orbCount) {
+    const x = this.player.x;
+    const y = this.player.y;
+    const palette = [0x52f7ff, 0xff4fe1, 0xfff06a];
+
+    // Impacto visual curto e procedural: três anéis finos, poucos pixels e
+    // um micro-shake. Não cria emitter permanente nem pós-processamento.
+    palette.forEach((color, index) => {
+      const ring = this.add.circle(x, y, 44 + index * 8, color, 0)
+        .setStrokeStyle(2, color, 0.9 - index * 0.18)
+        .setScale(0.24 + index * 0.03)
+        .setDepth(80);
+      this.tweens.add({
+        targets: ring,
+        scale: 1 + index * 0.12,
+        alpha: 0,
+        duration: 320 + index * 60,
+        ease: 'Cubic.easeOut',
+        onComplete: () => ring.destroy()
+      });
+    });
+
+    for (let i = 0; i < 10; i += 1) {
+      const angle = (Math.PI * 2 * i) / 10 + Phaser.Math.FloatBetween(-0.12, 0.12);
+      const spark = this.add.rectangle(x, y, 3, 3, palette[i % palette.length], 1).setDepth(81);
+      this.tweens.add({
+        targets: spark,
+        x: x + Math.cos(angle) * Phaser.Math.Between(28, 52),
+        y: y + Math.sin(angle) * Phaser.Math.Between(28, 52),
+        alpha: 0,
+        scale: 0.2,
+        duration: Phaser.Math.Between(220, 360),
+        ease: 'Cubic.easeOut',
+        onComplete: () => spark.destroy()
+      });
+    }
+
+    this.cameras.main.shake(90, 0.0025);
+    if (this.cache.audio.exists('sfx_xp_collect')) {
+      this.sound.play('sfx_xp_collect', { volume: orbCount > 0 ? 0.75 : 0.5, rate: 0.82 });
     }
   }
 
@@ -706,6 +880,28 @@ export default class GameScene extends Phaser.Scene {
       targets: medkit,
       scale: MEDKIT_SCALE * MEDKIT_PULSE_SCALE,
       duration: MEDKIT_PULSE_DURATION_MS,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
+  _spawnMagnet(x, y, pickupId) {
+    this._magnetHasAppeared = true;
+    const magnet = this.physics.add.image(x, y, 'magnet').setDepth(5).setScale(MAGNET_SCALE);
+    this._registerPickup(pickupId, magnet, 'magnet', 0);
+    const radius = Math.min(magnet.width, magnet.height) * 0.43;
+    magnet.body.setCircle(radius, magnet.width / 2 - radius, magnet.height / 2 - radius);
+    this.magnetGroup.add(magnet);
+
+    const rareFx = new MedkitRareFx(this, magnet, 'magnet');
+    magnet.setData('rareFx', rareFx);
+    magnet.once('destroy', () => rareFx.destroy());
+
+    this.tweens.add({
+      targets: magnet,
+      scale: MAGNET_SCALE * MAGNET_PULSE_SCALE,
+      duration: MAGNET_PULSE_DURATION_MS,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
