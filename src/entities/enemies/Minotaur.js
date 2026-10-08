@@ -8,6 +8,19 @@ import {
   playMinotaurChargeStop
 } from '../../fx/MinotaurChargeFx.js';
 import { playMinotaurChargeSwing } from '../../fx/MinotaurChargeSwingFx.js';
+import {
+  createMinotaurAxeFxState,
+  cleanupMinotaurAxeFx,
+  resetMinotaurAxeTrail,
+  playMinotaurAxeTelegraphPulse,
+  playMinotaurAxeLaunchFx,
+  emitMinotaurAxeTrail,
+  playMinotaurAxeImpactFx,
+  updateMinotaurAxeChargeFx,
+  playMinotaurAxeBeepFx,
+  playMinotaurAxeExplosionFx,
+  playMinotaurAxeCatchFx
+} from '../../fx/MinotaurAxeFx.js';
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
 import SettingsManager from '../../systems/SettingsManager.js';
@@ -43,7 +56,7 @@ const CHARGE_FOOTSTEPS_RATE = 1.6;
 
 // Machado Arremessado (2ª habilidade do Minotauro, sorteada 50/50 com a
 const AXE_SPIN_DEG_PER_MS = 0.9;
-const AXE_SPRITE_SCALE = 2.8; // +27%: machado arremessado mais imponente sem alterar hitbox/dano
+const AXE_SPRITE_SCALE = 2.8; // arte ocupa só um canto do canvas 64x64 — aumenta o tamanho visual do machado arremessado
 const AXE_THROW_SHAKE_MS = 90;
 const AXE_THROW_SHAKE_INTENSITY = 0.004;
 const AXE_IMPACT_SHAKE_MS = 160;
@@ -53,7 +66,9 @@ const AXE_IMPACT_SHAKE_INTENSITY = 0.01;
 const AXE_EXPLOSION_SHAKE_MS = 420;
 const AXE_EXPLOSION_SHAKE_INTENSITY = 0.03;
 const AXE_EXPLOSION_FLASH_MS = 180;
+// Mantidos só para o burst de pouso do salto, que reutiliza o helper legado.
 const AXE_EXPLOSION_SHARD_COUNT = 18;
+const AXE_EXPLOSION_COLOR = 0xff4400;
 // aviso do machado cravado (pisca branco + pulsa de tamanho) enquanto
 // carrega — fica mais rápido/urgente assim que o beep final começa
 const AXE_STUCK_PULSE_PERIOD_MS = 340;
@@ -79,7 +94,6 @@ const LEAP_LANDING_SHAKE_INTENSITY = 0.035;
 const LEAP_TAKEOFF_SHAKE_MS = 200;
 const LEAP_TAKEOFF_SHAKE_INTENSITY = 0.015;
 const LEAP_AGGRO_AURA_RADIUS = 95;
-const AXE_EXPLOSION_COLOR = 0xff4400;
 
 // Corte Destrutivo (3ª habilidade do Minotauro, sorteada 1/3 com a
 const CLEAVE_COLOR = 0xff1133;
@@ -168,6 +182,7 @@ export default class Minotaur extends Enemy {
     this.axePhase = null;
     this.axeTargetX = 0;
     this.axeTargetY = 0;
+    this.axeFxState = createMinotaurAxeFxState();
     // Corte Destrutivo: ver _startCleave e afins.
     this.cleaveAngle = 0;
     // multiplicador de dano recebido durante a janela vulnerável (ver
@@ -290,6 +305,7 @@ export default class Minotaur extends Enemy {
     if ((this.bossState && this.bossState !== 'chasing') || this.axePhase) {
       this._clearBossTelegraph();
       this.axeSprite?.setVisible(false);
+      cleanupMinotaurAxeFx(this.axeFxState);
       this._setDisarmed(false); // interrompeu no meio do arremesso — não pode fugir sem o machado
       this.axePhase = null;
       this.bossState = 'chasing';
@@ -300,6 +316,7 @@ export default class Minotaur extends Enemy {
     // Boss: mesma lógica — a linha de aviso da investida também não é
     this.bossTelegraphGraphics?.destroy();
     // Boss: o ícone do Machado Arremessado (voando ou já cravado) também
+    cleanupMinotaurAxeFx(this.axeFxState);
     this.axeSprite?.destroy();
     this.networkAxeSprite?.destroy();
     this.networkMeteorGraphics?.destroy();
@@ -853,6 +870,17 @@ export default class Minotaur extends Enemy {
     const palette = this._telegraphPalette();
     const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2;
     g.setAlpha(Phaser.Math.Linear(0.48, 1, blinkT));
+    playMinotaurAxeTelegraphPulse(
+      this.scene,
+      this.axeFxState,
+      this.x,
+      this.y,
+      this.axeTargetX,
+      this.axeTargetY,
+      nowMs,
+      this.axeTelegraphUntil,
+      this.isEnraged
+    );
     const key = `axe:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${this.axeTargetX.toFixed(1)}:${this.axeTargetY.toFixed(1)}`;
     if (!this._prepareStaticTelegraph(key)) return;
 
@@ -896,6 +924,8 @@ export default class Minotaur extends Enemy {
       this.axeSprite.setTexture(axeTexture);
     }
     this.axeSprite.setPosition(this.x, this.y).setRotation(0).setScale(AXE_SPRITE_SCALE).clearTint().setVisible(true);
+    resetMinotaurAxeTrail(this.axeFxState, this.x, this.y, nowMs);
+    playMinotaurAxeLaunchFx(this.scene, this.x, this.y, this.axeTargetX, this.axeTargetY, this.isEnraged);
     this._setDisarmed(true); // machado saiu da mão — troca pra sprite sem ele
     this.scene.cameras.main.shake(AXE_THROW_SHAKE_MS, AXE_THROW_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_axe_throw', { volume: 0.7 });
@@ -906,6 +936,7 @@ export default class Minotaur extends Enemy {
     this.axeSprite.x = Phaser.Math.Linear(this.axeOriginX, this.axeTargetX, progress);
     this.axeSprite.y = Phaser.Math.Linear(this.axeOriginY, this.axeTargetY, progress);
     this.axeSprite.setRotation(Phaser.Math.DegToRad((nowMs - this.axeFlightStartMs) * AXE_SPIN_DEG_PER_MS));
+    emitMinotaurAxeTrail(this.scene, this.axeFxState, this.axeSprite, nowMs, this.isEnraged, false);
     if (nowMs >= this.axeFlightEndAt) this._stickAxe(target, nowMs);
   }
 
@@ -917,7 +948,15 @@ export default class Minotaur extends Enemy {
     // terra + impacto tocam juntos no instante em que crava (impacto mais alto que a terra)
     this.scene.sound.play('sfx_axe_dirt', { volume: 0.5 });
     this.scene.sound.play('sfx_axe_impact', { volume: 0.85 });
-    this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius, (this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR));
+    playMinotaurAxeImpactFx(
+      this.scene,
+      this.axeFxState,
+      this.axeSprite,
+      this.axeTargetX,
+      this.axeTargetY,
+      this.def.axeThrowImpactRadius,
+      this.isEnraged
+    );
     const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
     if (dist <= this.def.axeThrowImpactRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowImpactDamage), this, nowMs);
@@ -925,6 +964,7 @@ export default class Minotaur extends Enemy {
     // machado cravado começa a "carregar" pra explosão — a duração dessa
     // carga segue exatamente a duração real do som (ver _playTimedSfx),
     // então se o mp3 mudar o tempo do ataque acompanha automaticamente
+    this.axeChargeStartAt = nowMs;
     this.axeChargeEndAt = nowMs + this._playTimedSfx('sfx_axe_charging', 0.55);
     this.axeBeepPlayed = false;
   }
@@ -935,6 +975,7 @@ export default class Minotaur extends Enemy {
       // carga terminou: apita e só explode quando o beep também acabar
       this.axeBeepPlayed = true;
       this.axeStuckUntil = nowMs + this._playTimedSfx('sfx_axe_beep', 0.7);
+      playMinotaurAxeBeepFx(this.scene, this.axeFxState, this.axeTargetX, this.axeTargetY, this.isEnraged);
     }
     if (this.axeBeepPlayed && nowMs >= this.axeStuckUntil) this._explodeAxe(target, nowMs);
   }
@@ -951,28 +992,52 @@ export default class Minotaur extends Enemy {
     this.axeSprite.setScale(AXE_SPRITE_SCALE * (1 + pulseAmount * t));
     if (t > 0.5) this.axeSprite.setTintFill(0xffffff);
     else this.axeSprite.clearTint();
+    updateMinotaurAxeChargeFx(
+      this.scene,
+      this.axeFxState,
+      this.axeTargetX,
+      this.axeTargetY,
+      nowMs,
+      this.axeChargeStartAt,
+      this.axeChargeEndAt,
+      urgent
+    );
   }
 
-  // Passo 8: 💥 explosão de verdade — raio maior e mais dano que o
+  // Passo 8: implosão curtíssima -> ruptura real. Durante esses ~72 ms o
+  // machado entra em 'detonating' para impedir que a explosão seja disparada
+  // de novo a cada update. O dano acontece no frame da ruptura visual.
   _explodeAxe(target, nowMs) {
-    this.axeSprite.setScale(AXE_SPRITE_SCALE).clearTint(); // corta o pisca-pisca de aviso
-    this.scene.cameras.main.shake(AXE_EXPLOSION_SHAKE_MS, AXE_EXPLOSION_SHAKE_INTENSITY);
-    this.scene.cameras.main.flash(AXE_EXPLOSION_FLASH_MS, 255, 150, 40);
-    this.scene.sound.play('sfx_axe_explosion', { volume: 0.7 });
-    this._showAxeExplosionFx(this.axeTargetX, this.axeTargetY, this.def.axeThrowExplosionRadius);
-    const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
-    if (dist <= this.def.axeThrowExplosionRadius && target.active && !target.healthSystem?.isDead()) {
-      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowExplosionDamage), this, nowMs);
-    }
-    this._startAxeRaise(nowMs);
+    if (this.axePhase === 'detonating') return;
+    this.axePhase = 'detonating';
+    this.axeSprite.setScale(AXE_SPRITE_SCALE).clearTint();
+
+    playMinotaurAxeExplosionFx(
+      this.scene,
+      this.axeFxState,
+      this.axeTargetX,
+      this.axeTargetY,
+      this.def.axeThrowExplosionRadius,
+      this.isEnraged,
+      () => {
+        if (!this.active || !this.scene?.sys?.isActive()) return;
+        const paletteRgb = this.isEnraged ? [110, 255, 238] : [238, 96, 255];
+        this.scene.cameras.main.shake(AXE_EXPLOSION_SHAKE_MS, AXE_EXPLOSION_SHAKE_INTENSITY);
+        this.scene.cameras.main.flash(AXE_EXPLOSION_FLASH_MS, ...paletteRgb);
+        this.scene.sound.play('sfx_axe_explosion', { volume: 0.7 });
+
+        const blastNow = this.scene.time.now;
+        const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
+        if (dist <= this.def.axeThrowExplosionRadius && target.active && !target.healthSystem?.isDead()) {
+          DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowExplosionDamage), this, blastNow);
+        }
+        this._startAxeRaise(blastNow);
+      }
+    );
   }
 
-  // Feedback BEM mais forte que o _flashCircle simples usado no resto do
-  // jogo: núcleo branco-quente (ADD) + anel de fogo até o raio real de
-  // dano + anel de fumaça escura passando do raio + estilhaços voando
-  // radialmente, além do camera.flash/shake maiores lá em _explodeAxe.
-  // Justificativa: agora o jogador viu o charging + beep inteiros antes
-  // de explodir, então o pay-off visual precisa condizer com a espera.
+  // Helper legado usado pelo POUSO do salto. O Machado Arremessado não
+  // usa mais este burst; a explosão dele vive em MinotaurAxeFx.js.
   _showAxeExplosionFx(x, y, radius) {
     const core = this.scene.add
       .circle(x, y, radius * 0.5, 0xffffff, 0.9)
@@ -1018,9 +1083,6 @@ export default class Minotaur extends Enemy {
     this._spawnAxeExplosionShards(x, y, radius);
   }
 
-  // Estilhaços voando radialmente pra fora (mesma técnica do Terremoto, ver
-  // SlamAbility._spawnShockwaveShards), mas mais deles porque a área agora
-  // é bem maior.
   _spawnAxeExplosionShards(x, y, radius) {
     for (let i = 0; i < AXE_EXPLOSION_SHARD_COUNT; i++) {
       const angle = (Math.PI * 2 * i) / AXE_EXPLOSION_SHARD_COUNT + Phaser.Math.FloatBetween(-0.15, 0.15);
@@ -1072,6 +1134,7 @@ export default class Minotaur extends Enemy {
     this.axeReturnHasHit = false;
     this.axeReturnFromX = this.axeTargetX;
     this.axeReturnFromY = this.axeTargetY;
+    resetMinotaurAxeTrail(this.axeFxState, this.axeReturnFromX, this.axeReturnFromY, nowMs);
   }
 
   _updateAxeReturn(target, nowMs) {
@@ -1079,6 +1142,7 @@ export default class Minotaur extends Enemy {
     this.axeSprite.x = Phaser.Math.Linear(this.axeReturnFromX, this.x, progress);
     this.axeSprite.y = Phaser.Math.Linear(this.axeReturnFromY, this.y, progress);
     this.axeSprite.setRotation(Phaser.Math.DegToRad((nowMs - this.axeReturnStartMs) * AXE_SPIN_DEG_PER_MS));
+    emitMinotaurAxeTrail(this.scene, this.axeFxState, this.axeSprite, nowMs, this.isEnraged, true);
     if (!this.axeReturnHasHit) {
       const dist = Phaser.Math.Distance.Between(this.axeSprite.x, this.axeSprite.y, target.x, target.y);
       if (dist <= this.def.axeThrowReturnRadius && target.active && !target.healthSystem?.isDead()) {
@@ -1091,6 +1155,7 @@ export default class Minotaur extends Enemy {
 
   // Passo 12: some o machado e volta a perseguir normalmente, com o
   _endAxeThrow(nowMs) {
+    playMinotaurAxeCatchFx(this.scene, this.x, this.y, this.isEnraged);
     this.axeSprite?.setVisible(false);
     this._setDisarmed(false); // pegou o machado de volta — volta pro sprite com ele
     // NÃO mexe no bossState: o corpo pode estar no meio de uma investida ou
