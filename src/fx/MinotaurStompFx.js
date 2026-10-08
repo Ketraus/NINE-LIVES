@@ -16,7 +16,8 @@
 //  - drawMinotaurStompTelegraph -> aviso roxo no chão (anéis convergindo + rachaduras crescendo)
 //  - playMinotaurStompLaunch    -> rastro de poeira e estrela de impacto no jogador arremessado
 
-const KEY = 'minotaur_stomp'; // folha 4 frames 32x32: faísca, explosão, anel, anel esvaindo
+let RAGE_ACTIVE = false;
+let KEY = 'minotaur_stomp'; // folha 4 frames 32x32: faísca, explosão, anel, anel esvaindo
 const FRAME = 32;
 const FRAME_COUNT = 4;
 const RING_FRAME_DIAMETER = 30; // diâmetro do anel dentro do frame (pra casar com o raio do dano)
@@ -29,14 +30,14 @@ const CRACK_KEYS = ['mstomp_crack_0', 'mstomp_crack_1']; // só as frestas brilh
 const CRATER_TEX = 144; // grão fino (~2px no jogo), filtro suave: some o aspecto 'pixelão'
 const CRATER_SPAN = 1.05; // a textura cobre radius * 1.05 (buraco raso, só some a grama)
 
-const DARK = 0x0b0612;
-const DEEP = 0x3a0c6e;
-const PURPLE = 0x8a2be2;
-const BRIGHT = 0xb56bff;
-const PALE = 0xe9c6ff;
+let DARK = 0x0b0612;
+let DEEP = 0x3a0c6e;
+let PURPLE = 0x8a2be2;
+let BRIGHT = 0xb56bff;
+let PALE = 0xe9c6ff;
 const WHITE = 0xffffff;
-const DUST = [0x4a3a5c, 0x5d4b72, 0x6e5a88, 0x3a2e4a];
-const SPARK = [PALE, BRIGHT, WHITE, PURPLE];
+let DUST = [0x4a3a5c, 0x5d4b72, 0x6e5a88, 0x3a2e4a];
+let SPARK = [PALE, BRIGHT, WHITE, PURPLE];
 
 // o chão fica abaixo de tudo (XP 4-5, sombras 8, inimigos 9, gato 10)
 const DEPTH_CRATER = 2;
@@ -57,10 +58,11 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 // ---------- carregamento (PreloadScene) ----------
 
 export function loadMinotaurStompSheet(scene) {
-  scene.load.spritesheet(KEY, 'assets/fx/minotaur_stomp.png', {
+  scene.load.spritesheet('minotaur_stomp', 'assets/fx/minotaur_stomp.png', {
     frameWidth: FRAME,
     frameHeight: FRAME
   });
+  scene.load.spritesheet('minotaur_stomp_rage', 'assets/fx/minotaur_stomp_rage.png', { frameWidth: FRAME, frameHeight: FRAME });
 }
 
 // chamado no create() da PreloadScene
@@ -72,6 +74,9 @@ export function createMinotaurStompTextures(scene) {
   ensureDustTexture(scene);
   DEBRIS_KEYS.forEach((key) => ensureDebrisTexture(scene, key));
   CRATER_KEYS.forEach((key, i) => ensureCraterTextures(scene, key, CRACK_KEYS[i], 1000 + i * 7919));
+  setMinotaurStompFxRage(true);
+  CRATER_KEYS.forEach((key, i) => ensureCraterTextures(scene, key + "_rage", CRACK_KEYS[i] + "_rage", 1000 + i * 7919));
+  setMinotaurStompFxRage(false);
 }
 
 export function hasMinotaurStompFx(scene) {
@@ -376,7 +381,7 @@ function ensureCraterTextures(scene, baseKey, glowKey, seed) {
         setPx(base, px + xx, py + yy, col);
       }
     }
-    if (rng() < 0.3) setPx(base, px, py, 0x9b6fe0);
+    if (rng() < 0.3) setPx(base, px, py, BRIGHT);
   }
 
   flushBuffer(scene, baseKey, base);
@@ -446,7 +451,7 @@ function crater(scene, x, y, radius) {
   const i = Math.floor(Math.random() * CRATER_KEYS.length);
   const finalScale = (radius * CRATER_SPAN * 2) / CRATER_TEX;
 
-  const base = scene.add.image(x, y, CRATER_KEYS[i])
+  const base = scene.add.image(x, y, RAGE_ACTIVE ? CRATER_KEYS[i] + "_rage" : CRATER_KEYS[i])
     .setDepth(DEPTH_CRATER)
     .setScale(finalScale * 1.22)
     .setAlpha(0);
@@ -459,7 +464,7 @@ function crater(scene, x, y, radius) {
   });
 
   // frestas com energia roxa esfriando (~2.7s)
-  const glow = scene.add.image(x, y, CRACK_KEYS[i])
+  const glow = scene.add.image(x, y, RAGE_ACTIVE ? CRACK_KEYS[i] + "_rage" : CRACK_KEYS[i])
     .setDepth(DEPTH_CRACK_GLOW)
     .setBlendMode(Phaser.BlendModes.ADD)
     .setScale(finalScale * 1.22)
@@ -832,4 +837,16 @@ export function playMinotaurStompLaunch(scene, target, dirX, dirY, durationMs = 
       });
     }
   });
+}
+// Alterna apenas a paleta visual; nenhuma regra de dano muda.
+export function setMinotaurStompFxRage(enabled) {
+  RAGE_ACTIVE = enabled;
+  KEY = enabled ? 'minotaur_stomp_rage' : 'minotaur_stomp';
+  DARK = enabled ? 0x061b24 : 0x0b0612;
+  DEEP = enabled ? 0x07535e : 0x3a0c6e;
+  PURPLE = enabled ? 0x16a99f : 0x8a2be2;
+  BRIGHT = enabled ? 0x32e9d6 : 0xb56bff;
+  PALE = enabled ? 0xbafff1 : 0xe9c6ff;
+  DUST = enabled ? [0x27474d,0x37585c,0x263b43] : [0x4a3a5c,0x5d4b72,0x3a2e4a];
+  SPARK = enabled ? [PALE, BRIGHT, WHITE, PURPLE] : [PALE, BRIGHT, WHITE, PURPLE];
 }

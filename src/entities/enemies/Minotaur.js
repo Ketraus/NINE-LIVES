@@ -3,9 +3,10 @@ import { playMinotaurChargeSwing } from '../../fx/MinotaurChargeSwingFx.js';
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
 import SettingsManager from '../../systems/SettingsManager.js';
-import { playMinotaurCleave, hasMinotaurCleaveFx } from '../../fx/MinotaurCleaveFx.js';
+import { playMinotaurCleave, hasMinotaurCleaveFx, setMinotaurCleaveFxRage } from '../../fx/MinotaurCleaveFx.js';
 import {
   playMinotaurStomp,
+  setMinotaurStompFxRage,
   playMinotaurStompLaunch,
   drawMinotaurStompTelegraph,
   hasMinotaurStompFx
@@ -55,7 +56,7 @@ const METEOR_CORE_COLOR = 0xbafff1;
 const METEOR_FALL_OFFSET_X = -220; // de onde o meteoro "nasce" em relação ao ponto de impacto
 const METEOR_FALL_OFFSET_Y = -720;
 const METEOR_SHAKE_MS = 140;
-const METEOR_SHAKE_INTENSITY = 0.008;
+const METEOR_SHAKE_INTENSITY = 0.004;
 // Salto de Perseguição (ver _shouldLeap e afins)
 const LEAP_COLOR = 0xff2200;
 const LEAP_RISE_HEIGHT = 900; // quanto ele sobe (px) até sair da câmera
@@ -271,6 +272,7 @@ export default class Minotaur extends Enemy {
     if (this._netPrevBossState === 'stomp_raise' && state.bossState !== 'stomp_raise') {
       const p = this.scene.player;
       const near = p && Phaser.Math.Distance.Between(p.x, p.y, this.x, this.y) < 450;
+      setMinotaurStompFxRage(this.isEnraged);
       playMinotaurStomp(this.scene, this.x, this.y, this.def.stompImpactRadius, { q: 0.6, shake: near ? 0.6 : 0 });
     }
     this._netPrevBossState = state.bossState;
@@ -566,7 +568,7 @@ export default class Minotaur extends Enemy {
     this.bossTelegraphGraphics.clear();
     this.scene.cameras.main.shake(CHARGE_SWING_SHAKE_MS, CHARGE_SWING_SHAKE_INTENSITY);
     const swingRadius = this.def.chargeSwingRadius * 1.3;
-    playMinotaurChargeSwing(this.scene, this.x, this.y, swingRadius);
+    playMinotaurChargeSwing(this.scene, this.x, this.y, swingRadius, this.isEnraged);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= swingRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.chargeSwingDamage), this, nowMs);
@@ -616,9 +618,9 @@ export default class Minotaur extends Enemy {
     const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
     const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.15, MISSILE_BLINK_ALPHA_MAX + 0.15, blinkT);
     const strokeAlpha = Phaser.Math.Linear(0.55, 1, blinkT);
-    g.fillStyle(CHARGE_SWING_COLOR, fillAlpha);
+    g.fillStyle((this.isEnraged ? 0x21c7bd : CHARGE_SWING_COLOR), fillAlpha);
     g.fillCircle(this.x, this.y, this.def.chargeSwingRadius * 1.3);
-    g.lineStyle(3, CHARGE_SWING_COLOR, strokeAlpha);
+    g.lineStyle(3, (this.isEnraged ? 0x21c7bd : CHARGE_SWING_COLOR), strokeAlpha);
     g.strokeCircle(this.x, this.y, this.def.chargeSwingRadius * 1.3);
   }
 
@@ -646,14 +648,14 @@ export default class Minotaur extends Enemy {
     const blinkT = (Math.sin((nowMs / MISSILE_BLINK_PERIOD_MS) * Math.PI * 2) + 1) / 2; // 0..1
     const lineAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.3, MISSILE_BLINK_ALPHA_MAX + 0.3, blinkT);
     const areaAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX, blinkT);
-    g.lineStyle(4, AXE_TELEGRAPH_COLOR, lineAlpha);
+    g.lineStyle(4, (this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR), lineAlpha);
     g.beginPath();
     g.moveTo(this.x, this.y);
     g.lineTo(this.axeTargetX, this.axeTargetY);
     g.strokePath();
-    g.fillStyle(AXE_TELEGRAPH_COLOR, areaAlpha);
+    g.fillStyle((this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR), areaAlpha);
     g.fillCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius);
-    g.lineStyle(2, AXE_TELEGRAPH_COLOR, Phaser.Math.Linear(0.55, 1, blinkT));
+    g.lineStyle(2, (this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR), Phaser.Math.Linear(0.55, 1, blinkT));
     g.strokeCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius);
   }
 
@@ -700,7 +702,7 @@ export default class Minotaur extends Enemy {
     // terra + impacto tocam juntos no instante em que crava (impacto mais alto que a terra)
     this.scene.sound.play('sfx_axe_dirt', { volume: 0.5 });
     this.scene.sound.play('sfx_axe_impact', { volume: 0.85 });
-    this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius, AXE_TELEGRAPH_COLOR);
+    this._flashCircle(this.axeTargetX, this.axeTargetY, this.def.axeThrowImpactRadius, (this.isEnraged ? 0x32e9d6 : AXE_TELEGRAPH_COLOR));
     const dist = Phaser.Math.Distance.Between(this.axeTargetX, this.axeTargetY, target.x, target.y);
     if (dist <= this.def.axeThrowImpactRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.axeThrowImpactDamage), this, nowMs);
@@ -772,7 +774,7 @@ export default class Minotaur extends Enemy {
     });
 
     const fireRing = this.scene.add
-      .circle(x, y, radius, AXE_EXPLOSION_COLOR, 0.55)
+      .circle(x, y, radius, (this.isEnraged ? 0x22c7bd : AXE_EXPLOSION_COLOR), 0.55)
       .setDepth(20)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(0.15);
@@ -808,7 +810,7 @@ export default class Minotaur extends Enemy {
     for (let i = 0; i < AXE_EXPLOSION_SHARD_COUNT; i++) {
       const angle = (Math.PI * 2 * i) / AXE_EXPLOSION_SHARD_COUNT + Phaser.Math.FloatBetween(-0.15, 0.15);
       const dist = radius * Phaser.Math.FloatBetween(0.7, 1.15);
-      const tint = i % 2 === 0 ? AXE_EXPLOSION_COLOR : 0xffdd66;
+      const tint = i % 2 === 0 ? (this.isEnraged ? 0x22c7bd : AXE_EXPLOSION_COLOR) : 0xffdd66;
       const shard = this.scene.add
         .image(x, y, 'hit_fx')
         .setDepth(20)
@@ -907,11 +909,13 @@ export default class Minotaur extends Enemy {
       // pedra: cai em diagonal (ease-in, acelera perto do chão)
       const fall = t * t;
       m.rock.list[0]?.setFrame(Math.min(3, Math.floor(nowMs / 95) % 4));
-      m.rock.setRotation(t * 9);
+      m.rock.setRotation(t * 5);
+      m.rock.setAlpha(Math.min(1, 0.45 + t * 2));
       m.rock.setPosition(
         m.x + METEOR_FALL_OFFSET_X * (1 - fall),
         m.y + METEOR_FALL_OFFSET_Y * (1 - fall)
       );
+      m.rock.setScale(Phaser.Math.Linear(0.82, 1.08, t));
 
       if (nowMs >= m.impactAt) {
         this._impactMeteor(m, target, nowMs);
@@ -940,8 +944,7 @@ export default class Minotaur extends Enemy {
       .setDepth(4)
       .setScale(0.35);
     const rock = this.scene.add.container(0, 0, [
-      this.scene.add.image(0, 0, 'minotaur_meteor_aqua', 0).setScale(1.65),
-      this.scene.add.circle(0, 0, 5, METEOR_CORE_COLOR, 0.4)
+      this.scene.add.image(0, 0, 'minotaur_meteor_aqua', 0).setScale(0.95)
     ]).setDepth(15);
     rock.setPosition(x + METEOR_FALL_OFFSET_X, y + METEOR_FALL_OFFSET_Y);
 
@@ -1042,7 +1045,7 @@ export default class Minotaur extends Enemy {
     // anel vermelho se fechando em volta dele (carregando o salto)
     const g = this.bossTelegraphGraphics;
     g.clear();
-    g.lineStyle(4, LEAP_COLOR, 0.35 + 0.5 * p);
+    g.lineStyle(4, (this.isEnraged ? 0x20c6ba : LEAP_COLOR), 0.35 + 0.5 * p);
     g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, p));
     if (nowMs >= this.leapPhaseUntil) this._startLeapRise(nowMs);
   }
@@ -1059,7 +1062,7 @@ export default class Minotaur extends Enemy {
     this.shadow?.setVisible(false);
     this.scene.cameras.main.shake(LEAP_TAKEOFF_SHAKE_MS, LEAP_TAKEOFF_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
-    this._flashCircle(this.leapGroundX, this.leapGroundY, 100, LEAP_COLOR);
+    this._flashCircle(this.leapGroundX, this.leapGroundY, 100, (this.isEnraged ? 0x20c6ba : LEAP_COLOR));
   }
 
   _updateLeapRise(nowMs) {
@@ -1148,7 +1151,7 @@ export default class Minotaur extends Enemy {
     cam.flash(160, 255, 140, 60);
     this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
     this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.9 });
-    this._flashCircle(lx, ly, radius, LEAP_COLOR);
+    this._flashCircle(lx, ly, radius, (this.isEnraged ? 0x20c6ba : LEAP_COLOR));
     this._showAxeExplosionFx(lx, ly, radius);
     const ring = this.scene.add
       .circle(lx, ly, radius, 0xffffff, 0)
@@ -1210,8 +1213,8 @@ export default class Minotaur extends Enemy {
     }
     if (!this.leapAura) {
       this.leapAura = this.scene.add
-        .circle(this.x, this.y, LEAP_AGGRO_AURA_RADIUS, LEAP_COLOR, 0.2)
-        .setStrokeStyle(3, LEAP_COLOR, 0.8)
+        .circle(this.x, this.y, LEAP_AGGRO_AURA_RADIUS, (this.isEnraged ? 0x20c6ba : LEAP_COLOR), 0.2)
+        .setStrokeStyle(3, (this.isEnraged ? 0x20c6ba : LEAP_COLOR), 0.8)
         .setDepth(8);
     }
     this.leapAura.setPosition(this.x, this.y);
@@ -1265,10 +1268,10 @@ export default class Minotaur extends Enemy {
     g.clear();
     const alpha = Phaser.Math.Linear(CLEAVE_TELEGRAPH_ALPHA_START, CLEAVE_TELEGRAPH_ALPHA_END, progress);
     const half = Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg);
-    g.fillStyle(CLEAVE_COLOR, alpha);
+    g.fillStyle((this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR), alpha);
     g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
     g.fillPath();
-    g.lineStyle(3, CLEAVE_COLOR, Math.min(alpha + 0.35, 1));
+    g.lineStyle(3, (this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR), Math.min(alpha + 0.35, 1));
     g.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
     g.strokePath();
   }
@@ -1317,6 +1320,7 @@ export default class Minotaur extends Enemy {
 
     // FX roxo novo (src/fx/MinotaurCleaveFx.js); o antigo abaixo fica de reserva
     if (hasMinotaurCleaveFx(this.scene)) {
+      setMinotaurCleaveFxRage(this.isEnraged);
       playMinotaurCleave(this.scene, this.x, this.y, this.cleaveAngle, this.def.cleaveRange, half);
       return;
     }
@@ -1334,7 +1338,7 @@ export default class Minotaur extends Enemy {
     });
 
     const afterglow = this.scene.add.graphics().setDepth(19);
-    afterglow.fillStyle(CLEAVE_COLOR, 0.5);
+    afterglow.fillStyle((this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR), 0.5);
     afterglow.slice(this.x, this.y, this.def.cleaveRange * 1.05, this.cleaveAngle - half, this.cleaveAngle + half, false);
     afterglow.fillPath();
     this.scene.tweens.add({
@@ -1372,7 +1376,7 @@ export default class Minotaur extends Enemy {
     for (let i = 0; i < CLEAVE_SHARD_COUNT; i++) {
       const angle = this.cleaveAngle + Phaser.Math.FloatBetween(-half, half);
       const dist = this.def.cleaveRange * Phaser.Math.FloatBetween(0.55, 1.05);
-      const tint = i % 2 === 0 ? CLEAVE_COLOR : 0xffffff;
+      const tint = i % 2 === 0 ? (this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR) : 0xffffff;
       const shard = this.scene.add
         .image(this.x, this.y, 'hit_fx')
         .setDepth(20)
@@ -1443,12 +1447,13 @@ export default class Minotaur extends Enemy {
     const fillAlpha = Phaser.Math.Linear(MISSILE_BLINK_ALPHA_MIN + 0.1, MISSILE_BLINK_ALPHA_MAX + 0.1, blinkT);
     const radius = Phaser.Math.Linear(this.def.stompImpactRadius * 0.3, this.def.stompImpactRadius, progress);
     if (hasMinotaurStompFx(this.scene)) {
+      setMinotaurStompFxRage(this.isEnraged);
       drawMinotaurStompTelegraph(g, this.x, this.y, radius, this.def.stompImpactRadius, progress, fillAlpha);
       return;
     }
-    g.fillStyle(STOMP_TELEGRAPH_COLOR, fillAlpha);
+    g.fillStyle((this.isEnraged ? 0x32e9d6 : STOMP_TELEGRAPH_COLOR), fillAlpha);
     g.fillCircle(this.x, this.y, radius);
-    g.lineStyle(3, STOMP_TELEGRAPH_COLOR, Math.min(fillAlpha + 0.4, 1));
+    g.lineStyle(3, (this.isEnraged ? 0x32e9d6 : STOMP_TELEGRAPH_COLOR), Math.min(fillAlpha + 0.4, 1));
     g.strokeCircle(this.x, this.y, radius);
   }
 
@@ -1458,9 +1463,10 @@ export default class Minotaur extends Enemy {
     this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.7 });
     // FX roxo novo (src/fx/MinotaurStompFx.js: explosão, cratera, poeira, detritos, tremor);
     // o visual simples antigo fica de reserva se o FX não carregou
+    setMinotaurStompFxRage(this.isEnraged);
     if (!playMinotaurStomp(this.scene, this.x, this.y, this.def.stompImpactRadius)) {
       this.scene.cameras.main.shake(STOMP_SHAKE_MS, STOMP_SHAKE_INTENSITY);
-      this._flashCircle(this.x, this.y, this.def.stompImpactRadius, STOMP_IMPACT_COLOR);
+      this._flashCircle(this.x, this.y, this.def.stompImpactRadius, (this.isEnraged ? 0xbafff1 : STOMP_IMPACT_COLOR));
     }
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.stompImpactRadius && target.active && !target.healthSystem?.isDead()) {
@@ -1469,6 +1475,7 @@ export default class Minotaur extends Enemy {
       const dy = (target.y - this.y) || 0;
       const len = Math.hypot(dx, dy) || 1;
       target.applyKnockback?.(dx / len, dy / len, this.def.stompKnockbackForce, nowMs, this.def.stompKnockbackDurationMs);
+      setMinotaurStompFxRage(this.isEnraged);
       playMinotaurStompLaunch(this.scene, target, dx / len, dy / len, this.def.stompKnockbackDurationMs);
     }
     this.bossState = 'chasing';

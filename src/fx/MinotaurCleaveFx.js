@@ -13,7 +13,7 @@
 // A marca do chão (mancha, rachaduras, entulho) fica ~2s e se desfaz aos poucos,
 // começando pelo fim do cone (longe do Minotauro) e voltando até ele.
 
-const KEY = 'minotaur_cleave'; // folha 3 frames 32x72: 0 cometa, 1 arco, 2 chama
+let KEY = 'minotaur_cleave'; // folha 3 frames 32x72: 0 cometa, 1 arco, 2 chama
 const FRAME_W = 32;
 const FRAME_H = 72;
 const F_COMET = 0;
@@ -24,13 +24,13 @@ const ARC_FRAME_HEIGHT = 67; // altura real do desenho do arco dentro do frame
 const GLOW_KEY = 'mcleave_glow';
 const DEBRIS_KEYS = ['mcleave_debris_0', 'mcleave_debris_1', 'mcleave_debris_2'];
 
-const DARK = 0x0b0612;
-const DEEP = 0x3a0c6e;
-const PURPLE = 0x8a2be2;
-const BRIGHT = 0xb56bff;
-const PALE = 0xe9c6ff;
+let DARK = 0x0b0612;
+let DEEP = 0x3a0c6e;
+let PURPLE = 0x8a2be2;
+let BRIGHT = 0xb56bff;
+let PALE = 0xe9c6ff;
 const WHITE = 0xffffff;
-const DUST = [0x4a3a5c, 0x5d4b72, 0x3a2e4a];
+let DUST = [0x4a3a5c, 0x5d4b72, 0x3a2e4a];
 
 // o chão fica abaixo de tudo (XP 4-5, sombras 8, inimigos 9, gato 10)
 const DEPTH_GROUND = 2;
@@ -50,10 +50,11 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 // ---------- carregamento (PreloadScene) ----------
 
 export function loadMinotaurCleaveSheet(scene) {
-  scene.load.spritesheet(KEY, 'assets/fx/minotaur_cleave.png', {
+  scene.load.spritesheet('minotaur_cleave', 'assets/fx/minotaur_cleave.png', {
     frameWidth: FRAME_W,
     frameHeight: FRAME_H
   });
+  scene.load.spritesheet('minotaur_cleave_rage', 'assets/fx/minotaur_cleave_rage.png', { frameWidth: FRAME_W, frameHeight: FRAME_H });
 }
 
 // chamado no create() da PreloadScene
@@ -483,4 +484,16 @@ function dust(scene, range, at, latMax, delayFor) {
       });
     });
   }
+}
+
+// Alterna apenas a paleta visual; nenhuma regra de dano muda.
+export function setMinotaurCleaveFxRage(enabled) {
+  KEY = enabled ? 'minotaur_cleave_rage' : 'minotaur_cleave';
+  DARK = enabled ? 0x061b24 : 0x0b0612;
+  DEEP = enabled ? 0x07535e : 0x3a0c6e;
+  PURPLE = enabled ? 0x16a99f : 0x8a2be2;
+  BRIGHT = enabled ? 0x32e9d6 : 0xb56bff;
+  PALE = enabled ? 0xbafff1 : 0xe9c6ff;
+  DUST = enabled ? [0x27474d,0x37585c,0x263b43] : [0x4a3a5c,0x5d4b72,0x3a2e4a];
+  
 }
