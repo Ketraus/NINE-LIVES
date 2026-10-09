@@ -38,6 +38,26 @@ const DEPTH_MISSILE = 15;
 const DEPTH_BOOM = 18;
 const DEPTH_SPARK = 19;
 
+// ---------- orçamento de efeitos (vários Elites ao mesmo tempo) ----------
+// Um Elite sozinho continua com a explosão completa. Quando há várias
+// explosões/mísseis vivos ao mesmo tempo (2-3 Elites), as partículas
+// secundárias diminuem sozinhas; corpo, clarão, anel de dano e chão queimado
+// (o que importa pra leitura e pro visual) ficam sempre completos.
+const BUDGET_WINDOW_MS = 900;
+const recentExplosions = [];
+let liveMissiles = 0;
+const resetRegistered = new WeakSet();
+
+function explosionBudget(scene) {
+  const now = scene.time.now;
+  while (recentExplosions.length && now - recentExplosions[0] > BUDGET_WINDOW_MS) recentExplosions.shift();
+  recentExplosions.push(now);
+  const c = recentExplosions.length; // inclui esta
+  if (c <= 3) return 1; // 1 Elite = 3 mísseis
+  if (c <= 6) return 0.6;
+  return 0.4;
+}
+
 // ---------- carregamento (PreloadScene) ----------
 
 export function loadEliteMissileSheet(scene) {
@@ -151,6 +171,17 @@ export function createEliteMissileProjectile(scene, x, y, groundTarget = null) {
     .setOrigin(1, 0.5);
   // sombra no chão: anda em linha reta origem→alvo (o míssil é que voa em arco)
   const shadow = scene.add.ellipse(x, y, 16, 7, 0x000000, 0.3).setDepth(DEPTH_SHADOW);
+  if (!resetRegistered.has(scene)) {
+    // restart da cena (morte + R) destrói os mísseis sem passar por destroy()
+    resetRegistered.add(scene);
+    scene.events.once('shutdown', () => {
+      liveMissiles = 0;
+      recentExplosions.length = 0;
+      resetRegistered.delete(scene);
+    });
+  }
+  liveMissiles++;
+  let released = false;
   const startX = x;
   const startY = y;
   const flatLen = groundTarget ? Phaser.Math.Distance.Between(x, y, groundTarget.x, groundTarget.y) || 1 : 1;
@@ -194,12 +225,16 @@ export function createEliteMissileProjectile(scene, x, y, groundTarget = null) {
       }
 
       const now = scene.time.now;
-      if (now - this._lastTrailMs >= 24) {
+      if (now - this._lastTrailMs >= (liveMissiles > 3 ? 56 : 24)) {
         this._lastTrailMs = now;
         spawnTrailPuff(scene, nx + Math.cos(back) * 8, ny + Math.sin(back) * 8);
       }
     },
     destroy() {
+      if (!released) {
+        released = true;
+        liveMissiles = Math.max(0, liveMissiles - 1);
+      }
       body.destroy();
       flame.destroy();
       shadow.destroy();
@@ -273,6 +308,7 @@ export function playEliteMissileLaunch(scene, x, y) {
 
 // intensity: 1 = completa; menor = menos partículas (vários mísseis ao mesmo tempo)
 export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
+  intensity = Math.min(intensity, explosionBudget(scene));
   const n = (count) => Math.max(2, Math.round(count * intensity));
 
   const flare = (scale, alpha, ms, tint) => {
@@ -331,7 +367,7 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
 
   // 2) clarões: branco seco + laranja largo
   flare((radius * 2.4) / 20, 1, 130, WHITE);
-  flare((radius * 4) / 20, 0.6, 260, ORANGE);
+  if (intensity >= 0.6) flare((radius * 4) / 20, 0.6, 260, ORANGE);
 
   // 3) corpo da explosão: sprite animado + cópia aditiva maior (brilho)
   const baseScale = (radius * SPRITE_DIAMETER_PER_RADIUS) / FRAME;
@@ -366,39 +402,40 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
   });
 
   // 4) anéis de choque achatados no chão + marca do raio de dano (vermelho, curta)
-  [
+  const rings = [
     { delay: 0, to: 1.25, w: 5, color: YELLOW, ms: 340 },
     { delay: 60, to: 1.0, w: 2.5, color: ORANGE, ms: 340 }
-  ].forEach((cfg) => {
-    const g = scene.add.graphics().setDepth(DEPTH_BOOM).setBlendMode(Phaser.BlendModes.ADD);
-    const state = { r: radius * 0.15, a: 1 };
-    scene.tweens.add({
-      targets: state,
-      r: radius * cfg.to,
-      a: 0,
-      delay: cfg.delay,
-      duration: cfg.ms,
-      ease: 'Cubic.easeOut',
-      onUpdate: () => {
-        g.clear();
-        g.lineStyle(cfg.w, cfg.color, state.a);
-        g.strokeEllipse(x, y, state.r * 2, state.r * 2 * 0.82);
-      },
-      onComplete: () => g.destroy()
-    });
-  });
-  const dmg = scene.add.graphics().setDepth(DEPTH_BOOM - 2);
-  const dmgState = { a: 0.9 };
+  ];
+  const ringGfx = scene.add.graphics().setDepth(DEPTH_BOOM).setBlendMode(Phaser.BlendModes.ADD);
+  const ringClock = { p: 0 };
+  const ringTotalMs = 400; // maior delay + duração
   scene.tweens.add({
-    targets: dmgState,
-    a: 0,
+    targets: ringClock,
+    p: 1,
+    duration: ringTotalMs,
+    ease: 'Linear',
+    onUpdate: () => {
+      ringGfx.clear();
+      rings.forEach((cfg) => {
+        const local = (ringClock.p * ringTotalMs - cfg.delay) / cfg.ms;
+        if (local <= 0 || local >= 1) return;
+        const e = 1 - Math.pow(1 - local, 3); // Cubic.easeOut
+        const r = Phaser.Math.Linear(radius * 0.15, radius * cfg.to, e);
+        ringGfx.lineStyle(cfg.w, cfg.color, 1 - e);
+        ringGfx.strokeEllipse(x, y, r * 2, r * 2 * 0.82);
+      });
+    },
+    onComplete: () => ringGfx.destroy()
+  });
+  // raio fixo: desenha uma vez e só apaga o alfa (sem redesenhar por frame)
+  const dmg = scene.add.graphics().setDepth(DEPTH_BOOM - 2).setAlpha(0.9);
+  dmg.lineStyle(3, RED, 1);
+  dmg.strokeCircle(x, y, radius);
+  scene.tweens.add({
+    targets: dmg,
+    alpha: 0,
     duration: 380,
     ease: 'Quad.easeIn',
-    onUpdate: () => {
-      dmg.clear();
-      dmg.lineStyle(3, RED, dmgState.a);
-      dmg.strokeCircle(x, y, radius);
-    },
     onComplete: () => dmg.destroy()
   });
 
