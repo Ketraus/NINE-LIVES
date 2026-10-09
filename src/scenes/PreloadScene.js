@@ -355,9 +355,15 @@ export default class PreloadScene extends Phaser.Scene {
     prepareMinotaurChargeSwing(this);
 
     // as artes das cartas de arma não são pixel art, então usam filtro
-    const smoothKeys = ['card_fists', 'card_katana', 'card_pistol']
-      .concat(cardArtIds.map((id) => `card_${id}`));
-    smoothKeys.forEach((key) => {
+    // As cartas de upgrade usam tipografia pixel/terminal e sÃ£o ampliadas
+    // na tela de evoluÃ§Ã£o: NEAREST preserva os contornos e os circuitos.
+    const cardArtKeys = cardArtIds.map((id) => `card_${id}`);
+    cardArtKeys.forEach((key) => {
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    });
+
+    // As cartas de arma continuam suaves na seleÃ§Ã£o inicial.
+    ['card_fists', 'card_katana', 'card_pistol'].forEach((key) => {
       this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR);
     });
 

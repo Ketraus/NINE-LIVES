@@ -24,8 +24,10 @@ export default [
   'dmg_up_evo_overcharge_fists', 'dmg_up_evo_overcharge_katana', 'dmg_up_evo_overcharge_pistol',
 
   // últimas evoluções (arte adicionada): Cyberus, Restock, Reflexos de
-  // Predador, CatForce 2.0, NeoShuriken, Dança de Cortes, Smartshot
+  // Predador, CatForce 2.0, NeoShuriken, Dança de Cortes, Smartshot,
+  // Blastwave, Terremoto, Sexto Sentido, Hemorragia e Colosso
   'dog_purify_evo_cyberus', 'arsenal_expandido_evo_override', 'range_up_evo_fists_bullet_time',
   'pistol_drone_evo_catforce', 'katana_shuriken_evo_shurivex', 'katana_double_evo_danca_cortes',
-  'pistol_fragmentation_evo_smartshot'
+  'pistol_fragmentation_evo_smartshot', 'fists_shockwave_evo_blastix', 'fists_slam_evo_terremoto',
+  'cooldown_down_evo_sixth_sense', 'lifesteal_up_evo_hemorrhage', 'hp_up_evo_colosso'
 ];
