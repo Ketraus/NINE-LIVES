@@ -60,6 +60,38 @@ function _ensureSceneCleanup(scene) {
   scene.events.once('destroy', cleanup);
 }
 
+// Cada Text do Phaser cria um canvas + textura de GPU nova; fazer isso a cada
+// acerto causava travadas em hordas. O número é renderizado UMA vez por
+// (texto, cor, tamanho) e depois só se desenha uma Image com essa textura
+// (Images destruídas não têm o problema de reuso após restart dos Texts).
+function _numberTexture(scene, label, style) {
+  const fontSize = style.fontSize || BASE_FONT_SIZE;
+  const key = `__dmgnum_${label}_${style.color}_${fontSize}`;
+  if (scene.textures.exists(key)) return key;
+
+  const source = scene.make.text({
+    x: 0,
+    y: 0,
+    text: label,
+    add: false,
+    style: {
+      fontFamily: PIXEL_FONT,
+      fontSize: `${fontSize}px`,
+      fontStyle: 'bold',
+      color: style.color,
+      stroke: STROKE_COLOR,
+      strokeThickness: 4
+    }
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = source.canvas.width;
+  canvas.height = source.canvas.height;
+  canvas.getContext('2d').drawImage(source.canvas, 0, 0);
+  source.destroy();
+  scene.textures.addCanvas(key, canvas);
+  return key;
+}
+
 function _styleFor(target, feedback) {
   const bossScale = target?.def?.boss ? 1.18 : 1;
   if (feedback.isCritical) {
@@ -150,14 +182,7 @@ export default class DamageNumberManager {
     const launchY = startY;
     const label = isHeal ? `+${roundedDamage}` : String(roundedDamage);
 
-    const text = scene.add.text(startX, startY, label, {
-      fontFamily: PIXEL_FONT,
-      fontSize: `${style.fontSize || BASE_FONT_SIZE}px`,
-      fontStyle: 'bold',
-      color: style.color,
-      stroke: STROKE_COLOR,
-      strokeThickness: 4
-    });
+    const text = scene.add.image(startX, startY, _numberTexture(scene, label, style));
 
     text
       .setOrigin(0.5, 0.65)
