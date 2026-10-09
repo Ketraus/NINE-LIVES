@@ -2,6 +2,12 @@ import HealthSystem from '../../combat/HealthSystem.js';
 import EventBus from '../../systems/EventBus.js';
 import SettingsManager from '../../systems/SettingsManager.js';
 import DamageNumberManager from '../../combat/DamageNumberManager.js';
+import {
+  createBleedFx,
+  destroyBleedFx,
+  triggerBleedTickFx,
+  updateBleedFx
+} from '../../fx/BleedFx.js';
 
 let nextInstanceId = 1;
 
@@ -128,6 +134,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bleedTickDamage = 0;
     this.bleedTickIntervalMs = 500;
     this.nextBleedTickAt = 0;
+    this.bleedFx = null;
 
     // cor de tint "de status" (paralisia/sangramento) atualmente aplicada —
     this._currentStatusTint = def.color;
@@ -147,6 +154,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
       const offsetX = this.shadowOffsetX * this.scaleX * (this.flipX ? -1 : 1);
       this.shadow.x = this.x + offsetX;
       this.shadow.y = this.y + this.displayHeight * this._shadowYFrac;
+    }
+    if (this.bleedFx) {
+      updateBleedFx(this.bleedFx, this, time, !this.statusImmune && time < this.bleedUntil);
     }
   }
 
@@ -181,6 +191,8 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // despawn por fuga, etc.) — sem isso ela ficaria órfã na tela.
   destroy(fromScene) {
     this.shadow?.destroy();
+    destroyBleedFx(this.bleedFx);
+    this.bleedFx = null;
     super.destroy(fromScene);
   }
 
@@ -412,6 +424,9 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.bleedUntil = allowed && (flags & 1) ? nowMs + NETWORK_STATUS_HOLD_MS : 0;
     this.paralyzedUntil = allowed && (flags & 2) ? nowMs + NETWORK_STATUS_HOLD_MS : 0;
     this._refreshStatusTint(nowMs);
+    const bleeding = allowed && (flags & 1) !== 0;
+    if (bleeding && !this.bleedFx) this.bleedFx = createBleedFx(this.scene, this);
+    updateBleedFx(this.bleedFx, this, nowMs, bleeding);
   }
 
   // Chamado todo frame pelo EnemySpawner.updateAll (junto de chase()).
@@ -419,7 +434,10 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (!this.active || this.healthSystem.isDead()) return;
     this._syncStatusImmunity();
     this._refreshStatusTint(nowMs);
-    if (nowMs >= this.bleedUntil) return;
+    const bleeding = !this.statusImmune && nowMs < this.bleedUntil;
+    if (bleeding && !this.bleedFx) this.bleedFx = createBleedFx(this.scene, this);
+    updateBleedFx(this.bleedFx, this, nowMs, bleeding);
+    if (!bleeding) return;
     if (nowMs < this.nextBleedTickAt) return;
     this.nextBleedTickAt += this.bleedTickIntervalMs;
     const hitX = this.x;
@@ -427,6 +445,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     const appliedDamage = this.healthSystem.takeDamage(this.bleedTickDamage);
     if (appliedDamage > 0) {
       DamageNumberManager.show(this.scene, hitX, hitY, appliedDamage, this, { kind: 'bleed' });
+      triggerBleedTickFx(this.bleedFx, nowMs);
     }
   }
 
