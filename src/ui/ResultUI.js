@@ -23,6 +23,7 @@ const HEX = { track: 0x14232a, line: 0x1c2e36, cyan: 0x4fd1ff, borderIdle: 0x3d5
 // de qualquer inimigo/projétil: nada do gameplay aparece por engano por cima.
 const FAR = 100000;
 const CANCELLED = new Error('result-cancelled');
+const SKIP_STAGE = new Error('result-skip-stage');
 
 const fmt = (n) => String(Math.round(n));
 const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -34,6 +35,9 @@ export default class ResultUI {
     this._started = false;
     this._lastTick = 0;
     this.stage = null;
+    this._stageIndex = -1; // 0..2 = etapas puláveis; 3 = relatório final
+    this._skippingStage = false;
+    this._skipWaiters = new Set();
 
     this._buildUI();
     this._bindEvents();
@@ -69,14 +73,22 @@ export default class ResultUI {
     EventBus.on('gameover-shown', () => this._start());
     EventBus.on('win-shown', () => this._start());
     EventBus.on('run-restart', () => this._reset());
+    this._onSkipInput = () => this._skipCurrentStage();
+    this.scene.input.on('pointerdown', this._onSkipInput);
+    this.scene.input.keyboard?.on('keydown-SPACE', this._onSkipInput);
     this.scene.events.once('shutdown', () => {
       this._token += 1;
+      this.scene.input.off('pointerdown', this._onSkipInput);
+      this.scene.input.keyboard?.off('keydown-SPACE', this._onSkipInput);
     });
   }
 
   _reset() {
     this._token += 1;
     this._started = false;
+    this._stageIndex = -1;
+    this._skippingStage = false;
+    this._skipWaiters.clear();
     if (this.stage) {
       this.stage.destroy();
       this.stage = null;
@@ -101,11 +113,25 @@ export default class ResultUI {
     try {
       await this._tween({ targets: this.dim, alpha: 0.88, duration: 420 });
       if (result) {
-        await this._stageKills(result);
-        await this._stageBonus(result);
-        await this._stageFinal(result);
+        const stages = [
+          this._stageKills.bind(this),
+          this._stageBonus.bind(this),
+          this._stageFinal.bind(this)
+        ];
+        for (let i = 0; i < stages.length; i++) {
+          this._stageIndex = i;
+          try {
+            await stages[i](result);
+          } catch (err) {
+            if (err !== SKIP_STAGE) throw err;
+            this._destroyStageImmediately();
+            this._skippingStage = false;
+          }
+        }
+        this._stageIndex = 3;
         await this._stageReport(result);
       } else {
+        this._stageIndex = 3;
         this._newStage();
         this._buildButtons();
       }
@@ -123,6 +149,22 @@ export default class ResultUI {
   _finish() {
     this.scene.resultComplete = true;
     EventBus.emit('result-complete');
+  }
+
+  // Um toque/clique avança uma etapa por vez. O relatório final (etapa 4)
+  // nunca é pulado, porque é onde ficam os botões de reiniciar e menu.
+  _skipCurrentStage() {
+    if (!this._started || this._stageIndex < 0 || this._stageIndex > 2 || this._skippingStage) return;
+    this._skippingStage = true;
+    [...this._skipWaiters].forEach((cancel) => cancel());
+    this._skipWaiters.clear();
+  }
+
+  _destroyStageImmediately() {
+    if (!this.stage) return;
+    this.scene.tweens.killTweensOf(this.stage.list);
+    this.stage.destroy();
+    this.stage = null;
   }
 
   // Etapa 1 — tabela de abates
@@ -448,17 +490,47 @@ export default class ResultUI {
   _wait(ms) {
     const token = this._token;
     return new Promise((resolve, reject) => {
-      this.scene.time.delayedCall(ms, () => (token === this._token ? resolve() : reject(CANCELLED)));
+      let settled = false;
+      const timer = this.scene.time.delayedCall(ms, () => {
+        if (settled) return;
+        settled = true;
+        this._skipWaiters.delete(cancel);
+        token === this._token ? resolve() : reject(CANCELLED);
+      });
+      const cancel = () => {
+        if (settled) return;
+        settled = true;
+        timer.remove();
+        this._skipWaiters.delete(cancel);
+        reject(SKIP_STAGE);
+      };
+      this._skipWaiters.add(cancel);
     });
   }
 
   _tween(config) {
     const token = this._token;
     return new Promise((resolve, reject) => {
-      this.scene.tweens.add({
+      let settled = false;
+      const originalOnComplete = config.onComplete;
+      const tween = this.scene.tweens.add({
         ...config,
-        onComplete: () => (token === this._token ? resolve() : reject(CANCELLED))
+        onComplete: (...args) => {
+          if (settled) return;
+          settled = true;
+          this._skipWaiters.delete(cancel);
+          originalOnComplete?.(...args);
+          token === this._token ? resolve() : reject(CANCELLED);
+        }
       });
+      const cancel = () => {
+        if (settled) return;
+        settled = true;
+        tween.stop();
+        this._skipWaiters.delete(cancel);
+        reject(SKIP_STAGE);
+      };
+      this._skipWaiters.add(cancel);
     });
   }
 
