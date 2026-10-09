@@ -14,7 +14,6 @@ let nextInstanceId = 1;
 // Tint aplicado enquanto o inimigo está paralisado (carta "Overcharge" —
 const PARALYZE_TINT = 0x1a1a66;
 // Tint aplicado enquanto o inimigo está sangrando (carta "Hemorragia" —
-const BLEED_TINT = 0x8a0000;
 const NETWORK_STATUS_HOLD_MS = 600; // quanto o tint de status da réplica dura sem novo snapshot do Host
 
 // Constantes compartilhadas por Elite.js e Minotaur.js (mesmo piscar de alarme
@@ -227,7 +226,6 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // imune: nunca pinta tint de status, mesmo que algum campo tenha sobrado
     if (!this.statusImmune) {
       if (nowMs < this.paralyzedUntil) desired = PARALYZE_TINT;
-      else if (nowMs < this.bleedUntil) desired = BLEED_TINT;
     }
     if (desired !== this._currentStatusTint) {
       this._currentStatusTint = desired;

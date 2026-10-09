@@ -2,9 +2,10 @@
 // O efeito Ã© desenhado em cÃ³digo para nÃ£o exigir spritesheet novo e ficar
 // barato mesmo quando vÃ¡rios inimigos recebem o status na mesma run.
 
-const BLEED_DARK = 0x5c0712;
-const BLEED_MAIN = 0xd51f3d;
-const BLEED_BRIGHT = 0xff7180;
+// Fluido roxo: mantem a leitura de status sem representar sangue real.
+const BLEED_DARK = 0x26083d;
+const BLEED_MAIN = 0x8f39c7;
+const BLEED_BRIGHT = 0xe0a0ff;
 const UPDATE_INTERVAL_MS = 33;
 
 export function createBleedFx(scene, enemy) {
