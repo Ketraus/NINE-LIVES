@@ -28,6 +28,8 @@ const BOSS_FLASH_SHAKE_MS = 400;
 const BOSS_FLASH_SHAKE_INTENSITY = 0.016;
 // Hitstop: física do jogo congela por este tanto de tempo bem no auge do
 const BOSS_HITSTOP_MS = 130;
+// Respiro depois que a sequencia de morte do Minotauro termina.
+const BOSS_DEFEAT_DELAY_MS = 3000;
 
 export default class SpawnDirector {
   // {t, weights} com o peso de cada tipo de inimigo ao longo do tempo de
@@ -57,6 +59,7 @@ export default class SpawnDirector {
     this.bossTriggered = false;
     this.bossHasSpawned = false;
     this._bossMusicRestoreDone = false;
+    this.bossRecoveryUntilMs = 0;
 
     // Cheat (DevConsole "autospawn"): true = levas automáticas continuam
     this.autoSpawnEnabled = true;
@@ -116,7 +119,8 @@ export default class SpawnDirector {
       eliteTriggered: [...this.eliteTriggered],
       bossTriggered: this.bossTriggered,
       bossHasSpawned: this.bossHasSpawned,
-      bossMusicRestoreDone: this._bossMusicRestoreDone
+      bossMusicRestoreDone: this._bossMusicRestoreDone,
+      bossRecoveryUntilMs: this.bossRecoveryUntilMs
     };
   }
 
@@ -151,6 +155,9 @@ export default class SpawnDirector {
       : Boolean(this.bossSchedule && elapsed >= this.bossSchedule.t);
     this.bossHasSpawned = state?.bossHasSpawned === true || this.enemySpawner.hasActiveBoss();
     this._bossMusicRestoreDone = state?.bossMusicRestoreDone === true;
+    this.bossRecoveryUntilMs = Number.isFinite(state?.bossRecoveryUntilMs)
+      ? Math.max(0, state.bossRecoveryUntilMs)
+      : 0;
     this.enemySpawner.setMaxAlive(this._currentMaxAlive());
     this._scheduleNextBatch();
 
@@ -200,6 +207,10 @@ export default class SpawnDirector {
     // gatilho até ele morrer — inclusive Sealer e Elite por horário fixo,
     // que antes disparavam mesmo durante o encontro (bug).
     if (this._isBossEncounterActive()) return;
+
+    // Deixa a arena respirar antes de liberar novas levas depois do Boss.
+    // A janela tambem bloqueia Sealer/Elite agendados nesse intervalo.
+    if (this.getElapsedMs() < this.bossRecoveryUntilMs) return;
 
     // Sealer nasce SEMPRE por horário manual, nunca pelo sorteio normal
     this._checkSealerSchedule();
@@ -350,6 +361,7 @@ export default class SpawnDirector {
     if (!this.bossHasSpawned || this._bossMusicRestoreDone) return;
     if (this.enemySpawner.hasActiveBoss()) return; // ainda vivo
     this._bossMusicRestoreDone = true;
+    this.bossRecoveryUntilMs = this.getElapsedMs() + BOSS_DEFEAT_DELAY_MS;
     MusicManager.stopBoss(this.scene);
   }
 
