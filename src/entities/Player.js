@@ -327,7 +327,25 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.knockbackUntil = nowMs + durationMs;
   }
 
+  stopMovement() {
+    this.setVelocity(0, 0);
+    const keys = [...Object.values(this.cursors || {}), ...Object.values(this.keys || {})];
+    keys.forEach((key) => {
+      if (!key) return;
+      key.reset?.();
+      key.isDown = false;
+      key.isUp = true;
+    });
+    this._updateAnimation(new Phaser.Math.Vector2());
+  }
+
   _handleMovement() {
+    // Right-click can interrupt the browser pointer sequence before Phaser
+    // receives pointerup. Keep the player stopped until the input is released.
+    if (this.scene.rightMouseDown) {
+      this.stopMovement();
+      return;
+    }
     if (this.scene.time.now < this.knockbackUntil) return; // ainda sendo empurrado, não sobrescreve a velocity
 
     const left = this.cursors.left.isDown || this.keys.A.isDown;

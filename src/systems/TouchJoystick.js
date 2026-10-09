@@ -14,6 +14,10 @@ export default class TouchJoystick {
     this.baseX = 0;
     this.baseY = 0;
 
+    // O canvas Ã© um controle de jogo: o menu de contexto do navegador nÃ£o
+    // deve aparecer nem interromper a sequÃªncia de eventos do ponteiro.
+    scene.input.mouse?.disableContextMenu?.();
+
     const { width, height } = scene.scale;
     this.zoneWidth = width * ACTIVATION_ZONE_RATIO;
 
@@ -40,11 +44,14 @@ export default class TouchJoystick {
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
+    this._onContextMenu = this._onContextMenu.bind(this);
 
     scene.input.on('pointerdown', this._onPointerDown);
     scene.input.on('pointermove', this._onPointerMove);
     scene.input.on('pointerup', this._onPointerUp);
     scene.input.on('pointerupoutside', this._onPointerUp);
+    scene.input.on('pointercancel', this._onPointerUp);
+    scene.game.canvas?.addEventListener('contextmenu', this._onContextMenu);
 
     // esconde durante a tela de cartas/game over, igual o resto do HUD —
     EventBus.on('levelup-opened', () => this._setVisible(false));
@@ -82,6 +89,10 @@ export default class TouchJoystick {
   }
 
   _onPointerDown(pointer) {
+    // Ignore non-left mouse buttons; right-click must not activate the virtual joystick.
+    if (this.scene.rightMouseDown) return;
+    const button = pointer.event?.button ?? pointer.button;
+    if (button !== 0) return;
     if (this.pointerId !== null) return; // já tem um dedo controlando o joystick
     if (pointer.x > this.zoneWidth) return; // só ativa no lado esquerdo da tela
 
@@ -116,6 +127,17 @@ export default class TouchJoystick {
 
   _onPointerUp(pointer) {
     if (pointer.id !== this.pointerId) return;
+    this._release();
+  }
+
+  _onContextMenu() {
+    this._release();
+    // Right-click is also an explicit stop command, matching desktop
+    // survival-game controls when the browser interrupts pointer events.
+    this.scene.player?.setVelocity(0, 0);
+  }
+
+  _release() {
     this.pointerId = null;
     this.vector = { x: 0, y: 0 };
     this._setVisible(false);
@@ -130,6 +152,8 @@ export default class TouchJoystick {
     this.scene.input.off('pointermove', this._onPointerMove);
     this.scene.input.off('pointerup', this._onPointerUp);
     this.scene.input.off('pointerupoutside', this._onPointerUp);
+    this.scene.input.off('pointercancel', this._onPointerUp);
+    this.scene.game.canvas?.removeEventListener('contextmenu', this._onContextMenu);
     this.uiContainer?.destroy(); // destrói base e knob junto (são filhos dele)
   }
 }

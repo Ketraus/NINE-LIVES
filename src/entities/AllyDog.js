@@ -27,9 +27,8 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
     if (this._isCyberus) return;
     this._isCyberus = true;
 
-    // O spritesheet da Purificação não é o visual da evolução. Até o asset
-    // próprio do Cyberus ser adicionado, usa o fallback neutro original.
-    this.setTexture('enemy');
+    // Até o asset próprio do Cyberus ser adicionado, a evolução continua
+    // usando o mesmo sprite do Dog Purify, sem o fallback da bolinha vermelha.
     this.clearTint();
     this.setScale(CYBERUS_SCALE);
 

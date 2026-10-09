@@ -802,9 +802,30 @@ export default class GameScene extends Phaser.Scene {
   // decide retomar é o jogador). Phaser.Core.Events BLUR/HIDDEN cobrem
   // tanto blur de janela quanto document.visibilitychange, num só lugar.
   _buildAutoPauseOnBlur() {
+    this.rightMouseDown = false;
     const handleBlur = () => {
       if (this.multiplayer?.isMultiplayer || this.isGameOver || this.hasWon) return;
       this.pauseUI.open();
+    };
+    const handleContextMenu = () => {
+      // Right-click is a stop command. Browsers may interrupt pointerup when
+      // opening the context menu, leaving the previous movement velocity alive.
+      this.touchJoystick?._release?.();
+      this.input.keyboard?.resetKeys?.();
+      this.player?.stopMovement?.();
+    };
+    const handleMouseDown = (event) => {
+      if (event.button === 0) {
+        this.rightMouseDown = false;
+        return;
+      }
+      if (event.button !== 2) return;
+      this.rightMouseDown = true;
+      event.preventDefault();
+      handleContextMenu();
+    };
+    const handleMouseUp = (event) => {
+      if (event.button === 2) this.rightMouseDown = false;
     };
     const handleVisibilityChange = () => {
       if (this.multiplayer?.isMultiplayer) {
@@ -820,12 +841,18 @@ export default class GameScene extends Phaser.Scene {
     };
     window.addEventListener('blur', handleBlur);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    this.game.canvas?.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('mousedown', handleMouseDown, true);
+    window.addEventListener('mouseup', handleMouseUp, true);
 
     // Os listeners globais sobrevivem ao scene.restart() — sem isso os
     // listeners se acumulariam a cada morte/restart da run
     this.events.once('shutdown', () => {
       window.removeEventListener('blur', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      this.game.canvas?.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('mousedown', handleMouseDown, true);
+      window.removeEventListener('mouseup', handleMouseUp, true);
     });
   }
 

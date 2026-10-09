@@ -149,6 +149,12 @@
 
   <script type="module" src="./src/main.js"></script>
   <script>
+    // The game does not use the browser context menu; keep right-click from
+    // opening Inspect and interrupting the canvas input sequence.
+    document.getElementById('game-container').addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    });
+
     // Enquanto o aviso de "gire o celular" está visível, o jogo (canvas)
     // fica com display:none via CSS, mas o loop do Phaser continuaria
     // rodando escondido (inimigos andando, cronômetro contando) — aqui só
