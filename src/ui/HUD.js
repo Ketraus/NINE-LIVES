@@ -43,6 +43,28 @@ const XP_TRACK_ALPHA = 0.6;
 const XP_FILL_COLOR = 0x8fa3af;
 const XP_FILL_ALPHA = 0.85;
 
+// barra do Boss: mesma linguagem terminal da HUD, mas maior e centralizada
+// para funcionar como um elemento de encontro, nÃ£o como mais uma estatÃ­stica.
+const BOSS_PANEL_H = 34;
+const BOSS_PANEL_Y = 10;
+const BOSS_PANEL_CHAMFER = 7;
+const BOSS_PANEL_FILL = 0x050b12;
+const BOSS_PANEL_FILL_ALPHA = 0.88;
+const BOSS_PANEL_BORDER = 0x8fd6ff;
+const BOSS_PANEL_BORDER_RAGE = 0x32e9d6;
+const BOSS_TRACK_COLOR = 0x1d2632;
+const BOSS_TRACK_ALPHA = 0.9;
+const BOSS_FILL_NORMAL = 0xb26bff;
+const BOSS_FILL_RAGE = 0x32e9d6;
+const BOSS_FILL_SHADOW = 0x5f2a85;
+const BOSS_FILL_HEIGHT = 8;
+const BOSS_TRACK_HEIGHT = 4;
+const BOSS_PAD_X = 13;
+const BOSS_TRACK_Y = 22;
+const BOSS_ARROW_HEAD_LEN = 8;
+const BOSS_FADE_MS = 320;
+const BOSS_SCAN_INTERVAL_MS = 120;
+
 // tamanho da "achatada" na ponta das setas (vida e xp): sem isso a pont…
 const SHARP_TIP_FLAT = 2;
 
@@ -180,12 +202,14 @@ export default class HUD {
     this.scene = scene;
 
     // Container único pra todo o HUD "fixo na tela" — ver _applyZoomCompens…
-    this.uiContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(0);
+    // Fica acima do gameplay e dos FX, mas abaixo das telas modais.
+    this.uiContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(150);
 
     this._buildHealthBar();
     this._buildXpBar();
     this._buildKillCounter();
     this._buildRunTimer();
+    this._buildBossBar();
     this._buildGameOverText();
     this._buildWinText();
     this._buildLowHpVignette();
@@ -785,11 +809,212 @@ export default class HUD {
 
   _buildRunTimer() {
     this.timeText = this.scene.add
-      .text(this.scene.scale.width / 2, 16, '00:00', { fontSize: '14px', color: '#ffffff' })
-      .setOrigin(0.5, 0)
+      .text(this.scene.scale.width - 16, 34, '00:00', { fontSize: '11px', color: '#ffffff' })
+      .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(100);
     this.uiContainer.add(this.timeText);
+  }
+
+  _buildBossBar() {
+    const W = this.scene.scale.width;
+    // Deixa o canto superior esquerdo livre para vida/XP e mantém o encontro
+    // visível no centro mesmo em telas menores.
+    this.bossPanelW = Math.min(420, Math.max(240, W - 320));
+    this.bossPanelX = (W - this.bossPanelW) / 2;
+    this.bossPanelY = BOSS_PANEL_Y;
+    this.bossTrackW = this.bossPanelW - BOSS_PAD_X * 2;
+    this.bossTrackX = this.bossPanelX + BOSS_PAD_X;
+
+    this.bossGroup = this.scene.add
+      .container(0, 0)
+      .setScrollFactor(0)
+      .setDepth(120)
+      .setVisible(false)
+      .setAlpha(0);
+
+    this.bossPanel = this.scene.add.graphics();
+    this.bossTrack = this.scene.add.graphics();
+    this.bossLagFill = this.scene.add.graphics();
+    this.bossFill = this.scene.add.graphics();
+
+    this.bossTitle = this.scene.add.text(
+      this.bossPanelX + BOSS_PAD_X,
+      this.bossPanelY + 8,
+      'MINOTAURO // BOSS',
+      { fontFamily: '"Press Start 2P", monospace', fontSize: '9px', color: '#e8f6ff' }
+    ).setOrigin(0, 0.5);
+
+    this.bossStatusText = this.scene.add.text(
+      this.bossPanelX + this.bossPanelW - BOSS_PAD_X,
+      this.bossPanelY + 8,
+      'HOSTILE // ACTIVE',
+      { fontFamily: '"Press Start 2P", monospace', fontSize: '7px', color: '#8fb3bf' }
+    ).setOrigin(1, 0.5);
+
+    this.bossHpText = this.scene.add.text(
+      this.bossPanelX + this.bossPanelW - BOSS_PAD_X,
+      this.bossPanelY + BOSS_TRACK_Y - 1,
+      '0 / 0',
+      { fontFamily: '"Press Start 2P", monospace', fontSize: '7px', color: '#cfeaff' }
+    ).setOrigin(1, 0.5);
+
+    this.bossGroup.add([
+      this.bossPanel,
+      this.bossTrack,
+      this.bossLagFill,
+      this.bossFill,
+      this.bossTitle,
+      this.bossStatusText,
+      this.bossHpText
+    ]);
+    this.uiContainer.add(this.bossGroup);
+
+    this._bossHudBoss = null;
+    this._bossHudRage = false;
+    this._bossTargetRatio = 1;
+    this._bossDisplayRatio = 1;
+    this._bossLagRatio = 1;
+    this._bossHudVisible = false;
+    this._bossHudNextScanAt = 0;
+    this._bossHudDrawnDisplayRatio = 1;
+    this._bossHudDrawnLagRatio = 1;
+    this._drawBossFrame(false);
+    this._drawBossFill(1, 1, false);
+  }
+
+  _drawBossFrame(isRage) {
+    const border = isRage ? BOSS_PANEL_BORDER_RAGE : BOSS_PANEL_BORDER;
+    this.bossPanel.clear();
+    HUD._drawChamferedRect(
+      this.bossPanel,
+      this.bossPanelX,
+      this.bossPanelY,
+      this.bossPanelW,
+      BOSS_PANEL_H,
+      BOSS_PANEL_CHAMFER,
+      BOSS_PANEL_FILL,
+      BOSS_PANEL_FILL_ALPHA,
+      border,
+      0.9
+    );
+
+    this.bossTrack.clear();
+    HUD._drawArrowShape(
+      this.bossTrack,
+      this.bossTrackX,
+      this.bossPanelY + BOSS_TRACK_Y,
+      this.bossTrackW,
+      BOSS_TRACK_HEIGHT,
+      BOSS_ARROW_HEAD_LEN,
+      BOSS_TRACK_COLOR,
+      BOSS_TRACK_ALPHA
+    );
+  }
+
+  _drawBossFill(displayRatio, lagRatio, isRage) {
+    const color = isRage ? BOSS_FILL_RAGE : BOSS_FILL_NORMAL;
+    this.bossLagFill.clear();
+    if (lagRatio > displayRatio) {
+      HUD._drawArrowShape(
+        this.bossLagFill,
+        this.bossTrackX,
+        this.bossPanelY + BOSS_TRACK_Y,
+        this.bossTrackW * lagRatio,
+        BOSS_FILL_HEIGHT,
+        BOSS_ARROW_HEAD_LEN,
+        BOSS_FILL_SHADOW,
+        0.72
+      );
+    }
+
+    this.bossFill.clear();
+    HUD._drawArrowShape(
+      this.bossFill,
+      this.bossTrackX,
+      this.bossPanelY + BOSS_TRACK_Y,
+      this.bossTrackW * displayRatio,
+      BOSS_FILL_HEIGHT,
+      BOSS_ARROW_HEAD_LEN,
+      color,
+      0.95
+    );
+  }
+
+  update(_time, delta) {
+    let boss = this._bossHudBoss?.active && this._bossHudBoss.def?.boss
+      ? this._bossHudBoss
+      : null;
+    if (!boss && _time >= this._bossHudNextScanAt) {
+      this._bossHudNextScanAt = _time + BOSS_SCAN_INTERVAL_MS;
+      boss = this.scene.enemySpawner?.group?.getChildren?.().find((enemy) =>
+        enemy?.active && enemy.def?.boss
+      );
+    }
+
+    if (!boss) {
+      if (this._bossHudVisible) {
+      this._bossHudVisible = false;
+      this._bossHudBoss = null;
+        this.scene.tweens.killTweensOf(this.bossGroup);
+        this.scene.tweens.add({
+          targets: this.bossGroup,
+          alpha: 0,
+          duration: BOSS_FADE_MS,
+          ease: 'Cubic.easeIn',
+          onComplete: () => {
+            if (!this._bossHudVisible) this.bossGroup.setVisible(false);
+          }
+        });
+      }
+      return;
+    }
+
+    if (this._bossHudBoss !== boss) {
+      this._bossHudBoss = boss;
+      this._bossHudVisible = true;
+      this._bossTargetRatio = 1;
+      this._bossDisplayRatio = 1;
+      this._bossLagRatio = 1;
+      this.bossGroup.setVisible(true).setAlpha(0);
+      this.scene.tweens.killTweensOf(this.bossGroup);
+      this.scene.tweens.add({
+        targets: this.bossGroup,
+        alpha: 1,
+        duration: BOSS_FADE_MS,
+        ease: 'Cubic.easeOut'
+      });
+    }
+
+    const current = boss.healthSystem?.current ?? 0;
+    const max = boss.healthSystem?.maxHp ?? 1;
+    const ratio = Phaser.Math.Clamp(current / max, 0, 1);
+    const isRage = boss.isEnraged === true;
+    const isDefeated = boss.healthSystem?.isDead?.() === true;
+    const follow = 1 - Math.exp(-Math.max(0, delta) / 105);
+    const lagFollow = 1 - Math.exp(-Math.max(0, delta) / 360);
+
+    this._bossTargetRatio = ratio;
+    this._bossDisplayRatio = Phaser.Math.Linear(this._bossDisplayRatio, this._bossTargetRatio, follow);
+    this._bossLagRatio = Phaser.Math.Linear(this._bossLagRatio, this._bossTargetRatio, lagFollow);
+
+    const rageChanged = isRage !== this._bossHudRage;
+    if (rageChanged) {
+      this._bossHudRage = isRage;
+      this._drawBossFrame(isRage);
+    }
+    if (
+      Math.abs(this._bossDisplayRatio - this._bossHudDrawnDisplayRatio) > 0.001 ||
+      Math.abs(this._bossLagRatio - this._bossHudDrawnLagRatio) > 0.001 ||
+      rageChanged
+    ) {
+      this._drawBossFill(this._bossDisplayRatio, this._bossLagRatio, isRage);
+      this._bossHudDrawnDisplayRatio = this._bossDisplayRatio;
+      this._bossHudDrawnLagRatio = this._bossLagRatio;
+    }
+    this.bossStatusText.setText(isDefeated ? 'DEFEATED' : isRage ? 'RAGE // ACTIVE' : 'HOSTILE // ACTIVE');
+    this.bossStatusText.setColor(isDefeated ? '#ffd166' : isRage ? '#32e9d6' : '#8fb3bf');
+    this.bossHpText.setText(`${Math.ceil(current)} / ${Math.ceil(max)}`);
   }
 
   // Só o título — nada de estatísticas, nada de dica ainda (ver
@@ -1123,6 +1348,16 @@ export default class HUD {
       this._kills = 0;
       this.killText.setText('Abates: 0');
       this.timeText.setText('00:00');
+      this.scene.tweens.killTweensOf(this.bossGroup);
+      this.bossGroup.setVisible(false).setAlpha(0);
+      this._bossHudBoss = null;
+      this._bossHudVisible = false;
+      this._bossHudRage = false;
+      this._bossTargetRatio = 1;
+      this._bossDisplayRatio = 1;
+      this._bossLagRatio = 1;
+      this._drawBossFrame(false);
+      this._drawBossFill(1, 1, false);
       // a nova run pode não ter (ou ainda não ter pego) o Escudo Energético
       this._drawShieldFill(0);
       this._hadShield = false;

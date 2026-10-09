@@ -181,6 +181,7 @@ export default class GameScene extends Phaser.Scene {
       this.enemySpawner.updateAll(this.time.now);
     }
     this.abilityManager.update(this.time.now);
+    this.hud?.update(time, delta);
     this._updateXpOrbMagnet(time);
     this._updateXpGlows();
     this._updateRarePickupFx(time);
