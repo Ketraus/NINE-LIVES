@@ -1,5 +1,13 @@
 const STORAGE_KEY = 'nineLivesSettings';
-const DEFAULTS = { master: 1, music: 1, sfx: 1, playerSfx: 1 };
+const DEFAULTS = {
+  master: 1,
+  music: 1,
+  sfx: 1,
+  playerSfx: 1,
+  reducedMotion: false,
+  reducedFlashes: false,
+  largeHud: false
+};
 
 function clamp01(v) {
   return Math.max(0, Math.min(1, v));
@@ -14,7 +22,10 @@ function load() {
       master: typeof parsed.master === 'number' ? clamp01(parsed.master) : DEFAULTS.master,
       music: typeof parsed.music === 'number' ? clamp01(parsed.music) : DEFAULTS.music,
       sfx: typeof parsed.sfx === 'number' ? clamp01(parsed.sfx) : DEFAULTS.sfx,
-      playerSfx: typeof parsed.playerSfx === 'number' ? clamp01(parsed.playerSfx) : DEFAULTS.playerSfx
+      playerSfx: typeof parsed.playerSfx === 'number' ? clamp01(parsed.playerSfx) : DEFAULTS.playerSfx,
+      reducedMotion: typeof parsed.reducedMotion === 'boolean' ? parsed.reducedMotion : DEFAULTS.reducedMotion,
+      reducedFlashes: typeof parsed.reducedFlashes === 'boolean' ? parsed.reducedFlashes : DEFAULTS.reducedFlashes,
+      largeHud: typeof parsed.largeHud === 'boolean' ? parsed.largeHud : DEFAULTS.largeHud
     };
   } catch (e) {
     return { ...DEFAULTS };
@@ -37,11 +48,17 @@ class SettingsManager {
   getMusic() { return this.values.music; }
   getSfx() { return this.values.sfx; }
   getPlayerSfx() { return this.values.playerSfx; }
+  getReducedMotion() { return this.values.reducedMotion; }
+  getReducedFlashes() { return this.values.reducedFlashes; }
+  getLargeHud() { return this.values.largeHud; }
 
   setMaster(v) { this.values.master = clamp01(v); this._save(); }
   setMusic(v) { this.values.music = clamp01(v); this._save(); }
   setSfx(v) { this.values.sfx = clamp01(v); this._save(); }
   setPlayerSfx(v) { this.values.playerSfx = clamp01(v); this._save(); }
+  setReducedMotion(v) { this.values.reducedMotion = Boolean(v); this._save(); }
+  setReducedFlashes(v) { this.values.reducedFlashes = Boolean(v); this._save(); }
+  setLargeHud(v) { this.values.largeHud = Boolean(v); this._save(); }
 
   _save() {
     try {
@@ -53,6 +70,27 @@ class SettingsManager {
 }
 
 const instance = new SettingsManager();
+
+// Um ponto central para as opções que afetam efeitos disparados por várias
+// partes do jogo. Assim, a acessibilidade cobre armas, inimigos, boss e telas
+// de resultado sem precisar duplicar a mesma condição em cada chamada.
+const Camera = Phaser?.Cameras?.Scene2D?.Camera;
+if (Camera?.prototype && !Camera.prototype.__nineLivesAccessibilityPatched) {
+  const originalShake = Camera.prototype.shake;
+  const originalFlash = Camera.prototype.flash;
+
+  Camera.prototype.shake = function shakeWithAccessibility(duration, intensity, force, callback, context) {
+    const adjustedIntensity = instance.getReducedMotion() ? intensity * 0.2 : intensity;
+    return originalShake.call(this, duration, adjustedIntensity, force, callback, context);
+  };
+
+  Camera.prototype.flash = function flashWithAccessibility(duration, red, green, blue, force, callback, context) {
+    if (instance.getReducedFlashes()) return this;
+    return originalFlash.call(this, duration, red, green, blue, force, callback, context);
+  };
+
+  Camera.prototype.__nineLivesAccessibilityPatched = true;
+}
 
 // Patch único do sound.play() do Phaser: todo som tocado via
 // scene.sound.play(key, {volume}) (SFX de UI, armas, hits etc.) tem seu

@@ -83,9 +83,70 @@ export default class SettingsScene extends Phaser.Scene {
       SettingsManager.setPlayerSfx(v);
     });
 
+    const accessibilityX = Math.max(110, width * 0.16);
+    const accessibilityY = height - 133;
+    this.add
+      .text(accessibilityX, accessibilityY - 42, 'ACESSIBILIDADE', {
+        fontFamily: PIXEL_FONT,
+        fontSize: '9px',
+        color: TEXT_HOVER
+      })
+      .setOrigin(0.5);
+
+    this._buildToggle(accessibilityX, accessibilityY, 'REDUZIR TREMOR', SettingsManager.getReducedMotion(), (value) => {
+      SettingsManager.setReducedMotion(value);
+    });
+    this._buildToggle(accessibilityX, accessibilityY + 48, 'REDUZIR FLASH', SettingsManager.getReducedFlashes(), (value) => {
+      SettingsManager.setReducedFlashes(value);
+    });
+    this._buildToggle(accessibilityX, accessibilityY + 96, 'TEXTOS MAIORES', SettingsManager.getLargeHud(), (value) => {
+      SettingsManager.setLargeHud(value);
+      EventBus.emit('accessibility-settings-changed');
+    });
+
     this._buildBackButton(width / 2, startY + spacing * 4 + 10);
 
     this._setupRetroFx();
+  }
+
+  _buildToggle(x, y, label, initialValue, onChange) {
+    const width = 180;
+    const height = 32;
+    const container = this.add.container(x, y);
+    const panel = this.add
+      .rectangle(0, 0, width, height, PANEL_FILL, PANEL_FILL_ALPHA)
+      .setStrokeStyle(1, BORDER_IDLE);
+    const labelText = this.add
+      .text(-width / 2 + 10, 0, label, { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_IDLE })
+      .setOrigin(0, 0.5);
+    const stateText = this.add
+      .text(width / 2 - 10, 0, '', { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_IDLE })
+      .setOrigin(1, 0.5);
+    const hitArea = this.add
+      .rectangle(0, 0, width, height, 0xffffff, 0)
+      .setInteractive({ useHandCursor: true });
+
+    let enabled = Boolean(initialValue);
+    const render = () => {
+      stateText.setText(enabled ? 'ON' : 'OFF').setColor(enabled ? TEXT_HOVER : TEXT_IDLE);
+      panel.setStrokeStyle(1, enabled ? BORDER_HOVER : BORDER_IDLE);
+    };
+
+    hitArea.on('pointerover', () => {
+      panel.setStrokeStyle(1, BORDER_HOVER);
+      this.sound.play('sfx_hover', { volume: 0.4 });
+    });
+    hitArea.on('pointerout', render);
+    hitArea.on('pointerdown', () => {
+      enabled = !enabled;
+      render();
+      onChange(enabled);
+      this.sound.play('sfx_ui_click', { volume: 0.6 });
+    });
+
+    container.add([panel, labelText, stateText, hitArea]);
+    render();
+    return container;
   }
 
   // Mesmo pipeline CRT do menu principal (Bloom + CrtWave + GhostTrail +

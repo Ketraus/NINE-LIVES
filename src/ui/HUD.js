@@ -1,5 +1,6 @@
 import EventBus from '../systems/EventBus.js';
 import MusicManager from '../systems/MusicManager.js';
+import SettingsManager from '../systems/SettingsManager.js';
 
 const SHIELD_BAR_COLOR = 0xffd166; // dourado — precisa contrastar com o gradiente ciano->vermelho da vida,…
 const SHIELD_FILL_ALPHA = 0.95; // escudo cobre a barra de vida por cima, então precisa ser bem mais opa…
@@ -200,6 +201,7 @@ const XP_Y = 16 + HP_PANEL_H + 6;
 export default class HUD {
   constructor(scene) {
     this.scene = scene;
+    this._hudTextTargets = [];
 
     // Container único pra todo o HUD "fixo na tela" — ver _applyZoomCompens…
     // Fica acima do gameplay e dos FX, mas abaixo das telas modais.
@@ -210,6 +212,7 @@ export default class HUD {
     this._buildKillCounter();
     this._buildRunTimer();
     this._buildBossBar();
+    this._applyLargeHudText();
     this._buildGameOverText();
     this._buildWinText();
     this._buildLowHpVignette();
@@ -236,6 +239,18 @@ export default class HUD {
     const inv = 1 / zoom;
     container.setScale(inv);
     container.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
+  }
+
+  _registerHudText(text, baseFontSize) {
+    this._hudTextTargets.push({ text, baseFontSize });
+    return text;
+  }
+
+  _applyLargeHudText() {
+    const scale = SettingsManager.getLargeHud() ? 1.15 : 1;
+    this._hudTextTargets.forEach(({ text, baseFontSize }) => {
+      text.setFontSize(`${Math.round(baseFontSize * scale)}px`);
+    });
   }
 
   _buildHealthBar() {
@@ -305,6 +320,7 @@ export default class HUD {
       .setDepth(101);
 
     this.uiContainer.add([this.hpPanel, this.hpFill, this.shieldFill, this.hpBreakFlash, this.hpText]);
+    this._registerHudText(this.hpText, 11);
   }
 
   // Redesenha só a seta de vida atual (o painel e o trilho são estáticos).
@@ -781,6 +797,7 @@ export default class HUD {
       .setScrollFactor(0)
       .setDepth(101);
     this.uiContainer.add([this.xpPanel, this.xpFill, this.levelText]);
+    this._registerHudText(this.levelText, 11);
   }
 
   // Redesenha só a seta de xp atual (o painel e o trilho são estáticos).
@@ -805,15 +822,31 @@ export default class HUD {
       .setScrollFactor(0)
       .setDepth(100);
     this.uiContainer.add(this.killText);
+    this._registerHudText(this.killText, 12);
   }
 
   _buildRunTimer() {
     this.timeText = this.scene.add
-      .text(this.scene.scale.width - 16, 34, '00:00', { fontSize: '11px', color: '#ffffff' })
-      .setOrigin(1, 0)
+      .text(this.scene.scale.width / 2, 16, '00:00', { fontSize: '13px', color: '#ffffff' })
+      .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(100);
     this.uiContainer.add(this.timeText);
+    this._registerHudText(this.timeText, 13);
+    this._timerBossLayout = false;
+  }
+
+  _setTimerLayout(hasBoss) {
+    if (this._timerBossLayout === hasBoss) return;
+
+    if (hasBoss) {
+      // O botÃ£o de pausa fica em y=32; abaixo dele nÃ£o hÃ¡ sobreposiÃ§Ã£o.
+      this.timeText.setPosition(this.scene.scale.width - 16, 58).setOrigin(1, 0);
+    } else {
+      this.timeText.setPosition(this.scene.scale.width / 2, 16).setOrigin(0.5, 0);
+    }
+
+    this._timerBossLayout = hasBoss;
   }
 
   _buildBossBar() {
@@ -832,6 +865,13 @@ export default class HUD {
       .setDepth(120)
       .setVisible(false)
       .setAlpha(0);
+
+    // No desktop a compensaÃ§Ã£o de zoom da HUD deixa a barra do Minotauro
+    // grande demais; no celular o tamanho atual jÃ¡ estÃ¡ bom.
+    const bossHudScale = this.scene.sys.game.device.input.touch ? 1 : 0.8;
+    this.bossGroup
+      .setScale(bossHudScale)
+      .setPosition((W / 2) * (1 - bossHudScale), 0);
 
     this.bossPanel = this.scene.add.graphics();
     this.bossTrack = this.scene.add.graphics();
@@ -868,6 +908,9 @@ export default class HUD {
       this.bossStatusText,
       this.bossHpText
     ]);
+    this._registerHudText(this.bossTitle, 9);
+    this._registerHudText(this.bossStatusText, 7);
+    this._registerHudText(this.bossHpText, 7);
     this.uiContainer.add(this.bossGroup);
 
     this._bossHudBoss = null;
@@ -953,6 +996,7 @@ export default class HUD {
     }
 
     if (!boss) {
+      this._setTimerLayout(false);
       if (this._bossHudVisible) {
       this._bossHudVisible = false;
       this._bossHudBoss = null;
@@ -969,6 +1013,8 @@ export default class HUD {
       }
       return;
     }
+
+    this._setTimerLayout(true);
 
     if (this._bossHudBoss !== boss) {
       this._bossHudBoss = boss;
@@ -1246,6 +1292,10 @@ export default class HUD {
       this.timeText.setText(HUD._formatTime(seconds));
     });
 
+    EventBus.on('accessibility-settings-changed', () => {
+      this._applyLargeHudText();
+    });
+
     EventBus.on('player-died', () => {
       // congela o pulso de vida baixa exatamente como estava — sem resetar
       // alpha, então o corte pro preto não dá aquele "flash" de volta ao normal
@@ -1348,6 +1398,7 @@ export default class HUD {
       this._kills = 0;
       this.killText.setText('Abates: 0');
       this.timeText.setText('00:00');
+      this._setTimerLayout(false);
       this.scene.tweens.killTweensOf(this.bossGroup);
       this.bossGroup.setVisible(false).setAlpha(0);
       this._bossHudBoss = null;
