@@ -817,7 +817,8 @@ export default class HUD {
 
   _buildKillCounter() {
     this.killText = this.scene.add
-      .text(this.scene.scale.width - 16, 16, 'Abates: 0', { fontSize: '12px', color: '#ffffff' })
+      // Fica abaixo do relÃ³gio e da Ã¡rea de toque do botÃ£o de pausa.
+      .text(this.scene.scale.width - 16, 82, 'Abates: 0', { fontSize: '12px', color: '#ffffff' })
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(100);

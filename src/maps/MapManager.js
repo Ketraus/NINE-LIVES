@@ -12,9 +12,23 @@ const TILESETS = [
 // O map.json atual só tem uma Tile Layer chamada "chao" (sem "Ground"/
 // "Walls" separadas). walls fica null até o mapa ter uma layer de
 // colisão de verdade — sem isso o jogador simplesmente não colide com nada.
-const LAYER_NAMES = { ground: 'chao', walls: null };
+const LAYER_NAMES = {
+  ground: 'chao',
+  visual: ['chao', 'Mar', 'Costa', 'FimDoMapa', 'Decoracao'],
+  support: ['AreaJogavel'],
+  collisions: {
+    player: 'ColisaoJogador',
+    sea: 'BloqueioMar',
+    absolute: 'LimiteAbsoluto'
+  }
+};
 const OBJECT_LAYER_NAME = 'Objects';
 const PLAYER_SPAWN_OBJECT_NAME = 'PlayerSpawn';
+const MAP_OBJECT_NAMES = {
+  leviathanSpawn: 'LeviathanSpawn',
+  finalCameraTarget: 'FinalCameraTarget',
+  northCoastCenter: 'NorthCoastCenter'
+};
 
 // Fachada sobre o mapa: é o que GameScene, EnemySpawner etc. consultam.
 export default class MapManager {
@@ -22,11 +36,17 @@ export default class MapManager {
     this.scene = scene;
     this.map = null;
     this.groundLayer = null;
+    this.visualLayers = [];
+    this.supportLayers = {};
+    this.collisionLayers = {};
+    this.worldCollisionLayers = [];
+    this.blockingLayers = [];
+    this.spawnBlockedLayers = [];
     this.wallsLayer = null;
   }
 
   build() {
-    const { map, groundLayer, wallsLayer } = TiledLoader.build(
+    const { map, layers, groundLayer } = TiledLoader.build(
       this.scene,
       MAP_KEY,
       TILESETS,
@@ -34,21 +54,75 @@ export default class MapManager {
     );
     this.map = map;
     this.groundLayer = groundLayer;
-    this.wallsLayer = wallsLayer;
+    this.visualLayers = LAYER_NAMES.visual.map((name) => layers[name]).filter(Boolean);
+    this.supportLayers = Object.fromEntries(
+      LAYER_NAMES.support.filter((name) => layers[name]).map((name) => [name, layers[name]])
+    );
+    this.collisionLayers = Object.fromEntries(
+      Object.entries(LAYER_NAMES.collisions)
+        .filter(([, name]) => layers[name])
+        .map(([kind, name]) => [kind, layers[name]])
+    );
+    this.worldCollisionLayers = [this.collisionLayers.sea, this.collisionLayers.absolute].filter(Boolean);
+    this.blockingLayers = [this.collisionLayers.player, ...this.worldCollisionLayers].filter(Boolean);
+    this.spawnBlockedLayers = [
+      layers.Mar,
+      layers.Costa,
+      this.collisionLayers.player,
+      this.collisionLayers.sea,
+      this.collisionLayers.absolute
+    ].filter(Boolean);
+
+    this.visualLayers.forEach((layer, index) => layer.setDepth(index));
+    Object.values(this.supportLayers).forEach((layer) => layer.setVisible(false));
+    Object.values(this.collisionLayers).forEach((layer) => {
+      layer.setVisible(false);
+      layer.setCollisionByExclusion([-1, 0]);
+    });
+
+    // Compatibilidade com sistemas antigos que consultavam wallsLayer.
+    this.wallsLayer = this.collisionLayers.player || this.collisionLayers.sea || this.collisionLayers.absolute || null;
 
     // qualquer tile não-vazio na layer Walls colide (gid 0 = vazio)
     // — só roda se a layer Walls existir no mapa atual (ver LAYER_NAMES acima)
-    if (this.wallsLayer) {
-      this.wallsLayer.setCollisionByExclusion([-1, 0]);
-    }
-
     return this;
   }
 
   // Registra colisão física entre um sprite/group e as paredes do mapa.
   addCollider(gameObjectOrGroup, callback) {
     if (!this.wallsLayer) return; // mapa atual não tem layer de paredes ainda
-    this.scene.physics.add.collider(gameObjectOrGroup, this.wallsLayer, callback);
+    this.addWorldCollider(gameObjectOrGroup, callback);
+  }
+
+  addPlayerCollider(gameObjectOrGroup, callback) {
+    const layers = this.blockingLayers.length
+      ? this.blockingLayers
+      : (this.wallsLayer ? [this.wallsLayer] : []);
+    layers.forEach((layer) => {
+      this.scene.physics.add.collider(gameObjectOrGroup, layer, callback);
+    });
+  }
+
+  addWorldCollider(gameObjectOrGroup, callback) {
+    const layers = this.worldCollisionLayers.length
+      ? this.worldCollisionLayers
+      : (this.wallsLayer ? [this.wallsLayer] : []);
+    layers.forEach((layer) => {
+      this.scene.physics.add.collider(gameObjectOrGroup, layer, callback);
+    });
+  }
+
+  hasBlockingTileAtWorldXY(x, y, includePlayerLayer = true) {
+    const configuredLayers = includePlayerLayer ? this.blockingLayers : this.worldCollisionLayers;
+    const layers = configuredLayers.length
+      ? configuredLayers
+      : (this.wallsLayer ? [this.wallsLayer] : []);
+    return layers.some((layer) => layer.hasTileAtWorldXY(x, y));
+  }
+
+  hasSpawnBlockedTileAtWorldXY(x, y) {
+    const layers = this.spawnBlockedLayers.length ? this.spawnBlockedLayers : this.blockingLayers;
+    return layers.some((layer) => layer.hasTileAtWorldXY(x, y));
   }
 
   // Ponto de spawn do jogador definido no Tiled (Objects > PlayerSpawn).
@@ -63,6 +137,18 @@ export default class MapManager {
       return { x: this.map.widthInPixels / 2, y: this.map.heightInPixels / 2 };
     }
     return point;
+  }
+
+  getLeviathanSpawn() {
+    return this.getObjectPoint(OBJECT_LAYER_NAME, MAP_OBJECT_NAMES.leviathanSpawn);
+  }
+
+  getFinalCameraTarget() {
+    return this.getObjectPoint(OBJECT_LAYER_NAME, MAP_OBJECT_NAMES.finalCameraTarget);
+  }
+
+  getNorthCoastCenter() {
+    return this.getObjectPoint(OBJECT_LAYER_NAME, MAP_OBJECT_NAMES.northCoastCenter);
   }
 
   // Pega qualquer objeto-ponto de qualquer Object Layer do Tiled pelo

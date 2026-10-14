@@ -48,6 +48,8 @@ const BOSS_ENTRANCE_RING_DURATION_MS = 500;
 const BOSS_SPAWN_MIN_DISTANCE = 220; // nunca mais perto que isso do jogador (o boss é grande)
 const BOSS_SPAWN_VIEW_FRACTION = 0.6; // fração do caminho até a borda da câmera
 const BOSS_SPAWN_CLEARANCE = 70; // raio livre de parede ao redor do ponto
+const ENEMY_SPAWN_CLEARANCE = 48;
+const SEALER_SPAWN_CLEARANCE = 56;
 const BOSS_SPAWN_ANGLE_OFFSETS_DEG = [0, 30, -30, 60, -60, 90, -90, 135, -135, 180]; // tentativas
 
 // Fatias de 360° ao redor do jogador usadas pra decidir "de que lado" c…
@@ -301,12 +303,15 @@ export default class EnemySpawner {
     const bounds = this.mapManager.getWorldBounds();
     const margin = 64;
     // entre 55% e 85% do raio inicial — visível, mas nunca na borda exata
-    const safeDist = def.arenaStartRadius * Phaser.Math.FloatBetween(0.55, 0.85);
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    return {
-      x: Phaser.Math.Clamp(this.player.x + Math.cos(angle) * safeDist, margin, bounds.width - margin),
-      y: Phaser.Math.Clamp(this.player.y + Math.sin(angle) * safeDist, margin, bounds.height - margin)
-    };
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const safeDist = def.arenaStartRadius * Phaser.Math.FloatBetween(0.55, 0.85);
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const x = Phaser.Math.Clamp(this.player.x + Math.cos(angle) * safeDist, margin, bounds.width - margin);
+      const y = Phaser.Math.Clamp(this.player.y + Math.sin(angle) * safeDist, margin, bounds.height - margin);
+      if (!this._isBlockedByWall(x, y, SEALER_SPAWN_CLEARANCE)) return { x, y };
+    }
+
+    return this._findSpawnPosition();
   }
 
   // Posição de spawn exclusiva do Boss: NA FRENTE do jogador (direção em que ele anda)
@@ -336,8 +341,10 @@ export default class EnemySpawner {
       const y = py + dy * dist;
 
       const insideMap = x >= margin && x <= bounds.width - margin && y >= margin && y <= bounds.height - margin;
-      if (insideMap && !this._isBlockedByWall(x, y, BOSS_SPAWN_CLEARANCE)) return { x, y };
-      if (!fallback && insideMap) fallback = { x, y };
+      if (insideMap && !this._isBlockedByWall(x, y, BOSS_SPAWN_CLEARANCE)) {
+        if (!fallback) fallback = { x, y };
+        return { x, y };
+      }
     }
     if (fallback) return fallback;
     return this._findSpawnPosition(); // mapa minúsculo: cai no spawn normal
@@ -345,11 +352,10 @@ export default class EnemySpawner {
 
   // true se há tile de parede no ponto ou a `radius` px dele (4 direções)
   _isBlockedByWall(x, y, radius) {
-    const layer = this.mapManager.wallsLayer;
-    if (!layer) return false;
+    const mapManager = this.mapManager;
+    if (!mapManager) return false;
     return [[0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius]].some(([ox, oy]) => {
-      const tile = layer.getTileAtWorldXY(x + ox, y + oy);
-      return tile != null && tile.index > 0;
+      return mapManager.hasSpawnBlockedTileAtWorldXY(x + ox, y + oy);
     });
   }
 
@@ -400,6 +406,7 @@ export default class EnemySpawner {
       width + viewMargin * 2,
       height + viewMargin * 2
     ));
+    let safeFallback = null;
     // metade da diagonal da câmera + margem: distância mínima do jogador
     const spreadRad = Phaser.Math.DegToRad(GROUP_SPREAD_DEG);
 
@@ -419,11 +426,15 @@ export default class EnemySpawner {
       const rawY = origin.y + Math.sin(angle) * spawnDist + Math.cos(angle) * tangent;
       const x = Phaser.Math.Clamp(rawX, margin, bounds.width - margin);
       const y = Phaser.Math.Clamp(rawY, margin, bounds.height - margin);
+      if (this._isBlockedByWall(x, y, ENEMY_SPAWN_CLEARANCE)) continue;
 
       if (!views.some((playerView) => playerView.contains(x, y))) {
         return { x, y };
       }
+      if (!safeFallback) safeFallback = { x, y };
     }
+
+    if (safeFallback) return safeFallback;
 
     // fallback: mapa pequeno demais pra caber um ponto fora da visão em
     const fallbackOrigin = spawnOrigins[0];
@@ -431,10 +442,19 @@ export default class EnemySpawner {
       SPAWN_MARGIN_BEYOND_VIEW;
     const fallbackDist = Math.min(fallbackMinDist, Math.hypot(bounds.width, bounds.height) / 2);
     const angle = baseAngle == null ? Phaser.Math.FloatBetween(0, Math.PI * 2) : baseAngle;
-    return {
-      x: Phaser.Math.Clamp(fallbackOrigin.x + Math.cos(angle) * fallbackDist, margin, bounds.width - margin),
-      y: Phaser.Math.Clamp(fallbackOrigin.y + Math.sin(angle) * fallbackDist, margin, bounds.height - margin)
-    };
+    const fallbackX = Phaser.Math.Clamp(fallbackOrigin.x + Math.cos(angle) * fallbackDist, margin, bounds.width - margin);
+    const fallbackY = Phaser.Math.Clamp(fallbackOrigin.y + Math.sin(angle) * fallbackDist, margin, bounds.height - margin);
+    if (!this._isBlockedByWall(fallbackX, fallbackY, ENEMY_SPAWN_CLEARANCE)) {
+      return { x: fallbackX, y: fallbackY };
+    }
+
+    for (let attempt = 0; attempt < 64; attempt++) {
+      const x = Phaser.Math.Clamp(Phaser.Math.Between(margin, bounds.width - margin), margin, bounds.width - margin);
+      const y = Phaser.Math.Clamp(Phaser.Math.Between(margin, bounds.height - margin), margin, bounds.height - margin);
+      if (!this._isBlockedByWall(x, y, ENEMY_SPAWN_CLEARANCE)) return { x, y };
+    }
+
+    return { x: this.player.x, y: this.player.y };
   }
 
   // Retângulo da área visível da câmera agora, calculado na mão a partir

@@ -232,8 +232,8 @@ export default class Weapon {
 
   // Amostra pontos entre atacante e alvo checando a layer de paredes do
   _hasLineOfSight(scene, player, enemy) {
-    const wallsLayer = scene.mapManager?.wallsLayer;
-    if (!wallsLayer) return true;
+    const mapManager = scene.mapManager;
+    if (!mapManager?.blockingLayers?.length && !mapManager?.wallsLayer) return true;
 
     const dist = Phaser.Math.Distance.Between(player.x, player.y, enemy.x, enemy.y);
     const steps = Math.max(1, Math.ceil(dist / 8)); // um ponto a cada ~8px
@@ -242,7 +242,7 @@ export default class Weapon {
       const t = i / steps;
       const x = Phaser.Math.Linear(player.x, enemy.x, t);
       const y = Phaser.Math.Linear(player.y, enemy.y, t);
-      if (wallsLayer.hasTileAtWorldXY(x, y)) return false;
+      if (mapManager.hasBlockingTileAtWorldXY(x, y)) return false;
     }
     return true;
   }

@@ -16,14 +16,26 @@ export default class TiledLoader {
     });
 
     // createLayer aceita um array de tilesets — necessário sempre que a
-    const groundLayer = TiledLoader._createLayer(map, tilesets, layerNames.ground, true);
+    const layers = {};
+    const createLayer = (layerName, required = false) => {
+      if (!layerName) return null;
+      if (Object.prototype.hasOwnProperty.call(layers, layerName)) return layers[layerName];
+      const layer = TiledLoader._createLayer(map, tilesets, layerName, required);
+      if (layer) layers[layerName] = layer;
+      return layer;
+    };
+
+    createLayer(layerNames.ground, true);
+    (layerNames.visual || []).forEach((layerName) => createLayer(layerName));
+    (layerNames.support || []).forEach((layerName) => createLayer(layerName));
+    Object.values(layerNames.collisions || {}).forEach((layerName) => createLayer(layerName));
     // walls é opcional: se layerNames.walls vier null/undefined (mapa ainda
     // sem layer de colisão separada), simplesmente não cria nada e não quebra
-    const wallsLayer = layerNames.walls
-      ? TiledLoader._createLayer(map, tilesets, layerNames.walls, false)
-      : null;
-
-    return { map, groundLayer, wallsLayer };
+    return {
+      map,
+      layers,
+      groundLayer: layers[layerNames.ground] || null
+    };
   }
 
   static _createLayer(map, tilesets, layerName, required) {

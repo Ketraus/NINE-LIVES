@@ -398,7 +398,7 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(zoom);
     // startFollow() só define o alvo; o scroll real da câmera (e portanto
     this.cameras.main.centerOn(spawn.x, spawn.y);
-    this.mapManager.addCollider(this.player);
+    this.mapManager.addPlayerCollider(this.player);
   }
 
   _buildMultiplayer() {

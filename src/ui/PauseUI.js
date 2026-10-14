@@ -1,6 +1,8 @@
 import EventBus from '../systems/EventBus.js';
 
 const BTN_RADIUS = 16;
+const BTN_HIT_RADIUS_DESKTOP = 22;
+const BTN_HIT_RADIUS_TOUCH = 26;
 const BTN_W = 220;
 const BTN_H = 40;
 const BTN_GAP = 56;
@@ -53,6 +55,9 @@ export default class PauseUI {
   _buildButton() {
     const x = this.scene.scale.width - 40;
     const y = 32;
+    const hitRadius = this.scene.sys.game.device.input.touch
+      ? BTN_HIT_RADIUS_TOUCH
+      : BTN_HIT_RADIUS_DESKTOP;
 
     this.buttonContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(120);
     this._applyZoomCompensation(this.buttonContainer);
@@ -61,7 +66,11 @@ export default class PauseUI {
       .circle(x, y, BTN_RADIUS, 0x000000, 0.5)
       .setStrokeStyle(1, 0xffffff, 0.4)
       .setScrollFactor(0)
-      .setInteractive({ useHandCursor: true });
+      .setInteractive(
+        new Phaser.Geom.Circle(0, 0, hitRadius),
+        Phaser.Geom.Circle.Contains,
+        { useHandCursor: true }
+      );
     const bar1 = this.scene.add.rectangle(x - 4, y, 3, 14, 0xffffff).setScrollFactor(0);
     const bar2 = this.scene.add.rectangle(x + 4, y, 3, 14, 0xffffff).setScrollFactor(0);
 
