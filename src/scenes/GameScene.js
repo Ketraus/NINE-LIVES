@@ -20,6 +20,7 @@ import TouchJoystick from '../systems/TouchJoystick.js';
 import SlowmoSystem from '../systems/SlowmoSystem.js';
 import MultiplayerManager from '../systems/MultiplayerManager.js';
 import MedkitRareFx from '../fx/MedkitRareFx.js';
+import WorldEndSystem from '../systems/WorldEndSystem.js';
 
 import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
@@ -143,6 +144,8 @@ export default class GameScene extends Phaser.Scene {
     this._buildWeapon();
     this._buildAbilities();
     this._buildPickups();
+    // antes da UI: PauseUI/ResultUI montam câmeras que ignoram só o que já existe
+    this._buildWorldEnd();
     this._buildUI();
     this._buildCollisions();
     this._buildInput();
@@ -170,6 +173,7 @@ export default class GameScene extends Phaser.Scene {
     this.multiplayer?.update(time, delta);
 
     if (this.isGameOver) {
+      this.worldEnd?.update(delta, this.hasWon || this.groupWon ? 'fade' : 'freeze');
       if (this.multiplayer?.isMultiplayer && this.multiplayer.isRoomHost) {
         this.enemySpawner.updateAll(this.time.now);
       }
@@ -177,6 +181,7 @@ export default class GameScene extends Phaser.Scene {
     }
     if (this.isPaused) return;
     this.player.update();
+    this.worldEnd?.update(delta);
     if (!this.multiplayer?.isMultiplayer || this.multiplayer.isRoomHost || !this.multiplayer.mqtt) {
       this.enemySpawner.updateAll(this.time.now);
     }
@@ -495,6 +500,12 @@ export default class GameScene extends Phaser.Scene {
     this.resultUI = new ResultUI(this);
     // console de hack (F9) — dá cartas por comando, ver src/systems/DevCons…
     this.devConsole = new DevConsole(this, this.runManager);
+  }
+
+  // fim do mundo: névoa/escuridão/dano fora da layer AreaJogavel (ver
+  // data/worldEnd.js e systems/WorldEndSystem.js)
+  _buildWorldEnd() {
+    this.worldEnd = new WorldEndSystem(this, this.mapManager, this.player);
   }
 
   _buildCollisions() {

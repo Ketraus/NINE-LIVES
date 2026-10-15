@@ -355,7 +355,10 @@ export default class EnemySpawner {
     const mapManager = this.mapManager;
     if (!mapManager) return false;
     return [[0, 0], [radius, 0], [-radius, 0], [0, radius], [0, -radius]].some(([ox, oy]) => {
-      return mapManager.hasSpawnBlockedTileAtWorldXY(x + ox, y + oy);
+      const px = x + ox;
+      const py = y + oy;
+      return mapManager.hasSpawnBlockedTileAtWorldXY(px, py) ||
+        this.scene.worldEnd?.isSpawnForbiddenAt(px, py) === true;
     });
   }
 

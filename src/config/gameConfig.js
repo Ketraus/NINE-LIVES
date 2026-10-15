@@ -5,6 +5,7 @@ import SettingsScene from '../scenes/SettingsScene.js';
 import WeaponSelectScene from '../scenes/WeaponSelectScene.js';
 import GameScene from '../scenes/GameScene.js';
 import CrtWavePipeline from '../fx/CrtWavePipeline.js';
+import WorldEndPipeline from '../fx/WorldEndPipeline.js';
 import GhostTrailPipeline from '../fx/GhostTrailPipeline.js';
 import ScanlinesPipeline from '../fx/ScanlinesPipeline.js';
 import FlickerPipeline from '../fx/FlickerPipeline.js';
@@ -44,7 +45,8 @@ export const gameConfig = {
     Flicker: FlickerPipeline,
     Bloom: BloomPipeline,
     ChromaticAberration: ChromaticAberrationPipeline,
-    StaticNoise: StaticNoisePipeline
+    StaticNoise: StaticNoisePipeline,
+    WorldEnd: WorldEndPipeline
   },
   physics: {
     default: 'arcade',
