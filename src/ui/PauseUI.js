@@ -33,37 +33,48 @@ const DIALOG_CROSSFADE_MS = 150; // crossfade entre botões principais <-> diál
 const SETTINGS_COVER_MS = 260; // fade suave da cortina preta ao entrar/sair da Settings
 const QUIT_FADE_MS = 420; // fade suave pra preto antes de trocar pra MainMenuScene
 
-// Tela de build: usa a escala de design da interface, agora renderizada em
-// uma base 16:9 maior, mas com a mesma proporção física dos elementos.
-// uma grade compacta para continuar legível também no celular em landscape.
-const BUILD_PANEL_W = 650;
-const BUILD_PANEL_H = 420;
-const BUILD_SECTION_Y = -4;
-const BUILD_SECTION_H = 322;
-const BUILD_BACK_Y = 193;
-const BUILD_LEFT_X = -238;
-const BUILD_LEFT_W = 145;
-const BUILD_CARDS_X = -7;
-const BUILD_CARDS_W = 300;
-const BUILD_SYSTEM_X = 220;
-const BUILD_SYSTEM_W = 155;
-const BUILD_GALLERY_TOP = -126;
-const BUILD_GALLERY_H = 276;
-const BUILD_GALLERY_CARD_W = 124;
-const BUILD_GALLERY_GAP = 10;
-const BUILD_GALLERY_TRACK_X = BUILD_CARDS_X + BUILD_CARDS_W / 2 - 12;
-const BUILD_GALLERY_TRACK_TOP = -116;
-const BUILD_GALLERY_TRACK_H = 256;
+// ---------- tela de build ----------
+// Layout em "pixels de design" (ver config/layout.js): o painel é centrado e
+// escalado por UI_SCALE, então 1 unidade aqui ≈ 1,125px reais. Três colunas
+// (arma/atributos | cartas | detalhe da carta) + faixa de habilidades embaixo.
+// Regra da tela: nenhuma fonte abaixo de 8px de design e quase tudo em 9-12px
+// (antes era 6-8px, ilegível), com texto renderizado em resolução alta.
+const BUILD_PANEL_W = 872;
+const BUILD_PANEL_H = 488;
+const BUILD_COL_TOP = -182;
+const BUILD_COL_H = 328;
+const BUILD_LEFT_X = -320;
+const BUILD_LEFT_W = 200;
+const BUILD_CARDS_X = -10;
+const BUILD_CARDS_W = 400;
+const BUILD_DETAIL_X = 310;
+const BUILD_DETAIL_W = 220;
+const BUILD_FOOTER_Y = 192;
+const BUILD_FOOTER_H = 72;
+const BUILD_CONTENT_TOP = BUILD_COL_TOP + 37;
+const BUILD_LIST_H = 283;
+const BUILD_ROW_W = 368;
+const BUILD_ROW_H = 40;
+const BUILD_ROW_GAP = 4;
+const BUILD_LIST_CX = BUILD_CARDS_X - 6;
+const BUILD_TRACK_X = BUILD_CARDS_X + BUILD_CARDS_W / 2 - 9;
+const BUILD_TEXT_RES = 3;
+const BUILD_EVOLUTION_GOLD = 0xffd166;
 const BUILD_RARITY_COLORS = {
-  common: 0x3d5a66,
+  common: 0xe6e6e6,
   rare: 0x4fd1ff,
-  epic: 0xffd166
+  epic: 0xb26bff
 };
 const BUILD_RARITY_TEXT = {
   common: 'COMUM',
   rare: 'RARA',
   epic: 'EPICA'
 };
+const BUILD_RARITY_ORDER = { epic: 0, rare: 1, common: 2 };
+const TEXT_DIM = '#6f8c98';
+const TEXT_GOOD = '#7cfc9c';
+const TEXT_BAD = '#ff8a7a';
+const TEXT_GOLD = '#ffd166';
 const WEAPON_CARD_TEXTURES = {
   fists: 'card_fists',
   katana: 'card_katana',
@@ -247,140 +258,189 @@ export default class PauseUI {
 
   // ---------- tela de build ----------
 
+  _hex(color) {
+    return `#${color.toString(16).padStart(6, '0')}`;
+  }
+
+  // Texto da tela de build: fonte pixel, resolução alta (sem borrar com a
+  // escala da UI) e origem configurável.
+  _bt(x, y, value, size, color, { ox = 0, oy = 0.5, wrap = 0, align = 'left', spacing = 0 } = {}) {
+    const style = { fontFamily: PIXEL_FONT, fontSize: `${size}px`, color, align };
+    if (wrap) style.wordWrap = { width: wrap };
+    if (spacing) style.lineSpacing = spacing;
+    return this.scene.add
+      .text(x, y, value, style)
+      .setOrigin(ox, oy)
+      .setResolution(BUILD_TEXT_RES)
+      .setScrollFactor(0);
+  }
+
+  // Placa com cantos cortados em coordenadas absolutas (x/y = canto sup. esq.)
+  _drawPlate(g, x, y, w, h, { fill = PANEL_FILL, alpha = 0.9, border = BORDER_IDLE, borderAlpha = 1, chamfer = CHAMFER } = {}) {
+    const c = chamfer;
+    const pts = [
+      { x: x + c, y },
+      { x: x + w - c, y },
+      { x: x + w, y: y + c },
+      { x: x + w, y: y + h - c },
+      { x: x + w - c, y: y + h },
+      { x: x + c, y: y + h },
+      { x, y: y + h - c },
+      { x, y: y + c }
+    ];
+    g.fillStyle(fill, alpha);
+    g.fillPoints(pts, true);
+    g.lineStyle(1, border, borderAlpha);
+    g.strokePoints(pts, true);
+  }
+
   _buildBuildScreen() {
     this.buildContainer = this.scene.add.container(0, 0).setVisible(false).setAlpha(0);
 
+    const px = -BUILD_PANEL_W / 2;
+    const py = -BUILD_PANEL_H / 2;
+
     const frame = this.scene.add.graphics().setScrollFactor(0);
-    this._drawPanel(frame, BUILD_PANEL_W, BUILD_PANEL_H, BORDER_IDLE);
+    this._drawPlate(frame, px, py, BUILD_PANEL_W, BUILD_PANEL_H, { fill: 0x03080b, alpha: 0.95, chamfer: 14 });
+    // moldura interna fina + colchetes de canto (assinatura "terminal")
+    frame.lineStyle(1, BORDER_IDLE, 0.35);
+    frame.strokeRect(px + 6, py + 6, BUILD_PANEL_W - 12, BUILD_PANEL_H - 12);
+    frame.lineStyle(2, BORDER_HOVER, 0.9);
+    const tick = 18;
+    [
+      [px + 4, py + 4, 1, 1],
+      [-px - 4, py + 4, -1, 1],
+      [px + 4, -py - 4, 1, -1],
+      [-px - 4, -py - 4, -1, -1]
+    ].forEach(([x, y, dx, dy]) => {
+      frame.beginPath();
+      frame.moveTo(x, y + tick * dy);
+      frame.lineTo(x, y);
+      frame.lineTo(x + tick * dx, y);
+      frame.strokePath();
+    });
 
-    const title = this.scene.add
-      .text(0, -194, 'BUILD // LOADOUT', {
-        fontFamily: PIXEL_FONT,
-        fontSize: '19px',
-        color: '#cfefff'
-      })
-      .setOrigin(0.5)
-      .setShadow(2, 2, '#000000', 2, false, true)
-      .setScrollFactor(0);
-
-    const subtitle = this.scene.add
-      .text(0, -170, 'CONFIGURAÇÃO DA RUN ATUAL', {
-        fontFamily: PIXEL_FONT,
-        fontSize: '8px',
-        color: TEXT_IDLE
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-
+    const title = this._bt(px + 26, -226, 'BUILD // LOADOUT', 18, '#cfefff').setShadow(2, 2, '#000000', 2, false, true);
+    this.buildSubtitle = this._bt(px + 26, -205, 'CONFIGURAÇÃO DA RUN ATUAL', 9, TEXT_IDLE);
     const rule = this.scene.add.graphics().setScrollFactor(0);
     rule.lineStyle(1, BORDER_IDLE, 0.8);
-    rule.lineBetween(-300, -155, 300, -155);
+    rule.lineBetween(px + 20, -192, -px - 20, -192);
 
-    this.buildContainer.add([frame, title, subtitle, rule]);
+    this.buildContainer.add([frame, title, this.buildSubtitle, rule]);
 
-    const left = this._buildBuildSection(BUILD_LEFT_X, BUILD_SECTION_Y, BUILD_LEFT_W, BUILD_SECTION_H, 'ARMAMENTO');
-    const center = this._buildBuildSection(BUILD_CARDS_X, BUILD_SECTION_Y, BUILD_CARDS_W, BUILD_SECTION_H, 'CARTAS ATIVAS');
-    const right = this._buildBuildSection(BUILD_SYSTEM_X, BUILD_SECTION_Y, BUILD_SYSTEM_W, BUILD_SECTION_H, 'SISTEMA');
-    this.buildSectionTitles = { left, center, right };
+    this.buildSections = {
+      left: this._buildBuildSection(BUILD_LEFT_X, BUILD_LEFT_W, 'ARMAMENTO'),
+      center: this._buildBuildSection(BUILD_CARDS_X, BUILD_CARDS_W, 'CARTAS ATIVAS'),
+      right: this._buildBuildSection(BUILD_DETAIL_X, BUILD_DETAIL_W, 'DETALHES')
+    };
 
-    this.buildDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
-    this.buildWeaponDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
-    this.buildCardsDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
-    this.buildStatsDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
-    this.buildCardsOverlay = this.scene.add.container(0, 0).setScrollFactor(0);
-    this.buildGalleryContent = this.scene.add.container(0, 0).setScrollFactor(0);
-    this.buildGalleryViewport = this.scene.add.container(0, 0).setScrollFactor(0);
-    this.buildGalleryViewport.add(this.buildGalleryContent);
+    // rodapé: habilidades ativas
+    const footer = this.scene.add.graphics().setScrollFactor(0);
+    this._drawPlate(footer, -420, BUILD_FOOTER_Y - BUILD_FOOTER_H / 2, 840, BUILD_FOOTER_H, { fill: 0x081318, alpha: 0.9 });
+    this.buildContainer.add(footer);
+    this.buildContainer.add(this._bt(-406, BUILD_FOOTER_Y - BUILD_FOOTER_H / 2 + 15, 'HABILIDADES ATIVAS', 10, TEXT_HOVER));
 
-    // Máscara fixa: só a área abaixo de "CARTAS ATIVAS" rola; o cabeçalho,
-    // moldura e contador permanecem parados.
+    this.buildLeftDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildDetailDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildFooterDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildOverlay = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildListContent = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildListViewport = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildListViewport.add(this.buildListContent);
+
+    // Máscara fixa: só a lista rola; cabeçalho, moldura e contador ficam parados.
     const maskGraphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
-    const maskX = this.scene.scale.width / 2 + (BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2) * UI_SCALE;
-    const maskY = this.scene.scale.height / 2 + BUILD_GALLERY_TOP * UI_SCALE;
+    const rect = this._getBuildListScreenRect();
     maskGraphics.fillStyle(0xffffff, 1);
-    maskGraphics.fillRect(maskX, maskY, (BUILD_CARDS_W - 20) * UI_SCALE, BUILD_GALLERY_H * UI_SCALE);
-    this.buildGalleryMaskGraphics = maskGraphics;
-    this.buildGalleryViewport.setMask(maskGraphics.createGeometryMask());
+    maskGraphics.fillRect(rect.left, rect.top, rect.width, rect.height);
+    this.buildListMaskGraphics = maskGraphics;
+    this.buildListViewport.setMask(maskGraphics.createGeometryMask());
 
     const track = this.scene.add
-      .rectangle(BUILD_GALLERY_TRACK_X, BUILD_GALLERY_TRACK_TOP + BUILD_GALLERY_TRACK_H / 2, 3, BUILD_GALLERY_TRACK_H, 0x1c2e36, 0.9)
+      .rectangle(BUILD_TRACK_X, BUILD_CONTENT_TOP + BUILD_LIST_H / 2, 3, BUILD_LIST_H, 0x1c2e36, 0.9)
       .setScrollFactor(0);
-    this.buildGalleryScrollThumb = this.scene.add
-      .rectangle(BUILD_GALLERY_TRACK_X, BUILD_GALLERY_TRACK_TOP, 7, 30, 0x8fd6ff, 0.9)
+    this.buildScrollTrack = track;
+    this.buildScrollThumb = this.scene.add
+      .rectangle(BUILD_TRACK_X, BUILD_CONTENT_TOP, 5, 30, BORDER_HOVER, 0.95)
       .setOrigin(0.5, 0)
       .setScrollFactor(0);
-    this.buildCardsDynamic.add([
-      this.buildGalleryViewport,
+
+    this.buildContainer.add([
+      this.buildLeftDynamic,
+      this.buildListViewport,
       track,
-      this.buildGalleryScrollThumb,
-      this.buildCardsOverlay
-    ]);
-    this.buildDynamic.add([
-      this.buildWeaponDynamic,
-      this.buildCardsDynamic,
-      this.buildStatsDynamic
+      this.buildScrollThumb,
+      this.buildOverlay,
+      this.buildDetailDynamic,
+      this.buildFooterDynamic
     ]);
 
-    this.buildGalleryScrollY = 0;
-    this.buildGalleryMaxScroll = 0;
-    this.buildGalleryDragging = false;
-    this._onBuildWheel = (_pointer, _gameObjects, _deltaX, deltaY) => {
-      if (!this.buildOpen || !this._isPointerInBuildGallery(_pointer)) return;
-      // deltaY positivo significa "roda para baixo": o conteúdo precisa
-      // subir, portanto o scroll interno vai para valores mais negativos.
-      this._setBuildGalleryScroll(this.buildGalleryScrollY - deltaY * 0.65);
+    this.buildScrollY = 0;
+    this.buildMaxScroll = 0;
+    this.buildContentHeight = 0;
+    this.buildDragging = false;
+    this.buildRows = [];
+    this.buildEntries = [];
+    this.buildSelectedId = null;
+
+    this._onBuildWheel = (pointer, _objects, _dx, deltaY) => {
+      if (!this.buildOpen || !this._isPointerInBuildList(pointer)) return;
+      this._setBuildScroll(this.buildScrollY - (deltaY * 0.65) / UI_SCALE);
     };
     this._onBuildPointerDown = (pointer) => {
-      if (!this.buildOpen || !this._isPointerInBuildGallery(pointer)) return;
-      this.buildGalleryDragging = true;
-      this.buildGalleryDragStartY = pointer.y;
-      this.buildGalleryDragStartScroll = this.buildGalleryScrollY;
+      if (!this.buildOpen || !this._isPointerInBuildList(pointer)) return;
+      this.buildDragging = true;
+      this.buildDragStartY = pointer.y;
+      this.buildDragStartScroll = this.buildScrollY;
     };
     this._onBuildPointerMove = (pointer) => {
-      if (!this.buildGalleryDragging) return;
-      this._setBuildGalleryScroll(this.buildGalleryDragStartScroll + (pointer.y - this.buildGalleryDragStartY));
+      if (!this.buildDragging) return;
+      this._setBuildScroll(this.buildDragStartScroll + (pointer.y - this.buildDragStartY) / UI_SCALE);
     };
     this._onBuildPointerUp = () => {
-      this.buildGalleryDragging = false;
+      this.buildDragging = false;
     };
     this.scene.input.on('wheel', this._onBuildWheel);
     this.scene.input.on('pointerdown', this._onBuildPointerDown);
     this.scene.input.on('pointermove', this._onBuildPointerMove);
     this.scene.input.on('pointerup', this._onBuildPointerUp);
 
+    // teclado: setas/W/S percorrem a lista (ESC já volta, ver toggle())
+    this._onBuildKeyUp = () => this._moveBuildSelection(-1);
+    this._onBuildKeyDown = () => this._moveBuildSelection(1);
+    const kb = this.scene.input.keyboard;
+    if (kb) {
+      ['UP', 'W'].forEach((k) => kb.on(`keydown-${k}`, this._onBuildKeyUp));
+      ['DOWN', 'S'].forEach((k) => kb.on(`keydown-${k}`, this._onBuildKeyDown));
+    }
+
     this.buildBackButton = this._buildTerminalButton(
-      0,
-      BUILD_BACK_Y,
+      BUILD_PANEL_W / 2 - 26 - 65,
+      -216,
       'VOLTAR',
       () => this._hideBuild(),
-      180,
-      34
+      130,
+      32
     );
-
-    this.buildContainer.add([this.buildDynamic, this.buildBackButton]);
+    this.buildContainer.add(this.buildBackButton);
     this.panelContainer.add(this.buildContainer);
   }
 
-  _buildBuildSection(x, y, width, height, label) {
+  _buildBuildSection(cx, width, label) {
+    const x0 = cx - width / 2;
     const panel = this.scene.add.graphics().setScrollFactor(0);
-    this._drawPanel(panel, width, height, BORDER_IDLE);
-    panel.setPosition(x, y);
+    this._drawPlate(panel, x0, BUILD_COL_TOP, width, BUILD_COL_H, { fill: 0x081318, alpha: 0.9 });
+    // faixa do cabeçalho da seção
+    panel.fillStyle(0x0e2630, 0.9);
+    panel.fillRect(x0 + 1, BUILD_COL_TOP + 1, width - 2, 28);
+    panel.lineStyle(1, BORDER_IDLE, 0.9);
+    panel.lineBetween(x0, BUILD_COL_TOP + 29, x0 + width, BUILD_COL_TOP + 29);
+    panel.fillStyle(BORDER_HOVER, 1);
+    panel.fillRect(x0 + 10, BUILD_COL_TOP + 11, 6, 6);
 
-    const title = this.scene.add
-      .text(x - width / 2 + 12, y - height / 2 + 13, label, {
-        fontFamily: PIXEL_FONT,
-        fontSize: '9px',
-        color: TEXT_HOVER
-      })
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0);
-
-    const line = this.scene.add.graphics().setScrollFactor(0);
-    line.lineStyle(1, BORDER_IDLE, 0.7);
-    line.lineBetween(x - width / 2 + 10, y - height / 2 + 28, x + width / 2 - 10, y - height / 2 + 28);
-
-    this.buildContainer.add([panel, title, line]);
-    return { panel, title, line, x, y, width, height };
+    const title = this._bt(x0 + 24, BUILD_COL_TOP + 15, label, 10, TEXT_HOVER);
+    this.buildContainer.add([panel, title]);
+    return { panel, title, x0, width };
   }
 
   _showBuild() {
@@ -393,34 +453,46 @@ export default class PauseUI {
     this.pauseTitle.setVisible(false);
     this._setPauseCameraFx(false);
     this.scene.tweens.killTweensOf(this.buildContainer);
-    this.buildContainer.setVisible(true).setAlpha(0).setScale(0.96);
+    // só fade: a máscara da lista é fixa na tela, então não escalamos o container
+    this.buildContainer.setVisible(true).setAlpha(0);
     this.scene.tweens.add({
       targets: this.buildContainer,
       alpha: 1,
-      scale: 1,
       duration: ENTER_MS,
       ease: 'Cubic.easeOut'
+    });
+
+    // linhas entram em cascata curta
+    this.buildRows.forEach((row, i) => {
+      row.container.setAlpha(0);
+      this.scene.tweens.add({
+        targets: row.container,
+        alpha: 1,
+        delay: 60 + Math.min(i, 10) * 22,
+        duration: 150,
+        ease: 'Sine.easeOut'
+      });
     });
   }
 
   _hideBuild(instant = false) {
     if (!this.buildOpen) return;
     this.buildOpen = false;
+    this.buildDragging = false;
     this.scene.tweens.killTweensOf(this.buildContainer);
     this.pauseTitle.setVisible(true);
     this.mainButtonsGroup.setVisible(true).setAlpha(instant ? 1 : 0);
     this._setPauseCameraFx(true);
 
     if (instant) {
-      this.buildContainer.setVisible(false).setAlpha(0).setScale(1);
+      this.buildContainer.setVisible(false).setAlpha(0);
       return;
     }
 
-    this.buildContainer.setVisible(true).setAlpha(1).setScale(1);
+    this.buildContainer.setVisible(true).setAlpha(1);
     this.scene.tweens.add({
       targets: this.buildContainer,
       alpha: 0,
-      scale: 0.96,
       duration: EXIT_MS,
       ease: 'Cubic.easeIn',
       onComplete: () => this.buildContainer.setVisible(false)
@@ -434,311 +506,553 @@ export default class PauseUI {
   }
 
   _renderBuildScreen() {
-    if (!this.buildDynamic) return;
-    this.buildWeaponDynamic.removeAll(true);
-    this.buildStatsDynamic.removeAll(true);
-    this.buildCardsOverlay.removeAll(true);
-    this.buildGalleryContent.removeAll(true);
+    if (!this.buildListContent) return;
+    this.buildLeftDynamic.removeAll(true);
+    this.buildDetailDynamic.removeAll(true);
+    this.buildFooterDynamic.removeAll(true);
+    this.buildOverlay.removeAll(true);
+    this.buildListContent.removeAll(true);
+    this.buildRows = [];
 
     const state = this.scene.runState;
     const player = this.scene.player;
     const weapon = weaponsData.find((item) => item.id === state.weaponId) || weaponsData[0];
-    const weaponDamage = Math.round(weapon.damage * (1 + state.damageMultiplier));
-    const weaponRange = Math.round(weapon.range * (1 + state.rangeMultiplier));
-    const weaponCooldown = Math.max(1, Math.round(weapon.cooldownMs * (1 - state.cooldownMultiplier)));
 
-    this._renderBuildWeapon(weapon, weaponDamage, weaponRange, weaponCooldown, state);
+    const seconds = Math.floor((this.scene.spawnDirector?.getElapsedMs?.() || 0) / 1000);
+    const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const ss = String(seconds % 60).padStart(2, '0');
+    this.buildSubtitle.setText(`CONFIGURAÇÃO DA RUN ATUAL   TEMPO ${mm}:${ss}`);
+
+    this._renderBuildWeapon(weapon, state, player);
     this._renderBuildCards(state);
-    this._renderBuildStats(state, player);
+    this._renderBuildAbilities(state);
   }
 
-  _renderBuildWeapon(weapon, damage, range, cooldown, state) {
-    const x = BUILD_LEFT_X;
+  // ----- coluna esquerda: arma + atributos -----
+
+  _renderBuildWeapon(weapon, state, player) {
+    const g = this.buildLeftDynamic;
+    const x0 = BUILD_LEFT_X - BUILD_LEFT_W / 2 + 12;
+    const x1 = BUILD_LEFT_X + BUILD_LEFT_W / 2 - 12;
+    const top = BUILD_CONTENT_TOP;
+    const innerW = x1 - x0;
+
+    // arte da classe (miniatura nítida da carta) com moldura
     const artKey = WEAPON_CARD_TEXTURES[weapon.id];
+    const artW = 56;
+    const artH = 77;
+    const frame = this.scene.add.graphics().setScrollFactor(0);
+    frame.lineStyle(1, BORDER_HOVER, 0.9);
+    frame.strokeRect(x0 - 1, top - 1, artW + 2, artH + 2);
+    g.add(frame);
     if (artKey && this.scene.textures.exists(artKey)) {
-      const art = this.scene.add.image(x, -45, artKey).setDisplaySize(78, 108).setScrollFactor(0);
-      this.buildWeaponDynamic.add(art);
+      g.add(this.scene.add.image(x0 + artW / 2, top + artH / 2, artKey).setDisplaySize(artW, artH).setScrollFactor(0));
     }
 
-    const name = this.scene.add
-      .text(x, 24, weapon.name.toUpperCase(), {
-        fontFamily: PIXEL_FONT,
-        fontSize: '9px',
-        color: TEXT_HOVER,
-        align: 'center'
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-    const type = weapon.type === 'ranged' ? 'DISTÂNCIA' : 'CORPO A CORPO';
-    const info = this.scene.add
-      .text(x, 47, `${type}\nDMG ${damage}  RNG ${range}\nCD ${cooldown}MS`, {
-        fontFamily: PIXEL_FONT,
-        fontSize: '8px',
-        color: TEXT_IDLE,
-        align: 'center',
-        lineSpacing: 6
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-    const runInfo = this.scene.add
-      .text(x, 112, `LV ${state.level}  ·  KILLS ${state.kills}`, {
-        fontFamily: PIXEL_FONT,
-        fontSize: '8px',
-        color: '#7cfc9c',
-        align: 'center'
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-    this.buildWeaponDynamic.add([name, info, runInfo]);
+    const tx = x0 + artW + 10;
+    g.add(this._bt(tx, top + 8, weapon.name.toUpperCase(), 11, TEXT_HOVER, { wrap: x1 - tx }));
+    g.add(this._bt(tx, top + 24, weapon.type === 'ranged' ? 'DISTÂNCIA' : 'CORPO A CORPO', 8, TEXT_DIM));
+    g.add(this._bt(tx, top + 46, `NV ${state.level}`, 15, '#8fd6ff'));
+    g.add(this._bt(tx, top + 65, `ABATES ${state.kills}`, 9, TEXT_GOOD));
+
+    // barra de XP
+    let y = top + artH + 14;
+    g.add(this._bt(x0, y, 'XP', 9, TEXT_IDLE));
+    g.add(this._bt(x1, y, `${state.xp}/${state.xpToNext}`, 9, TEXT_HOVER, { ox: 1 }));
+    y += 12;
+    this._addBuildBar(g, x0, y, innerW, 6, state.xp / Math.max(1, state.xpToNext), 0x8fd6ff);
+
+    // stats da arma (base > atual)
+    y += 18;
+    const dmgNow = Math.round(weapon.damage * (1 + state.damageMultiplier));
+    const rngNow = Math.round(weapon.range * (1 + state.rangeMultiplier));
+    const cdNow = Math.max(1, Math.round(weapon.cooldownMs * (1 - state.cooldownMultiplier)));
+    [
+      ['DANO', weapon.damage, dmgNow, true],
+      ['ALCANCE', weapon.range, rngNow, true],
+      ['RECARGA', weapon.cooldownMs, cdNow, false]
+    ].forEach(([label, base, now, higherIsBetter]) => {
+      g.add(this._bt(x0, y, label, 9, TEXT_IDLE));
+      const better = higherIsBetter ? now > base : now < base;
+      const worse = higherIsBetter ? now < base : now > base;
+      const nowText = this._bt(x1, y, `${now}`, 10, better ? TEXT_GOOD : worse ? TEXT_BAD : TEXT_HOVER, { ox: 1 });
+      g.add(nowText);
+      if (now !== base) {
+        g.add(this._bt(x1 - nowText.width - 6, y, `${base} >`, 8, TEXT_DIM, { ox: 1 }));
+      }
+      y += 17;
+    });
+
+    // divisória
+    y += 2;
+    const line = this.scene.add.graphics().setScrollFactor(0);
+    line.lineStyle(1, BORDER_IDLE, 0.7);
+    line.lineBetween(x0, y, x1, y);
+    g.add(line);
+    y += 14;
+
+    // vida (com barra)
+    const hp = player?.healthSystem;
+    const hpNow = Math.ceil(hp?.current ?? 0);
+    const hpMax = Math.max(1, Math.ceil(hp?.maxHp ?? 1));
+    g.add(this._bt(x0, y, 'VIDA', 9, TEXT_IDLE));
+    g.add(this._bt(x1, y, `${hpNow}/${hpMax}`, 10, TEXT_HOVER, { ox: 1 }));
+    this._addBuildBar(g, x0, y + 9, innerW, 5, hpNow / hpMax, 0x7cfc9c);
+    y += 28;
+
+    const pct = (v, sign = '+') => `${v > 0 ? sign : v < 0 ? '-' : ''}${Math.abs(Math.round(v * 100))}%`;
+    const attrs = [
+      ['VELOCIDADE', pct(state.speedMultiplier), state.speedMultiplier > 0 ? TEXT_GOOD : state.speedMultiplier < 0 ? TEXT_BAD : TEXT_DIM],
+      ['REDUÇÃO', pct(state.damageReductionFraction, '-'), state.damageReductionFraction > 0 ? TEXT_GOOD : TEXT_DIM],
+      ['DESVIO', `${Math.round(state.dodgeChance * 100)}%`, state.dodgeChance > 0 ? TEXT_GOOD : TEXT_DIM],
+      ['ESPINHOS', `${Math.round(state.thornsDamage)}`, state.thornsDamage > 2 ? TEXT_GOOD : TEXT_HOVER],
+      ['ROUBO VIDA', `${Math.round(state.lifestealFraction * 100)}%`, state.lifestealFraction > 0 ? TEXT_GOOD : TEXT_DIM]
+    ];
+    attrs.forEach(([label, value, color]) => {
+      g.add(this._bt(x0, y, label, 9, TEXT_IDLE));
+      g.add(this._bt(x1, y, value, 10, color, { ox: 1 }));
+      y += 17;
+    });
   }
 
-  _renderBuildCards(state) {
-    const entries = [...state.ownedUpgradeIds]
+  _addBuildBar(container, x, y, w, h, ratio, color) {
+    const bar = this.scene.add.graphics().setScrollFactor(0);
+    bar.fillStyle(0x1c2e36, 1);
+    bar.fillRect(x, y, w, h);
+    const fill = Phaser.Math.Clamp(ratio, 0, 1);
+    if (fill > 0) {
+      bar.fillStyle(color, 1);
+      bar.fillRect(x, y, Math.max(2, Math.round(w * fill)), h);
+    }
+    bar.lineStyle(1, BORDER_IDLE, 0.9);
+    bar.strokeRect(x - 0.5, y - 0.5, w + 1, h + 1);
+    container.add(bar);
+  }
+
+  // ----- coluna central: lista de cartas -----
+
+  _getBuildEntries(state) {
+    return [...state.ownedUpgradeIds]
       .map((id) => upgradesData.find((upgrade) => upgrade.id === id))
       .filter(Boolean)
       .map((upgrade) => ({
         upgrade,
         count: state.upgradeCounts[upgrade.id] || 1,
-        cardHeight: this._getBuildGalleryCardHeight(upgrade)
+        isEvolution: upgrade.category === 'evolution',
+        rarity: upgrade.rarity || 'common'
       }))
       .sort((a, b) => {
-        const aEvolution = a.upgrade.category === 'evolution' ? 1 : 0;
-        const bEvolution = b.upgrade.category === 'evolution' ? 1 : 0;
-        return aEvolution - bEvolution || a.upgrade.name.localeCompare(b.upgrade.name);
+        if (a.isEvolution !== b.isEvolution) return a.isEvolution ? -1 : 1;
+        const byRarity = (BUILD_RARITY_ORDER[a.rarity] ?? 3) - (BUILD_RARITY_ORDER[b.rarity] ?? 3);
+        return byRarity || this._buildUpgradeName(a.upgrade).localeCompare(this._buildUpgradeName(b.upgrade));
       });
+  }
 
-    const rows = Math.ceil(entries.length / 2);
-    const rowHeights = [];
-    for (let row = 0; row < rows; row++) {
-      rowHeights.push(Math.max(
-        entries[row * 2]?.cardHeight || 0,
-        entries[row * 2 + 1]?.cardHeight || 0
-      ));
-    }
-    const contentHeight = rowHeights.reduce((sum, height) => sum + height, 0) +
-      Math.max(0, rows - 1) * BUILD_GALLERY_GAP;
-    this.buildGalleryContentHeight = contentHeight;
-    this.buildGalleryMaxScroll = Math.max(0, contentHeight - BUILD_GALLERY_H);
-    this._setBuildGalleryScroll(this.buildGalleryScrollY);
+  _renderBuildCards(state) {
+    const entries = this._getBuildEntries(state);
+    this.buildEntries = entries;
 
-    const countLabel = this.scene.add
-      .text(BUILD_CARDS_X + BUILD_CARDS_W / 2 - 12, -144, `${entries.length} ITENS`, {
-        fontFamily: PIXEL_FONT,
-        fontSize: '7px',
-        color: TEXT_IDLE
-      })
-      .setOrigin(1, 0.5)
-      .setScrollFactor(0);
-    this.buildCardsOverlay.add(countLabel);
+    const contentHeight = entries.length * (BUILD_ROW_H + BUILD_ROW_GAP) - (entries.length ? BUILD_ROW_GAP : 0);
+    this.buildContentHeight = contentHeight;
+    this.buildMaxScroll = Math.max(0, contentHeight - BUILD_LIST_H);
+    this.buildScrollY = 0;
+    this._setBuildScroll(0);
+
+    const evoCount = entries.filter((e) => e.isEvolution).length;
+    const countLabel = this._bt(
+      BUILD_CARDS_X + BUILD_CARDS_W / 2 - 14,
+      BUILD_COL_TOP + 15,
+      evoCount ? `${entries.length} ITENS  ${evoCount} EVO` : `${entries.length} ITENS`,
+      9,
+      evoCount ? TEXT_GOLD : TEXT_IDLE,
+      { ox: 1 }
+    );
+    this.buildOverlay.add(countLabel);
 
     if (entries.length === 0) {
-      const empty = this.scene.add
-        .text(BUILD_CARDS_X, 4, 'NENHUMA CARTA\nAINDA', {
-          fontFamily: PIXEL_FONT,
-          fontSize: '8px',
-          color: TEXT_IDLE,
-          align: 'center',
-          lineSpacing: 10
-        })
-        .setOrigin(0.5)
-        .setScrollFactor(0);
-      this.buildCardsOverlay.add(empty);
+      this.buildOverlay.add(
+        this._bt(BUILD_CARDS_X, BUILD_CONTENT_TOP + 120, 'NENHUMA CARTA AINDA', 11, TEXT_IDLE, { ox: 0.5 }),
+      );
+      this.buildOverlay.add(
+        this._bt(BUILD_CARDS_X, BUILD_CONTENT_TOP + 146, 'SUBA DE NIVEL PARA\nESCOLHER SUAS CARTAS', 9, TEXT_DIM, { ox: 0.5, align: 'center', spacing: 6 })
+      );
+      this.buildSelectedId = null;
+      this._renderBuildDetail(null);
       return;
     }
 
     entries.forEach((entry, index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      const x = BUILD_CARDS_X + (col === 0 ? -((BUILD_GALLERY_CARD_W + BUILD_GALLERY_GAP) / 2) : (BUILD_GALLERY_CARD_W + BUILD_GALLERY_GAP) / 2);
-      const rowTop = BUILD_GALLERY_TOP + rowHeights
-        .slice(0, row)
-        .reduce((sum, height) => sum + height + BUILD_GALLERY_GAP, 0);
-      const y = rowTop + entry.cardHeight / 2;
-      this.buildGalleryContent.add(this._buildBuildGalleryCard(entry, x, y));
+      const row = this._buildBuildRow(entry, index);
+      this.buildListContent.add(row.container);
+      this.buildRows.push(row);
     });
+
+    const keep = entries.findIndex((e) => e.upgrade.id === this.buildSelectedId);
+    this._selectBuildEntry(keep >= 0 ? keep : 0, { sound: false });
   }
 
-  _buildBuildGalleryCard(entry, x, y) {
-    const { upgrade, count } = entry;
-    const cardH = entry.cardHeight;
-    const rarity = upgrade.rarity || 'common';
-    const border = BUILD_RARITY_COLORS[rarity] || BUILD_RARITY_COLORS.common;
-    const tile = this.scene.add.container(x, y).setScrollFactor(0);
+  _buildBuildRow(entry, index) {
+    const { upgrade, count, isEvolution, rarity } = entry;
+    const accent = isEvolution ? BUILD_EVOLUTION_GOLD : BUILD_RARITY_COLORS[rarity] || BUILD_RARITY_COLORS.common;
+    const accentText = this._hex(accent);
+    const w = BUILD_ROW_W;
+    const h = BUILD_ROW_H;
+    const y = BUILD_CONTENT_TOP + index * (BUILD_ROW_H + BUILD_ROW_GAP) + h / 2;
+    const container = this.scene.add.container(BUILD_LIST_CX, y).setScrollFactor(0);
 
+    const bg = this.scene.add.graphics().setScrollFactor(0);
+    const draw = (selected) => {
+      bg.clear();
+      bg.fillStyle(selected ? 0x12303b : 0x0a1a21, selected ? 1 : 0.9);
+      bg.fillRect(-w / 2, -h / 2, w, h);
+      bg.lineStyle(1, selected ? accent : BORDER_IDLE, selected ? 1 : 0.7);
+      bg.strokeRect(-w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1);
+      bg.fillStyle(accent, selected ? 1 : 0.75);
+      bg.fillRect(-w / 2, -h / 2, 4, h);
+      if (selected) {
+        bg.fillStyle(accent, 0.1);
+        bg.fillRect(-w / 2 + 4, -h / 2 + 1, w - 5, h - 2);
+      }
+    };
+    draw(false);
+    container.add(bg);
+
+    // mini carta
     const artKey = this._getBuildArtKey(upgrade);
+    const thumbH = 32;
+    const thumbX = -w / 2 + 4 + 8 + 12;
     if (artKey) {
-      const art = this.scene.add.image(0, 0, artKey)
-        // A carta completa tem tÃ­tulo e descriÃ§Ã£o pequenos demais para virar
-        // miniatura. Mostramos sÃ³ a ilustraÃ§Ã£o central; o nome e o progresso
-        // ficam como texto real ao lado, sem virar uma mancha ilegÃ­vel.
-        .setDisplaySize(BUILD_GALLERY_CARD_W, cardH)
-        .setScrollFactor(0);
-      tile.add(art);
+      const tex = this.scene.textures.get(artKey).getSourceImage();
+      const aspect = tex && tex.height ? tex.width / tex.height : 0.61;
+      const thumb = this.scene.add.image(thumbX, 0, artKey).setDisplaySize(Math.round(thumbH * aspect), thumbH).setScrollFactor(0);
+      const thumbFrame = this.scene.add.graphics().setScrollFactor(0);
+      thumbFrame.lineStyle(1, accent, 0.9);
+      thumbFrame.strokeRect(thumbX - (thumbH * aspect) / 2, -thumbH / 2, thumbH * aspect, thumbH);
+      container.add([thumb, thumbFrame]);
     } else {
-      const icon = this.scene.add
-        .text(0, 0, rarity === 'epic' ? '★' : rarity === 'rare' ? '◆' : '•', {
-          fontFamily: PIXEL_FONT,
-          fontSize: '13px',
-          color: `#${border.toString(16).padStart(6, '0')}`
-        })
-        .setOrigin(0.5)
-        .setScrollFactor(0);
-      tile.add(icon);
+      const diamond = this.scene.add.graphics().setScrollFactor(0);
+      diamond.fillStyle(accent, 1);
+      diamond.fillPoints([{ x: thumbX, y: -7 }, { x: thumbX + 7, y: 0 }, { x: thumbX, y: 7 }, { x: thumbX - 7, y: 0 }], true);
+      container.add(diamond);
     }
 
-    const frame = this.scene.add.graphics().setScrollFactor(0);
-    frame.lineStyle(2, border, 1);
-    frame.strokeRect(-BUILD_GALLERY_CARD_W / 2, -cardH / 2, BUILD_GALLERY_CARD_W, cardH);
-    tile.add(frame);
+    const textX = -w / 2 + 48;
+    const name = this._shortBuildText(this._buildUpgradeName(upgrade), 21);
+    container.add(this._bt(textX, -7, name, 10, TEXT_HOVER));
+    const tag = isEvolution ? 'EVOLUÇÃO' : BUILD_RARITY_TEXT[rarity] || 'COMUM';
+    const exclusive = upgrade.weaponId ? ' EXCLUSIVA' : '';
+    container.add(this._bt(textX, 9, tag + exclusive, 8, accentText));
 
-    const progress = this._buildUpgradeProgress(upgrade, count);
-    const badge = this.scene.add.rectangle(
-      BUILD_GALLERY_CARD_W / 2 - 25,
-      -cardH / 2 + 12,
-      42,
-      18,
-      0x061014,
-      0.9
-    ).setStrokeStyle(1, border, 1).setScrollFactor(0);
-    const badgeText = this.scene.add
-      .text(BUILD_GALLERY_CARD_W / 2 - 25, -cardH / 2 + 12, upgrade.category === 'evolution' ? 'EVO' : progress, {
-        fontFamily: PIXEL_FONT,
-        fontSize: '7px',
-        color: upgrade.category === 'evolution' ? '#ffd166' : TEXT_HOVER,
-        align: 'center'
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
-    tile.add([badge, badgeText]);
-    return tile;
+    // lado direito: pips de cópias ou selo EVO
+    const rx = w / 2 - 10;
+    if (isEvolution) {
+      const chip = this.scene.add.graphics().setScrollFactor(0);
+      chip.lineStyle(1, BUILD_EVOLUTION_GOLD, 1);
+      chip.strokeRect(rx - 38, -9, 38, 18);
+      container.add(chip);
+      container.add(this._bt(rx - 19, 0, 'EVO', 9, TEXT_GOLD, { ox: 0.5 }));
+    } else {
+      const target = this._getBuildStackTarget(upgrade);
+      if (Number.isFinite(target) && target <= 6) {
+        const done = count >= target;
+        const pipColor = done ? BUILD_EVOLUTION_GOLD : accent;
+        for (let i = 0; i < target; i++) {
+          const px = rx - (target - 1 - i) * 11 - 4;
+          const pip = this.scene.add.graphics().setScrollFactor(0);
+          if (i < count) {
+            pip.fillStyle(pipColor, 1);
+            pip.fillRect(px - 4, -4, 8, 8);
+          } else {
+            pip.lineStyle(1, BORDER_IDLE, 1);
+            pip.strokeRect(px - 3.5, -3.5, 7, 7);
+          }
+          container.add(pip);
+        }
+      } else {
+        container.add(this._bt(rx, 0, `x${count}`, 13, TEXT_HOVER, { ox: 1 }));
+      }
+    }
+
+    const hit = this.scene.add
+      .rectangle(0, 0, w, h, 0xffffff, 0)
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true });
+    hit.on('pointerover', (pointer) => {
+      if (!this.buildOpen || this.buildDragging || !this._isPointerInBuildList(pointer)) return;
+      this._selectBuildEntry(index, { sound: 'hover' });
+    });
+    hit.on('pointerdown', (pointer) => {
+      if (!this.buildOpen || !this._isPointerInBuildList(pointer)) return;
+      this._selectBuildEntry(index, { sound: 'click' });
+    });
+    container.add(hit);
+
+    return { container, draw, entry };
   }
 
-  _renderBuildStats(state, player) {
-    const x = BUILD_SYSTEM_X;
-    const left = x - BUILD_SYSTEM_W / 2 + 12;
-    const right = x + BUILD_SYSTEM_W / 2 - 12;
-    const hp = player?.healthSystem;
-    const stats = [
-      ['XP', `${state.xp}/${state.xpToNext}`],
-      ['VIDA', `${Math.ceil(hp?.current ?? 0)}/${Math.ceil(hp?.maxHp ?? 0)}`],
-      ['DANO', `+${Math.round(state.damageMultiplier * 100)}%`],
-      ['VELOCIDADE', `+${Math.round(state.speedMultiplier * 100)}%`],
-      ['RECARGA', `-${Math.round(state.cooldownMultiplier * 100)}%`],
-      ['ALCANCE', `+${Math.round(state.rangeMultiplier * 100)}%`],
-      ['REDUÇÃO', `-${Math.round(state.damageReductionFraction * 100)}%`],
-      ['DESVIO', `${Math.round(state.dodgeChance * 100)}%`],
-      ['ESPINHOS', `${Math.round(state.thornsDamage)}`],
-      ['ROUBO', `${Math.round(state.lifestealFraction * 100)}%`]
-    ];
+  _selectBuildEntry(index, { sound = false, scroll = false } = {}) {
+    const row = this.buildRows[index];
+    if (!row) return;
+    const changed = this.buildSelectedId !== row.entry.upgrade.id;
+    this.buildSelectedId = row.entry.upgrade.id;
+    this.buildRows.forEach((r, i) => r.draw(i === index));
+    if (scroll) this._scrollBuildToRow(index);
+    if (!changed && sound === 'hover') return;
+    if (sound && this.scene.cache.audio.exists(sound === 'click' ? 'sfx_ui_click' : 'sfx_hover')) {
+      this.scene.sound.play(sound === 'click' ? 'sfx_ui_click' : 'sfx_hover', { volume: sound === 'click' ? 0.5 : 0.35 });
+    }
+    if (changed || !this.buildDetailDynamic.length) this._renderBuildDetail(row.entry);
+  }
 
-    stats.forEach(([label, value], index) => {
-      const y = -111 + index * 17;
-      const labelText = this.scene.add
-        .text(left, y, label, { fontFamily: PIXEL_FONT, fontSize: '7px', color: TEXT_IDLE })
-        .setOrigin(0, 0.5)
-        .setScrollFactor(0);
-      const valueText = this.scene.add
-        .text(right, y, value, { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_HOVER })
-        .setOrigin(1, 0.5)
-        .setScrollFactor(0);
-      this.buildStatsDynamic.add([labelText, valueText]);
-    });
+  _moveBuildSelection(delta) {
+    if (!this.buildOpen || this.buildRows.length === 0) return;
+    const current = this.buildRows.findIndex((r) => r.entry.upgrade.id === this.buildSelectedId);
+    const next = Phaser.Math.Clamp((current < 0 ? 0 : current) + delta, 0, this.buildRows.length - 1);
+    if (next === current) return;
+    this._selectBuildEntry(next, { sound: 'hover', scroll: true });
+  }
 
-    const abilityHeader = this.scene.add
-      .text(left, 72, 'HABILIDADES', { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_HOVER })
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0);
-    this.buildStatsDynamic.add(abilityHeader);
+  _scrollBuildToRow(index) {
+    const top = index * (BUILD_ROW_H + BUILD_ROW_GAP);
+    const bottom = top + BUILD_ROW_H;
+    let scroll = this.buildScrollY;
+    if (top + scroll < 0) scroll = -top;
+    else if (bottom + scroll > BUILD_LIST_H) scroll = BUILD_LIST_H - bottom;
+    this._setBuildScroll(scroll);
+  }
 
+  // ----- coluna direita: detalhe da carta selecionada -----
+
+  _renderBuildDetail(entry) {
+    const g = this.buildDetailDynamic;
+    g.removeAll(true);
+    const x0 = BUILD_DETAIL_X - BUILD_DETAIL_W / 2 + 12;
+    const x1 = BUILD_DETAIL_X + BUILD_DETAIL_W / 2 - 12;
+    const innerW = x1 - x0;
+    const top = BUILD_CONTENT_TOP;
+
+    if (!entry) {
+      g.add(this._bt(BUILD_DETAIL_X, top + 110, 'SELECIONE UMA CARTA', 9, TEXT_DIM, { ox: 0.5 }));
+      return;
+    }
+
+    const { upgrade, count, isEvolution, rarity } = entry;
+    const accent = isEvolution ? BUILD_EVOLUTION_GOLD : BUILD_RARITY_COLORS[rarity] || BUILD_RARITY_COLORS.common;
+    const accentText = this._hex(accent);
+
+    // nome (até 2 linhas)
+    g.add(this._bt(x0, top, this._buildUpgradeName(upgrade), 11, TEXT_HOVER, { oy: 0, wrap: innerW, spacing: 3 }));
+
+    // arte grande da carta
+    const artW = 84;
+    const artH = 137;
+    const artTop = top + 32;
+    const artKey = this._getBuildArtKey(upgrade);
+    const glow = this.scene.add.graphics().setScrollFactor(0);
+    glow.fillStyle(accent, 0.12);
+    glow.fillRect(x0 - 4, artTop - 4, artW + 8, artH + 8);
+    glow.lineStyle(2, accent, 1);
+    glow.strokeRect(x0 - 1, artTop - 1, artW + 2, artH + 2);
+    g.add(glow);
+    if (artKey) {
+      const art = this.scene.add.image(x0 + artW / 2, artTop + artH / 2, artKey).setDisplaySize(artW, artH).setScrollFactor(0).setAlpha(0);
+      g.add(art);
+      this.scene.tweens.add({ targets: art, alpha: 1, duration: 140, ease: 'Sine.easeOut' });
+    }
+
+    // painel lateral da arte
+    const sx = x0 + artW + 12;
+    const sw = x1 - sx;
+    const label = isEvolution ? 'EVOLUÇÃO' : BUILD_RARITY_TEXT[rarity] || 'COMUM';
+    const chip = this.scene.add.graphics().setScrollFactor(0);
+    chip.lineStyle(1, accent, 1);
+    chip.fillStyle(accent, 0.14);
+    chip.fillRect(sx, artTop, sw, 20);
+    chip.strokeRect(sx + 0.5, artTop + 0.5, sw - 1, 19);
+    g.add(chip);
+    g.add(this._bt(sx + sw / 2, artTop + 10, label, 8, accentText, { ox: 0.5 }));
+
+    let y = artTop + 34;
+    if (upgrade.weaponId) {
+      g.add(this._bt(sx, y, 'EXCLUSIVA', 8, TEXT_DIM));
+      y += 14;
+    }
+
+    if (!isEvolution) {
+      const target = this._getBuildStackTarget(upgrade);
+      g.add(this._bt(sx, y + 4, 'COPIAS', 8, TEXT_DIM));
+      y += 22;
+      g.add(this._bt(sx, y, Number.isFinite(target) ? `${count}/${target}` : `x${count}`, 16, count >= target ? TEXT_GOLD : TEXT_HOVER));
+      y += 20;
+      if (Number.isFinite(target) && target <= 6) {
+        const pips = this.scene.add.graphics().setScrollFactor(0);
+        const gap = Math.min(14, Math.floor((sw - 8) / target));
+        for (let i = 0; i < target; i++) {
+          const px = sx + i * gap;
+          if (i < count) {
+            pips.fillStyle(count >= target ? BUILD_EVOLUTION_GOLD : accent, 1);
+            pips.fillRect(px, y, 10, 10);
+          } else {
+            pips.lineStyle(1, BORDER_IDLE, 1);
+            pips.strokeRect(px + 0.5, y + 0.5, 9, 9);
+          }
+        }
+        g.add(pips);
+      }
+    } else {
+      const base = upgradesData.find((u) => u.id === upgrade.evolvesFrom);
+      if (base) {
+        g.add(this._bt(sx, y + 4, 'EVOLUIDA DE', 8, TEXT_DIM));
+        g.add(this._bt(sx, y + 18, this._buildUpgradeName(base), 9, TEXT_HOVER, { oy: 0, wrap: sw, spacing: 4 }));
+      }
+    }
+
+    // dica de evolução (calculada antes pra reservar espaço da descrição)
+    let hintText = null;
+    let hintColor = TEXT_GOLD;
+    if (!isEvolution) {
+      const evolution = upgradesData.find((u) =>
+        u.category === 'evolution' && u.evolvesFrom === upgrade.id &&
+        (!u.weaponId || u.weaponId === this.scene.runState.weaponId)
+      );
+      if (evolution) {
+        const owned = this.scene.runState.ownedUpgradeIds.has(evolution.id);
+        const target = this._getBuildStackTarget(upgrade);
+        const missing = Math.max(0, target - count);
+        const evoName = this._buildUpgradeName(evolution);
+        if (owned) {
+          hintText = `EVOLUIDA EM:\n${evoName}`;
+          hintColor = TEXT_GOOD;
+        } else if (missing > 0) {
+          hintText = `EVOLUI EM:\n${evoName}\nFALTAM ${missing} COPIA${missing > 1 ? 'S' : ''}`;
+        } else {
+          hintText = `PRONTA PARA EVOLUIR:\n${evoName}`;
+        }
+      }
+    }
+    const hintH = hintText ? 46 : 0;
+
+    // descrição
+    const descTop = artTop + artH + 10;
+    const descMax = BUILD_CONTENT_TOP + BUILD_LIST_H - hintH - descTop + 6;
+    const desc = this._bt(x0, descTop, upgrade.description || '', 9, TEXT_IDLE, { oy: 0, wrap: innerW, spacing: 3 });
+    let size = 9;
+    while (desc.height > descMax && size > 7) {
+      size -= 1;
+      desc.setFontSize(size);
+    }
+    g.add(desc);
+
+    if (hintText) {
+      const bar = this.scene.add.graphics().setScrollFactor(0);
+      const hintTop = BUILD_CONTENT_TOP + BUILD_LIST_H - 40;
+      bar.lineStyle(1, BORDER_IDLE, 0.7);
+      bar.lineBetween(x0, hintTop - 6, x1, hintTop - 6);
+      g.add(bar);
+      g.add(this._bt(x0, hintTop, hintText, 8, hintColor, { oy: 0, wrap: innerW, spacing: 4 }));
+    }
+  }
+
+  // ----- rodapé: habilidades -----
+
+  _renderBuildAbilities(state) {
+    const g = this.buildFooterDynamic;
     const abilityIds = [...state.unlockedAbilities];
     if (state.hasRestock) abilityIds.push('restock');
     const abilities = [...new Set(abilityIds)];
+    const left = -406;
+    const top = BUILD_FOOTER_Y - BUILD_FOOTER_H / 2 + 28;
+
     if (abilities.length === 0) {
-      const empty = this.scene.add
-        .text(x, 105, 'NENHUMA HABILIDADE', {
-          fontFamily: PIXEL_FONT,
-          fontSize: '6px',
-          color: TEXT_IDLE,
-          align: 'center',
-          lineSpacing: 7
-        })
-        .setOrigin(0.5)
-        .setScrollFactor(0);
-      this.buildStatsDynamic.add(empty);
-      return;
+      g.add(this._bt(left, top + 8, 'NENHUMA HABILIDADE AINDA', 9, TEXT_DIM));
+    } else {
+      const maxW = 812;
+      let size = 10;
+      let placements;
+      const measure = (fs) => {
+        const out = [];
+        let cx = 0;
+        let row = 0;
+        abilities.forEach((id) => {
+          const label = ABILITY_LABELS[id] || (id === 'restock' ? 'Restock' : id);
+          const w = label.length * fs + 22;
+          if (cx + w > maxW && cx > 0) {
+            cx = 0;
+            row += 1;
+          }
+          out.push({ id, label, w, cx, row });
+          cx += w + 8;
+        });
+        return out;
+      };
+      placements = measure(size);
+      while (placements.some((p) => p.row > 1) && size > 8) {
+        size -= 1;
+        placements = measure(size);
+      }
+      placements.forEach(({ id, label, w, cx, row }) => {
+        const color = id === 'restock' ? BUILD_EVOLUTION_GOLD : 0x7cfc9c;
+        const cy = top + row * 21 + 9;
+        const chip = this.scene.add.graphics().setScrollFactor(0);
+        chip.fillStyle(color, 0.1);
+        chip.fillRect(left + cx, cy - 9, w, 18);
+        chip.lineStyle(1, color, 0.8);
+        chip.strokeRect(left + cx + 0.5, cy - 8.5, w - 1, 17);
+        chip.fillStyle(color, 1);
+        chip.fillRect(left + cx + 6, cy - 2, 4, 4);
+        g.add(chip);
+        g.add(this._bt(left + cx + 15, cy, label, size, this._hex(color)));
+      });
     }
 
-    abilities.slice(0, 4).forEach((id, index) => {
-      const label = ABILITY_LABELS[id] || (id === 'restock' ? 'Restock' : id);
-      const abilityText = this.scene.add
-        .text(left, 91 + index * 14, `> ${this._shortBuildText(label, 20)}`, {
-          fontFamily: PIXEL_FONT,
-          fontSize: '7px',
-          color: id === 'restock' ? '#ffd166' : '#7cfc9c'
-        })
-        .setOrigin(0, 0.5)
-        .setScrollFactor(0);
-      this.buildStatsDynamic.add(abilityText);
-    });
-
-    if (abilities.length > 4) {
-      const more = this.scene.add
-        .text(left, 149, `+${abilities.length - 4} SISTEMAS`, {
-          fontFamily: PIXEL_FONT,
-          fontSize: '6px',
-          color: TEXT_IDLE
-        })
-        .setOrigin(0, 0.5)
-        .setScrollFactor(0);
-      this.buildStatsDynamic.add(more);
-    }
+    const hint = this.scene.sys.game.device.input.touch
+      ? 'TOQUE NA CARTA PARA VER DETALHES'
+      : 'SETAS: NAVEGAR   ESC: VOLTAR';
+    g.add(this._bt(406, BUILD_FOOTER_Y - BUILD_FOOTER_H / 2 + 15, hint, 8, TEXT_DIM, { ox: 1 }));
   }
 
-  _setBuildGalleryScroll(value) {
-    if (!this.buildGalleryContent) return;
-    const max = this.buildGalleryMaxScroll || 0;
-    this.buildGalleryScrollY = Phaser.Math.Clamp(value || 0, -max, 0);
-    this.buildGalleryContent.y = this.buildGalleryScrollY;
-    this._updateBuildGalleryScrollbar();
+  // ----- rolagem -----
+
+  _getBuildListScreenRect() {
+    const left = this.scene.scale.width / 2 + (BUILD_LIST_CX - BUILD_ROW_W / 2 - 1) * UI_SCALE;
+    const top = this.scene.scale.height / 2 + BUILD_CONTENT_TOP * UI_SCALE;
+    return { left, top, width: (BUILD_ROW_W + 2) * UI_SCALE, height: BUILD_LIST_H * UI_SCALE };
   }
 
-  _updateBuildGalleryScrollbar() {
-    if (!this.buildGalleryScrollThumb) return;
-    const max = this.buildGalleryMaxScroll || 0;
+  _setBuildScroll(value) {
+    if (!this.buildListContent) return;
+    const max = this.buildMaxScroll || 0;
+    this.buildScrollY = Phaser.Math.Clamp(value || 0, -max, 0);
+    this.buildListContent.y = this.buildScrollY;
+    this._updateBuildScrollbar();
+  }
+
+  _updateBuildScrollbar() {
+    if (!this.buildScrollThumb) return;
+    const max = this.buildMaxScroll || 0;
+    this.buildScrollTrack.setVisible(max > 0);
     if (max <= 0) {
-      this.buildGalleryScrollThumb.setVisible(false);
+      this.buildScrollThumb.setVisible(false);
       return;
     }
-
-    const ratio = BUILD_GALLERY_H / Math.max(BUILD_GALLERY_H, this.buildGalleryContentHeight || BUILD_GALLERY_H);
-    const thumbHeight = Math.max(30, BUILD_GALLERY_TRACK_H * ratio);
-    const travel = BUILD_GALLERY_TRACK_H - thumbHeight;
-    const progress = Phaser.Math.Clamp(-this.buildGalleryScrollY / max, 0, 1);
-    this.buildGalleryScrollThumb
+    const ratio = BUILD_LIST_H / Math.max(BUILD_LIST_H, this.buildContentHeight || BUILD_LIST_H);
+    const thumbHeight = Math.max(30, BUILD_LIST_H * ratio);
+    const travel = BUILD_LIST_H - thumbHeight;
+    const progress = Phaser.Math.Clamp(-this.buildScrollY / max, 0, 1);
+    this.buildScrollThumb
       .setVisible(true)
-      .setSize(7, thumbHeight)
-      .setPosition(BUILD_GALLERY_TRACK_X, BUILD_GALLERY_TRACK_TOP + travel * progress);
+      .setSize(5, thumbHeight)
+      .setPosition(BUILD_TRACK_X, BUILD_CONTENT_TOP + travel * progress);
   }
 
-  _isPointerInBuildGallery(pointer) {
+  _isPointerInBuildList(pointer) {
     if (!pointer) return false;
-    const left = this.scene.scale.width / 2 + (BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2) * UI_SCALE;
-    const top = this.scene.scale.height / 2 + BUILD_GALLERY_TOP * UI_SCALE;
-    const width = (BUILD_CARDS_W - 20) * UI_SCALE;
-    const height = BUILD_GALLERY_H * UI_SCALE;
-    return pointer.x >= left && pointer.x <= left + width &&
-      pointer.y >= top && pointer.y <= top + height;
+    const r = this._getBuildListScreenRect();
+    return pointer.x >= r.left && pointer.x <= r.left + r.width &&
+      pointer.y >= r.top && pointer.y <= r.top + r.height;
   }
 
-  _getBuildGalleryCardHeight(upgrade) {
-    const artKey = this._getBuildArtKey(upgrade);
-    const texture = artKey ? this.scene.textures.get(artKey) : null;
-    const source = texture?.getSourceImage?.() || texture?.source?.[0]?.source;
-    const aspectHeight = source?.width > 0 && source?.height > 0
-      ? source.height / source.width
-      : 543 / 332;
-    return Math.round(BUILD_GALLERY_CARD_W * aspectHeight);
-  }
+  // ----- helpers de dados -----
 
   _getBuildArtKey(upgrade) {
     let artId = upgrade.id;
@@ -758,14 +1072,17 @@ export default class PauseUI {
     return upgrade.namesByWeapon?.[this.scene.runState.weaponId] || upgrade.name;
   }
 
-  _buildUpgradeProgress(upgrade, count) {
-    if (upgrade.category === 'evolution') return 'EVOLUÇÃO';
-    const evolution = upgradesData.find((candidate) => {
-      if (candidate.category !== 'evolution' || candidate.evolvesFrom !== upgrade.id) return false;
-      return !candidate.weaponId || candidate.weaponId === this.scene.runState.weaponId;
-    });
-    if (!evolution) return `x${count}`;
-    return `x${count}/${upgrade.evolvesAtStacks ?? 5}`;
+  // Quantas cópias a carta "pede": limiar da evolução (se houver) ou o teto
+  // de cópias; Infinity quando é ilimitada e sem evolução.
+  _getBuildStackTarget(upgrade) {
+    const hasEvolution = upgradesData.some((c) =>
+      c.category === 'evolution' && c.evolvesFrom === upgrade.id &&
+      (!c.weaponId || c.weaponId === this.scene.runState.weaponId)
+    );
+    if (hasEvolution) return upgrade.evolvesAtStacks ?? 5;
+    if (upgrade.maxStacks) return upgrade.maxStacks;
+    if (upgrade.type === 'unlockAbility') return 1;
+    return Infinity;
   }
 
   _shortBuildText(value, maxLength) {
@@ -1242,7 +1559,12 @@ export default class PauseUI {
     this.scene.input.off('pointerdown', this._onBuildPointerDown);
     this.scene.input.off('pointermove', this._onBuildPointerMove);
     this.scene.input.off('pointerup', this._onBuildPointerUp);
-    this.buildGalleryMaskGraphics?.destroy();
+    const kb = this.scene.input.keyboard;
+    if (kb) {
+      ['UP', 'W'].forEach((k) => kb.off(`keydown-${k}`, this._onBuildKeyUp));
+      ['DOWN', 'S'].forEach((k) => kb.off(`keydown-${k}`, this._onBuildKeyDown));
+    }
+    this.buildListMaskGraphics?.destroy();
     this.waitingText?.destroy();
     if (this.pauseCam) this.scene.cameras.remove(this.pauseCam);
     this.buttonContainer?.destroy();
