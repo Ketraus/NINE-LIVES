@@ -18,9 +18,13 @@ const CARD_H = 377;
 const GAP = 10;
 const ROW_GAP = 12;
 
-// Carta "Restock" (evolução ARSENAL OVERRIDE): fica ao lado do baralho…
-const RESTOCK_W = 96;
-const RESTOCK_GAP = 10;
+// Botão "Restock" (evolução ARSENAL OVERRIDE): faixa larga embaixo das
+// cartas, em tamanho FIXO (não encolhe com as cartas) pra ficar sempre
+// legível e fácil de tocar no celular.
+const RESTOCK_BTN_W = 300;
+const RESTOCK_BTN_H = 54;
+const RESTOCK_BTN_GAP = 14; // espaço entre as cartas e o botão
+const RESTOCK_ACCENT = 0x4fd1ff;
 
 // Cabeçalho fixo (independe do encolhimento das cartas): margem do topo
 // até o título + o próprio título + uma faixa exclusiva reservada só pro
@@ -139,7 +143,7 @@ export default class LevelUpUI {
     // o layout escolhe sozinho quantas cartas por linha deixam as cartas
     // MAIORES possíveis dentro da tela (3 cartas = 1 linha grande; com
     // Arsenal Expandido pode virar 1 linha de 4-6 ou 2 linhas)
-    const { cardW, cardH, gap, rowGap, restockW, restockGap, cardsPerRow } = this._computeLayout(options.length, hasRestock);
+    const { cardW, cardH, gap, rowGap, cardsPerRow } = this._computeLayout(options.length, hasRestock);
     const rows = [];
     for (let i = 0; i < options.length; i += cardsPerRow) {
       rows.push(options.slice(i, i + cardsPerRow));
@@ -147,13 +151,14 @@ export default class LevelUpUI {
 
     const screenCx = this.scene.scale.width / 2;
     const visible = this._getVisibleUiBounds();
-    // com Restock ativo, o baralho normal é deslocado pra esquerda pra
-    const cx = hasRestock ? screenCx - (restockW + restockGap) / 2 : screenCx;
+    const cx = screenCx;
+    // o botão Restock ocupa uma faixa fixa no fim da tela
+    const restockZone = hasRestock ? RESTOCK_BTN_H + RESTOCK_BTN_GAP : 0;
 
     // as cartas vivem só no espaço ABAIXO do cabeçalho fixo (título + faixa
     // do cursor), centralizadas verticalmente no que sobra
     const totalH = rows.length * cardH + (rows.length - 1) * rowGap;
-    const availableRowsH = visible.bottom - visible.top - HEADER_H - LAYOUT_MARGIN_BOTTOM;
+    const availableRowsH = visible.bottom - visible.top - HEADER_H - LAYOUT_MARGIN_BOTTOM - restockZone;
     const rowsTop = visible.top + HEADER_H + Math.max(0, (availableRowsH - totalH) / 2);
     const startY = rowsTop + cardH / 2;
 
@@ -179,11 +184,12 @@ export default class LevelUpUI {
     });
 
     if (hasRestock) {
-      const fullRowCardCount = rows[0]?.length || 1;
-      const fullRowW = fullRowCardCount * cardW + (fullRowCardCount - 1) * gap;
-      const restockX = cx + fullRowW / 2 + restockGap + restockW / 2;
-      const blockCenterY = rowsTop + totalH / 2;
-      this.contentContainer.add(this._buildRestockCard(restockX, blockCenterY, totalH, restockW));
+      // logo abaixo das cartas (centralizado), sempre dentro da tela
+      const btnY = Math.min(
+        rowsTop + totalH + RESTOCK_BTN_GAP + RESTOCK_BTN_H / 2,
+        visible.bottom - 8 - RESTOCK_BTN_H / 2
+      );
+      this.contentContainer.add(this._buildRestockButton(cx, btnY));
     }
 
     this.container.setVisible(true);
@@ -221,13 +227,13 @@ export default class LevelUpUI {
   _computeLayout(optionCount, hasRestock) {
     const visible = this._getVisibleUiBounds();
     const availableW = visible.right - visible.left - LAYOUT_MARGIN_X * 2;
-    const availableH = visible.bottom - visible.top - HEADER_H - LAYOUT_MARGIN_BOTTOM;
-    const restockBlock = hasRestock ? RESTOCK_GAP + RESTOCK_W : 0;
+    const availableH = visible.bottom - visible.top - HEADER_H - LAYOUT_MARGIN_BOTTOM
+      - (hasRestock ? RESTOCK_BTN_H + RESTOCK_BTN_GAP : 0);
 
     let best = null;
     for (let perRow = 1; perRow <= Math.max(1, optionCount); perRow++) {
       const rowCount = Math.ceil(optionCount / perRow);
-      const naturalW = perRow * CARD_W + (perRow - 1) * GAP + restockBlock;
+      const naturalW = perRow * CARD_W + (perRow - 1) * GAP;
       const naturalH = rowCount * CARD_H + (rowCount - 1) * ROW_GAP;
       const fit = Math.min(availableW / naturalW, availableH / naturalH);
       // empate -> menos linhas (leitura mais natural)
@@ -242,9 +248,7 @@ export default class LevelUpUI {
       cardW: CARD_W * scale,
       cardH: CARD_H * scale,
       gap: GAP * scale,
-      rowGap: ROW_GAP * scale,
-      restockW: RESTOCK_W * scale,
-      restockGap: RESTOCK_GAP * scale
+      rowGap: ROW_GAP * scale
     };
   }
 
@@ -744,64 +748,57 @@ export default class LevelUpUI {
     });
   }
 
-  // Carta especial da evolução ARSENAL OVERRIDE: fica plantada ao lado do
-  // baralho. Agora usa a MESMA linguagem visual do menu principal (placa
-  // de terminal com cantos cortados) em vez de um retângulo genérico —
-  // ícone de "recarregar" desenhado (não emoji), girando bem devagar
-  // sozinho, e acelera + acende no hover, com o mesmo glow/caret das
-  // cartas normais avisando que é clicável.
-  _buildRestockCard(x, y, h, w = RESTOCK_W) {
-    const group = this.scene.add.container(x, y);
+  // Botão do Restock (evolução ARSENAL OVERRIDE): faixa simples embaixo das
+  // cartas — ícone de recarregar + "RESTOCK" + legenda curta. Azul-ciano
+  // bem visível quando disponível; cinza e "JÁ USADO" depois do uso.
+  _buildRestockButton(x, y) {
+    const w = RESTOCK_BTN_W;
+    const h = RESTOCK_BTN_H;
     const used = this._restockUsed;
-    const r = w / RESTOCK_W; // fontes/espaços acompanham o tamanho das cartas
+    const group = this.scene.add.container(x, y);
 
-    const idleBorder = used ? 0x3a444b : BORDER_IDLE;
-    const idleTextColor = used ? '#5c666c' : TEXT_IDLE;
-    const iconColor = used ? 0x5c666c : 0x8fd6ff;
+    const idleBorder = used ? 0x3a444b : RESTOCK_ACCENT;
+    const textColor = used ? '#5c666c' : '#e8f6ff';
+    const subColor = used ? '#4a5358' : '#8fd6ff';
+    const iconColor = used ? 0x5c666c : RESTOCK_ACCENT;
 
     const panel = this.scene.add.graphics().setScrollFactor(0);
-    this._drawChamferPanel(panel, w, h, idleBorder);
+    const paint = (border, fillAlpha) => {
+      panel.clear();
+      this._drawChamferPanel(panel, w, h, border);
+      if (!used) {
+        panel.fillStyle(RESTOCK_ACCENT, fillAlpha);
+        panel.fillRoundedRect(-w / 2 + 4, -h / 2 + 4, w - 8, h - 8, 2);
+      }
+    };
+    paint(idleBorder, 0.1);
 
-    const iconRadius = Math.min(w, h) * 0.15;
     const icon = this.scene.add.graphics().setScrollFactor(0);
-    icon.setPosition(0, -h / 2 + iconRadius + 22 * r);
-    this._drawRefreshIcon(icon, iconRadius, iconColor);
+    icon.setPosition(-w / 2 + 34, 0);
+    this._drawRefreshIcon(icon, 11, iconColor);
 
     const name = this.scene.add
-      .text(0, 4 * r, 'RESTOCK', {
+      .text(-w / 2 + 62, used ? 0 : -8, used ? 'RESTOCK  ·  JÁ USADO' : 'RESTOCK', {
         fontFamily: PIXEL_FONT,
-        fontSize: `${Math.round(9 * r)}px`,
-        color: idleTextColor,
-        align: 'center',
-        wordWrap: { width: w - 14 * r }
+        fontSize: '14px',
+        color: textColor
       })
-      .setOrigin(0.5)
+      .setOrigin(0, 0.5)
       .setScrollFactor(0);
-
-    const desc = this.scene.add
-      .text(0, h / 2 - 28 * r, used ? 'JÁ USADA\nNESTE LEVEL' : 'ROLAR\nDE NOVO', {
+    const sub = this.scene.add
+      .text(-w / 2 + 62, 11, 'SORTEAR NOVAS CARTAS', {
         fontFamily: PIXEL_FONT,
-        fontSize: `${Math.round(7 * r)}px`,
-        color: idleTextColor,
-        align: 'center',
-        lineSpacing: 5
+        fontSize: '8px',
+        color: subColor
       })
-      .setOrigin(0.5)
-      .setScrollFactor(0);
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setVisible(!used);
 
-    // mesmo glow em anel + cursor ">" das cartas normais — reaproveitado
-    // aqui pra deixar claro que o Restock é uma opção selecionável igual
-    const setHoverFx = used ? null : this._addHoverFx(group, w, h);
-
-    group.add([panel, icon, name, desc]);
-
-    // respiro sozinho, bem devagar — só enquanto disponível, pra não
-    // parecer um botão morto/estático (mesmo parado, ele "existe")
-    const idleSpin = used
-      ? null
-      : this.scene.tweens.add({ targets: icon, rotation: Math.PI * 2, duration: 7000, repeat: -1 });
+    group.add([panel, icon, name, sub]);
 
     if (!used) {
+      const spin = this.scene.tweens.add({ targets: icon, rotation: Math.PI * 2, duration: 6000, repeat: -1 });
       const hit = this.scene.add
         .rectangle(0, 0, w, h, 0xffffff, 0)
         .setScrollFactor(0)
@@ -809,21 +806,13 @@ export default class LevelUpUI {
       group.add(hit);
 
       hit.on('pointerover', () => {
-        panel.clear();
-        this._drawChamferPanel(panel, w, h, BORDER_HOVER);
-        name.setColor(TEXT_HOVER);
-        desc.setColor(TEXT_HOVER);
-        setHoverFx(true);
-        if (idleSpin) idleSpin.timeScale = 3.4; // acelera igual um HD "acordando"
+        paint(0xffffff, 0.22);
+        spin.timeScale = 4;
         this.scene.sound.play('sfx_hover', { volume: 0.5 });
       });
       hit.on('pointerout', () => {
-        panel.clear();
-        this._drawChamferPanel(panel, w, h, idleBorder);
-        name.setColor(idleTextColor);
-        desc.setColor(idleTextColor);
-        setHoverFx(false);
-        if (idleSpin) idleSpin.timeScale = 1;
+        paint(idleBorder, 0.1);
+        spin.timeScale = 1;
       });
       hit.on('pointerdown', () => this._restock());
     }
