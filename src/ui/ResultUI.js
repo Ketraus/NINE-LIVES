@@ -1,5 +1,6 @@
 import EventBus from '../systems/EventBus.js';
 import { SURVIVAL_MULTIPLIER_MAX, COMPLETION_BONUS } from '../roguelike/ScoreManager.js';
+import { UI_SCALE } from '../config/layout.js';
 
 // Tela de resultado: entra depois do "VOCÊ MORREU"/vitória (HUD emite
 // 'gameover-shown' / 'win-shown'). Uma etapa por vez, nada sobreposto:
@@ -54,6 +55,12 @@ export default class ResultUI {
     this.uiCam.setScroll(FAR, FAR);
 
     this.root = this.scene.add.container(FAR, FAR).setDepth(300).setVisible(false);
+    // Mantém a tipografia e os painéis do relatório com o mesmo tamanho
+    // físico da base antiga, agora que o canvas lógico é 16:9.
+    this.root.setScale(UI_SCALE).setPosition(
+      FAR + this.cx * (1 - UI_SCALE),
+      FAR + this.cy * (1 - UI_SCALE)
+    );
     this.scene.cameras.cameras.forEach((cam) => {
       if (cam !== this.uiCam) cam.ignore(this.root);
     });

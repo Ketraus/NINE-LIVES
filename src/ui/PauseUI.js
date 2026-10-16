@@ -1,6 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 import weaponsData from '../../data/weapons.js';
 import upgradesData from '../../data/upgrades.js';
+import { UI_SCALE, anchorToScreen, getUiSize } from '../config/layout.js';
 
 const BTN_RADIUS = 16;
 const BTN_HIT_RADIUS_DESKTOP = 22;
@@ -32,7 +33,8 @@ const DIALOG_CROSSFADE_MS = 150; // crossfade entre botões principais <-> diál
 const SETTINGS_COVER_MS = 260; // fade suave da cortina preta ao entrar/sair da Settings
 const QUIT_FADE_MS = 420; // fade suave pra preto antes de trocar pra MainMenuScene
 
-// Tela de build: cabe na mesma base 704x512 do resto da interface, mas usa
+// Tela de build: usa a escala de design da interface, agora renderizada em
+// uma base 16:9 maior, mas com a mesma proporção física dos elementos.
 // uma grade compacta para continuar legível também no celular em landscape.
 const BUILD_PANEL_W = 650;
 const BUILD_PANEL_H = 420;
@@ -48,7 +50,6 @@ const BUILD_SYSTEM_W = 155;
 const BUILD_GALLERY_TOP = -126;
 const BUILD_GALLERY_H = 276;
 const BUILD_GALLERY_CARD_W = 124;
-const BUILD_GALLERY_CARD_H = 172;
 const BUILD_GALLERY_GAP = 10;
 const BUILD_GALLERY_TRACK_X = BUILD_CARDS_X + BUILD_CARDS_W / 2 - 12;
 const BUILD_GALLERY_TRACK_TOP = -116;
@@ -109,7 +110,8 @@ export default class PauseUI {
 
   // scrollFactor(0) no container não propaga pros filhos, então cada
   _buildButton() {
-    const x = this.scene.scale.width - 40;
+    // pixels de design (ver config/layout.js): colado na borda direita da tela
+    const x = getUiSize(this.scene).w - 40;
     const y = 32;
     const hitRadius = this.scene.sys.game.device.input.touch
       ? BTN_HIT_RADIUS_TOUCH
@@ -141,9 +143,13 @@ export default class PauseUI {
 
   _buildWaitingMessage() {
     const { width } = this.scene.scale;
-    const zoom = this.scene.cameras.main.zoom || 1;
+    const cam = this.scene.cameras.main;
+    const zoom = cam.zoom || 1;
+    // posição de MUNDO que cai no ponto (width/2, 72*UI_SCALE) da tela com o zoom aplicado
+    const worldX = cam.centerX + (width / 2 - cam.centerX) / zoom;
+    const worldY = cam.centerY + (72 * UI_SCALE - cam.centerY) / zoom;
     this.waitingText = this.scene.add
-      .text(width / 2, 72, 'ESPERANDO O SEGUNDO JOGADOR', {
+      .text(worldX, worldY, 'ESPERANDO O SEGUNDO JOGADOR', {
         fontFamily: PIXEL_FONT,
         fontSize: '8px',
         color: TEXT_HOVER,
@@ -152,7 +158,7 @@ export default class PauseUI {
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
-      .setScale(1 / zoom)
+      .setScale(UI_SCALE / zoom)
       .setDepth(200)
       .setVisible(false);
   }
@@ -182,7 +188,7 @@ export default class PauseUI {
     const cx = width / 2;
     const cy = height / 2;
 
-    this.panelContainer = this.scene.add.container(cx, cy).setScrollFactor(0).setDepth(250).setVisible(false);
+    this.panelContainer = this.scene.add.container(cx, cy).setScrollFactor(0).setDepth(250).setVisible(false).setScale(UI_SCALE);
 
     // overlay escurece a gameplay mas mantém ela visível ao fundo
     const overlay = this.scene.add
@@ -289,10 +295,10 @@ export default class PauseUI {
     // Máscara fixa: só a área abaixo de "CARTAS ATIVAS" rola; o cabeçalho,
     // moldura e contador permanecem parados.
     const maskGraphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
-    const maskX = this.scene.scale.width / 2 + BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2;
-    const maskY = this.scene.scale.height / 2 + BUILD_GALLERY_TOP;
+    const maskX = this.scene.scale.width / 2 + (BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2) * UI_SCALE;
+    const maskY = this.scene.scale.height / 2 + BUILD_GALLERY_TOP * UI_SCALE;
     maskGraphics.fillStyle(0xffffff, 1);
-    maskGraphics.fillRect(maskX, maskY, BUILD_CARDS_W - 20, BUILD_GALLERY_H);
+    maskGraphics.fillRect(maskX, maskY, (BUILD_CARDS_W - 20) * UI_SCALE, BUILD_GALLERY_H * UI_SCALE);
     this.buildGalleryMaskGraphics = maskGraphics;
     this.buildGalleryViewport.setMask(maskGraphics.createGeometryMask());
 
@@ -320,7 +326,9 @@ export default class PauseUI {
     this.buildGalleryDragging = false;
     this._onBuildWheel = (_pointer, _gameObjects, _deltaX, deltaY) => {
       if (!this.buildOpen || !this._isPointerInBuildGallery(_pointer)) return;
-      this._setBuildGalleryScroll(this.buildGalleryScrollY + deltaY * 0.65);
+      // deltaY positivo significa "roda para baixo": o conteúdo precisa
+      // subir, portanto o scroll interno vai para valores mais negativos.
+      this._setBuildGalleryScroll(this.buildGalleryScrollY - deltaY * 0.65);
     };
     this._onBuildPointerDown = (pointer) => {
       if (!this.buildOpen || !this._isPointerInBuildGallery(pointer)) return;
@@ -490,7 +498,8 @@ export default class PauseUI {
       .filter(Boolean)
       .map((upgrade) => ({
         upgrade,
-        count: state.upgradeCounts[upgrade.id] || 1
+        count: state.upgradeCounts[upgrade.id] || 1,
+        cardHeight: this._getBuildGalleryCardHeight(upgrade)
       }))
       .sort((a, b) => {
         const aEvolution = a.upgrade.category === 'evolution' ? 1 : 0;
@@ -499,9 +508,15 @@ export default class PauseUI {
       });
 
     const rows = Math.ceil(entries.length / 2);
-    const contentHeight = rows > 0
-      ? rows * BUILD_GALLERY_CARD_H + Math.max(0, rows - 1) * BUILD_GALLERY_GAP
-      : 0;
+    const rowHeights = [];
+    for (let row = 0; row < rows; row++) {
+      rowHeights.push(Math.max(
+        entries[row * 2]?.cardHeight || 0,
+        entries[row * 2 + 1]?.cardHeight || 0
+      ));
+    }
+    const contentHeight = rowHeights.reduce((sum, height) => sum + height, 0) +
+      Math.max(0, rows - 1) * BUILD_GALLERY_GAP;
     this.buildGalleryContentHeight = contentHeight;
     this.buildGalleryMaxScroll = Math.max(0, contentHeight - BUILD_GALLERY_H);
     this._setBuildGalleryScroll(this.buildGalleryScrollY);
@@ -535,13 +550,17 @@ export default class PauseUI {
       const col = index % 2;
       const row = Math.floor(index / 2);
       const x = BUILD_CARDS_X + (col === 0 ? -((BUILD_GALLERY_CARD_W + BUILD_GALLERY_GAP) / 2) : (BUILD_GALLERY_CARD_W + BUILD_GALLERY_GAP) / 2);
-      const y = BUILD_GALLERY_TOP + BUILD_GALLERY_CARD_H / 2 + row * (BUILD_GALLERY_CARD_H + BUILD_GALLERY_GAP);
+      const rowTop = BUILD_GALLERY_TOP + rowHeights
+        .slice(0, row)
+        .reduce((sum, height) => sum + height + BUILD_GALLERY_GAP, 0);
+      const y = rowTop + entry.cardHeight / 2;
       this.buildGalleryContent.add(this._buildBuildGalleryCard(entry, x, y));
     });
   }
 
   _buildBuildGalleryCard(entry, x, y) {
     const { upgrade, count } = entry;
+    const cardH = entry.cardHeight;
     const rarity = upgrade.rarity || 'common';
     const border = BUILD_RARITY_COLORS[rarity] || BUILD_RARITY_COLORS.common;
     const tile = this.scene.add.container(x, y).setScrollFactor(0);
@@ -552,7 +571,7 @@ export default class PauseUI {
         // A carta completa tem tÃ­tulo e descriÃ§Ã£o pequenos demais para virar
         // miniatura. Mostramos sÃ³ a ilustraÃ§Ã£o central; o nome e o progresso
         // ficam como texto real ao lado, sem virar uma mancha ilegÃ­vel.
-        .setDisplaySize(BUILD_GALLERY_CARD_W, BUILD_GALLERY_CARD_H)
+        .setDisplaySize(BUILD_GALLERY_CARD_W, cardH)
         .setScrollFactor(0);
       tile.add(art);
     } else {
@@ -569,20 +588,20 @@ export default class PauseUI {
 
     const frame = this.scene.add.graphics().setScrollFactor(0);
     frame.lineStyle(2, border, 1);
-    frame.strokeRect(-BUILD_GALLERY_CARD_W / 2, -BUILD_GALLERY_CARD_H / 2, BUILD_GALLERY_CARD_W, BUILD_GALLERY_CARD_H);
+    frame.strokeRect(-BUILD_GALLERY_CARD_W / 2, -cardH / 2, BUILD_GALLERY_CARD_W, cardH);
     tile.add(frame);
 
     const progress = this._buildUpgradeProgress(upgrade, count);
     const badge = this.scene.add.rectangle(
       BUILD_GALLERY_CARD_W / 2 - 25,
-      -BUILD_GALLERY_CARD_H / 2 + 12,
+      -cardH / 2 + 12,
       42,
       18,
       0x061014,
       0.9
     ).setStrokeStyle(1, border, 1).setScrollFactor(0);
     const badgeText = this.scene.add
-      .text(BUILD_GALLERY_CARD_W / 2 - 25, -BUILD_GALLERY_CARD_H / 2 + 12, upgrade.category === 'evolution' ? 'EVO' : progress, {
+      .text(BUILD_GALLERY_CARD_W / 2 - 25, -cardH / 2 + 12, upgrade.category === 'evolution' ? 'EVO' : progress, {
         fontFamily: PIXEL_FONT,
         fontSize: '7px',
         color: upgrade.category === 'evolution' ? '#ffd166' : TEXT_HOVER,
@@ -636,7 +655,7 @@ export default class PauseUI {
     const abilities = [...new Set(abilityIds)];
     if (abilities.length === 0) {
       const empty = this.scene.add
-        .text(x, 105, 'NENHUMA\nDESBLOQUEADA', {
+        .text(x, 105, 'NENHUMA HABILIDADE', {
           fontFamily: PIXEL_FONT,
           fontSize: '6px',
           color: TEXT_IDLE,
@@ -703,10 +722,22 @@ export default class PauseUI {
 
   _isPointerInBuildGallery(pointer) {
     if (!pointer) return false;
-    const left = this.scene.scale.width / 2 + BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2;
-    const top = this.scene.scale.height / 2 + BUILD_GALLERY_TOP;
-    return pointer.x >= left && pointer.x <= left + BUILD_CARDS_W - 20 &&
-      pointer.y >= top && pointer.y <= top + BUILD_GALLERY_H;
+    const left = this.scene.scale.width / 2 + (BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2) * UI_SCALE;
+    const top = this.scene.scale.height / 2 + BUILD_GALLERY_TOP * UI_SCALE;
+    const width = (BUILD_CARDS_W - 20) * UI_SCALE;
+    const height = BUILD_GALLERY_H * UI_SCALE;
+    return pointer.x >= left && pointer.x <= left + width &&
+      pointer.y >= top && pointer.y <= top + height;
+  }
+
+  _getBuildGalleryCardHeight(upgrade) {
+    const artKey = this._getBuildArtKey(upgrade);
+    const texture = artKey ? this.scene.textures.get(artKey) : null;
+    const source = texture?.getSourceImage?.() || texture?.source?.[0]?.source;
+    const aspectHeight = source?.width > 0 && source?.height > 0
+      ? source.height / source.width
+      : 543 / 332;
+    return Math.round(BUILD_GALLERY_CARD_W * aspectHeight);
   }
 
   _getBuildArtKey(upgrade) {
@@ -1154,11 +1185,11 @@ export default class PauseUI {
 
     // entrada suave: some com o "pop" instantâneo de tela travando de vez
     this.scene.tweens.killTweensOf(this.panelContainer);
-    this.panelContainer.setVisible(true).setAlpha(0).setScale(0.96);
+    this.panelContainer.setVisible(true).setAlpha(0).setScale(UI_SCALE * 0.96);
     this.scene.tweens.add({
       targets: this.panelContainer,
       alpha: 1,
-      scale: 1,
+      scale: UI_SCALE,
       duration: ENTER_MS,
       ease: 'Cubic.easeOut'
     });
@@ -1183,7 +1214,7 @@ export default class PauseUI {
     this.scene.tweens.add({
       targets: this.panelContainer,
       alpha: 0,
-      scale: 0.96,
+      scale: UI_SCALE * 0.96,
       duration: EXIT_MS,
       ease: 'Cubic.easeIn',
       onComplete: () => this.panelContainer.setVisible(false)
@@ -1198,12 +1229,7 @@ export default class PauseUI {
   // HUD.js) — só o botão do canto precisa, já que ele continua sendo
   // desenhado pela câmera principal (com zoom) durante a gameplay normal.
   _applyZoomCompensation(container) {
-    const cam = this.scene.cameras.main;
-    const zoom = cam.zoom || 1;
-    if (zoom === 1) return;
-    const inv = 1 / zoom;
-    container.setScale(inv);
-    container.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
+    anchorToScreen(container, this.scene.cameras.main, UI_SCALE);
   }
 
   destroy() {

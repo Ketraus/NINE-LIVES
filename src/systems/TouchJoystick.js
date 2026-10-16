@@ -1,4 +1,5 @@
 import EventBus from './EventBus.js';
+import { anchorToScreen } from '../config/layout.js';
 
 // Joystick virtual pra controlar o MESMO movimento que WASD/setas já
 const BASE_RADIUS = 55;
@@ -75,12 +76,9 @@ export default class TouchJoystick {
   }
 
   _applyZoomCompensation(container) {
-    const cam = this.scene.cameras.main;
-    const zoom = cam.zoom || 1;
-    if (zoom === 1) return;
-    const inv = 1 / zoom;
-    container.setScale(inv);
-    container.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
+    // pixels de tela 1:1 — pointer.x/y são em pixels de tela, então o
+    // joystick tem que ser desenhado exatamente embaixo do dedo
+    anchorToScreen(container, this.scene.cameras.main, 1);
   }
 
   _setVisible(visible) {

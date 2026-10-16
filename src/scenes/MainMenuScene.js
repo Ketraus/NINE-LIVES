@@ -1,4 +1,5 @@
 import MusicManager from '../systems/MusicManager.js';
+import { UI_SCALE } from '../config/layout.js';
 
 // paleta "terminal cyberpunk" pedida: fundo do botão quase transparente,
 const PANEL_FILL = 0x061014;
@@ -103,6 +104,9 @@ export default class MainMenuScene extends Phaser.Scene {
       settingsButton,
       ...this.roomMenuButtons
     ]);
+    this.menuLayer
+      .setScale(UI_SCALE)
+      .setPosition((width / 2) * (1 - UI_SCALE), (height / 2) * (1 - UI_SCALE));
 
     this._setupRetroFx();
 

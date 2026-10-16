@@ -355,8 +355,8 @@ export default class PreloadScene extends Phaser.Scene {
     createMinotaurStompTextures(this);
     prepareMinotaurChargeSwing(this);
 
-    // As artes das cartas são exportadas em ~2x o tamanho exibido (340x562 pra
-    // uma carta de 170x281). NEAREST descartava pixels ao reduzir e deixava
+    // As artes das cartas são exportadas em alta resolução (aprox. 2x o
+    // tamanho exibido). NEAREST descartava pixels ao reduzir e deixava
     // texto/circuitos serrilhados; LINEAR faz a média exata 2x2 e mantém nítido.
     const cardArtKeys = cardArtIds.map((id) => `card_${id}`);
     cardArtKeys.forEach((key) => {
@@ -370,9 +370,10 @@ export default class PreloadScene extends Phaser.Scene {
 
     // Sprites de gameplay são pixel art e podem ser desenhados em escalas
     // fracionárias; NEAREST mantém os pixels nítidos nesses casos.
+    // O GatoDrone fica de fora: ele gira (banking) e flutua em posições
+    // fracionárias, e NEAREST nisso gera serrilhado/tremida — LINEAR a 1:1
+    // fica nítido e suave.
     [
-      'gato_drone',
-      'gato_drone_catforce',
       'laser_green',
       'laser_purple',
       'laser_blue',
@@ -380,6 +381,7 @@ export default class PreloadScene extends Phaser.Scene {
       'asset_purification_idle',
       'asset_purification_walk'
     ].forEach((key) => this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST));
+    ['gato_drone', 'gato_drone_catforce'].forEach((key) => this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR));
 
     // animações do gato jogável (ver Player._updateAnimation) — criadas uma
     this.anims.create({

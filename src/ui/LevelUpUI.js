@@ -1,4 +1,5 @@
 import EventBus from '../systems/EventBus.js';
+import { anchorToScreen } from '../config/layout.js';
 
 // Tamanho "ideal" das cartas — usado como base pro layout, mas o layout
 // real (ver _computeLayout) ENCOLHE isso automaticamente quando não cabe
@@ -6,16 +7,20 @@ import EventBus from '../systems/EventBus.js';
 // pode ter que mostrar 6 cartas em 2 linhas, o que não cabe nos 512px de
 // altura do canvas em tamanho cheio — por isso nunca usar CARD_W/CARD_H
 // direto pra montar a tela, sempre passar pelas dimensões calculadas)
-const CARD_W = 170;
-const CARD_H = 281;
-const GAP = 14;
-const ROW_GAP = 18;
-// Máximo de cartas por linha antes de quebrar pra próxima — com
-const CARDS_PER_ROW = 3;
+// Tamanho grande na tela normal. O cálculo abaixo reduz somente quando o
+// número de linhas/Restock realmente exige isso.
+// Proporção "oficial" das cartas (as artes têm ~340x565, ou seja, 0,60).
+// CARD_W/CARD_H são só a REFERÊNCIA do layout (fontes/paddings escalam a
+// partir dela): o tamanho real vem de _computeLayout, que agora AMPLIA as
+// cartas até ocupar a tela (MAX_LAYOUT_SCALE) em vez de travar em 230x377.
+const CARD_W = 230;
+const CARD_H = 377;
+const GAP = 10;
+const ROW_GAP = 12;
 
 // Carta "Restock" (evolução ARSENAL OVERRIDE): fica ao lado do baralho…
 const RESTOCK_W = 96;
-const RESTOCK_GAP = 16;
+const RESTOCK_GAP = 10;
 
 // Cabeçalho fixo (independe do encolhimento das cartas): margem do topo
 // até o título + o próprio título + uma faixa exclusiva reservada só pro
@@ -23,16 +28,21 @@ const RESTOCK_GAP = 16;
 // encosta/invade o texto do título, não importa quantas linhas de carta
 // tenham abaixo.
 const TITLE_TOP_MARGIN = 14;
-const TITLE_TEXT_SIZE = 16;
-const CARET_ZONE_H = 30;
+const TITLE_TEXT_SIZE = 18;
+const CARET_ZONE_H = 24;
 const HEADER_H = TITLE_TOP_MARGIN + TITLE_TEXT_SIZE + CARET_ZONE_H;
 
 // Margens de segurança do layout (ver _computeLayout) — nunca deixa o
 // baralho encostar na borda do canvas nem no cabeçalho.
-const LAYOUT_MARGIN_X = 14;
-const LAYOUT_MARGIN_BOTTOM = 16;
-// não deixa o encolhimento automático virar sopa de letrinhas ilegível
-const MIN_LAYOUT_SCALE = 0.6;
+const LAYOUT_MARGIN_X = 16;
+// folga embaixo: o hover aumenta a carta em 5%, então precisa sobrar espaço
+const LAYOUT_MARGIN_BOTTOM = 18;
+// 1.5 ≈ tamanho nativo das artes (340x565) — acima disso começa a perder nitidez
+const MAX_LAYOUT_SCALE = 1.5;
+// com até 3 opções (level-up normal) as cartas ficam um pouco menores, só um
+// pouco acima do tamanho das 4 cartas do Arsenal Expandido
+const MAX_LAYOUT_SCALE_FEW = 1.2;
+const MIN_LAYOUT_SCALE = 0.3;
 
 // Visual "placa de terminal" (mesma paleta do MainMenuScene) usado no
 // botão de Restock, pra ele parecer parte do mesmo jogo em vez de um
@@ -94,7 +104,8 @@ export default class LevelUpUI {
   constructor(scene, runManager) {
     this.scene = scene;
     this.runManager = runManager;
-    this.container = scene.add.container(0, 0).setDepth(300).setVisible(false);
+    this.container = scene.add.container(0, 0).setDepth(300).setVisible(false).setScrollFactor(0);
+    this.contentContainer = null;
     this._applyZoomCompensation(this.container);
     // limite do Restock: 1 uso por level-up (zera só quando um NOVO level-up
     this._restockUsed = false;
@@ -109,13 +120,9 @@ export default class LevelUpUI {
   }
 
   // Mesmo bug/correção do HUD (ver HUD._applyZoomCompensation): a câmera
+  // Pixels de tela 1:1: (0,0) = canto superior esquerdo REAL da tela.
   _applyZoomCompensation(container) {
-    const cam = this.scene.cameras.main;
-    const zoom = cam.zoom || 1;
-    if (zoom === 1) return;
-    const inv = 1 / zoom;
-    container.setScale(inv);
-    container.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
+    anchorToScreen(container, this.scene.cameras.main, 1);
   }
 
   show(options) {
@@ -127,37 +134,37 @@ export default class LevelUpUI {
     this._openOverlay();
 
     const hasRestock = !!this.runManager.runState.hasRestock;
+    this._setLevelUpContentMode(false);
 
-    // quebra as opções em linhas de até CARDS_PER_ROW cartas, pra não
+    // o layout escolhe sozinho quantas cartas por linha deixam as cartas
+    // MAIORES possíveis dentro da tela (3 cartas = 1 linha grande; com
+    // Arsenal Expandido pode virar 1 linha de 4-6 ou 2 linhas)
+    const { cardW, cardH, gap, rowGap, restockW, restockGap, cardsPerRow } = this._computeLayout(options.length, hasRestock);
     const rows = [];
-    for (let i = 0; i < options.length; i += CARDS_PER_ROW) {
-      rows.push(options.slice(i, i + CARDS_PER_ROW));
+    for (let i = 0; i < options.length; i += cardsPerRow) {
+      rows.push(options.slice(i, i + cardsPerRow));
     }
 
-    // dimensões desta tela em particular — encolhem sozinhas se o baralho
-    // (rows x cards, + Restock) não couber no espaço abaixo do cabeçalho
-    const { cardW, cardH, gap, rowGap, restockW, restockGap } = this._computeLayout(rows, hasRestock);
-
     const screenCx = this.scene.scale.width / 2;
-    const screenH = this.scene.scale.height;
+    const visible = this._getVisibleUiBounds();
     // com Restock ativo, o baralho normal é deslocado pra esquerda pra
     const cx = hasRestock ? screenCx - (restockW + restockGap) / 2 : screenCx;
 
     // as cartas vivem só no espaço ABAIXO do cabeçalho fixo (título + faixa
-    // do cursor), centralizadas no que sobra até o fim da tela — o título
+    // do cursor), centralizadas verticalmente no que sobra
     const totalH = rows.length * cardH + (rows.length - 1) * rowGap;
-    const availableRowsH = screenH - HEADER_H - LAYOUT_MARGIN_BOTTOM;
-    const rowsTop = HEADER_H + Math.max(0, (availableRowsH - totalH) / 2);
+    const availableRowsH = visible.bottom - visible.top - HEADER_H - LAYOUT_MARGIN_BOTTOM;
+    const rowsTop = visible.top + HEADER_H + Math.max(0, (availableRowsH - totalH) / 2);
     const startY = rowsTop + cardH / 2;
 
     const title = this.scene.add
-      .text(screenCx, TITLE_TOP_MARGIN + TITLE_TEXT_SIZE / 2, 'SUBIU DE NÍVEL — escolha um upgrade', {
+      .text(screenCx, visible.top + TITLE_TOP_MARGIN + TITLE_TEXT_SIZE / 2, 'SUBIU DE NÍVEL — escolha um upgrade', {
         fontSize: `${TITLE_TEXT_SIZE}px`,
         color: '#ffffff'
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
-    this.container.add(title);
+      this.contentContainer.add(title);
 
     rows.forEach((row, rowIndex) => {
       const rowY = startY + rowIndex * (cardH + rowGap);
@@ -166,16 +173,17 @@ export default class LevelUpUI {
       row.forEach((upgrade, i) => {
         const x = startX + i * (cardW + gap);
         const card = this._buildCard(x, rowY, upgrade, cardW, cardH);
-        this.container.add(card);
+        this.contentContainer.add(card);
         this._animateCardIn(card, rowIndex * row.length + i);
       });
     });
 
     if (hasRestock) {
-      const fullRowW = CARDS_PER_ROW * cardW + (CARDS_PER_ROW - 1) * gap;
+      const fullRowCardCount = rows[0]?.length || 1;
+      const fullRowW = fullRowCardCount * cardW + (fullRowCardCount - 1) * gap;
       const restockX = cx + fullRowW / 2 + restockGap + restockW / 2;
       const blockCenterY = rowsTop + totalH / 2;
-      this.container.add(this._buildRestockCard(restockX, blockCenterY, totalH, restockW));
+      this.contentContainer.add(this._buildRestockCard(restockX, blockCenterY, totalH, restockW));
     }
 
     this.container.setVisible(true);
@@ -185,7 +193,8 @@ export default class LevelUpUI {
     if (this.scene.isGameOver || this.scene.hasWon || this.scene.multiplayerWaitingForLevelUp) return;
     this.scene.multiplayerWaitingForLevelUp = true;
     this._openOverlay();
-    this.container.add(this.scene.add.text(
+    this._setLevelUpContentMode(false);
+    this.contentContainer.add(this.scene.add.text(
       this.scene.scale.width / 2,
       this.scene.scale.height / 2,
       'AGUARDANDO OUTRO JOGADOR',
@@ -204,31 +213,32 @@ export default class LevelUpUI {
     EventBus.emit('levelup-closed');
   }
 
-  // Calcula o tamanho REAL das cartas nesta tela: começa do tamanho
-  // "ideal" (CARD_W/CARD_H) e encolhe tudo proporcionalmente (cartas,
-  // gaps e o bloco do Restock) só o suficiente pra caber no espaço
-  // disponível abaixo do cabeçalho fixo — é isso que evita cartas
-  // cortadas/fora da tela quando o baralho cresce (Arsenal Expandido soma
-  // opções, e com 2+ linhas as cartas em tamanho cheio não cabem na
-  // altura). Margens laterais e gaps enxutos + o mínimo mais alto (0.6)
-  // deixam a área de seleção ocupar mais tela mesmo no pior caso (3x
-  // Arsenal Expandido + Restock = 6 cartas em 2 linhas).
-  _computeLayout(rows, hasRestock) {
-    const screenW = this.scene.scale.width;
-    const screenH = this.scene.scale.height;
-
-    const maxCardsInRow = rows.reduce((max, row) => Math.max(max, row.length), 1);
+  // Calcula o tamanho REAL das cartas nesta tela. Testa todas as formas de
+  // dividir as opções em linhas (1 linha de N, 2 linhas...) e fica com a
+  // que permite a MAIOR carta dentro da tela útil (largura x altura abaixo do
+  // cabeçalho), limitada a MAX_LAYOUT_SCALE (tamanho nativo da arte). Gaps e o
+  // bloco do Restock escalam junto, então nada vaza da tela.
+  _computeLayout(optionCount, hasRestock) {
+    const visible = this._getVisibleUiBounds();
+    const availableW = visible.right - visible.left - LAYOUT_MARGIN_X * 2;
+    const availableH = visible.bottom - visible.top - HEADER_H - LAYOUT_MARGIN_BOTTOM;
     const restockBlock = hasRestock ? RESTOCK_GAP + RESTOCK_W : 0;
-    const naturalW = maxCardsInRow * CARD_W + (maxCardsInRow - 1) * GAP + restockBlock;
-    const naturalH = rows.length * CARD_H + Math.max(0, rows.length - 1) * ROW_GAP;
 
-    const availableW = screenW - LAYOUT_MARGIN_X * 2;
-    const availableH = screenH - HEADER_H - LAYOUT_MARGIN_BOTTOM;
+    let best = null;
+    for (let perRow = 1; perRow <= Math.max(1, optionCount); perRow++) {
+      const rowCount = Math.ceil(optionCount / perRow);
+      const naturalW = perRow * CARD_W + (perRow - 1) * GAP + restockBlock;
+      const naturalH = rowCount * CARD_H + (rowCount - 1) * ROW_GAP;
+      const fit = Math.min(availableW / naturalW, availableH / naturalH);
+      // empate -> menos linhas (leitura mais natural)
+      if (!best || fit > best.fit + 0.001) best = { perRow, fit };
+    }
 
-    const scale = Math.max(MIN_LAYOUT_SCALE, Math.min(1, availableW / naturalW, availableH / naturalH));
-
+    const maxScale = optionCount <= 3 ? MAX_LAYOUT_SCALE_FEW : MAX_LAYOUT_SCALE;
+    const scale = Math.max(MIN_LAYOUT_SCALE, Math.min(maxScale, best.fit));
     return {
       scale,
+      cardsPerRow: best.perRow,
       cardW: CARD_W * scale,
       cardH: CARD_H * scale,
       gap: GAP * scale,
@@ -242,12 +252,14 @@ export default class LevelUpUI {
   showEvolution(evolution) {
     if (this.scene.isGameOver || this.scene.hasWon) return;
     this._openOverlay();
+    this._setLevelUpContentMode(false);
 
     // toca assim que a carta evoluída APARECE na tela (o jogador acabou de
     this.scene.sound.play('sfx_evolution_effect', { volume: 0.6 });
 
     const screenW = this.scene.scale.width;
     const screenH = this.scene.scale.height;
+    const visible = this._getVisibleUiBounds();
     const cx = screenW / 2;
 
     // carta cresce pra ocupar o espaço abaixo do título (mesma lógica do
@@ -257,21 +269,21 @@ export default class LevelUpUI {
     const cardW = CARD_W * scale;
     const cardH = CARD_H * scale;
     const headerH = EVOLUTION_TITLE_TOP_MARGIN + EVOLUTION_TITLE_SIZE + EVOLUTION_TITLE_GAP;
-    const availableH = screenH - headerH - EVOLUTION_MARGIN_BOTTOM;
-    const cardTop = headerH + Math.max(0, (availableH - cardH) / 2);
+    const availableH = visible.bottom - visible.top - headerH - EVOLUTION_MARGIN_BOTTOM;
+    const cardTop = visible.top + headerH + Math.max(0, (availableH - cardH) / 2);
     const cardCenterY = cardTop + cardH / 2;
 
     const title = this.scene.add
-      .text(cx, EVOLUTION_TITLE_TOP_MARGIN + EVOLUTION_TITLE_SIZE / 2, 'Você desbloqueou uma Evolução!', {
+      .text(cx, visible.top + EVOLUTION_TITLE_TOP_MARGIN + EVOLUTION_TITLE_SIZE / 2, 'Você desbloqueou uma Evolução!', {
         fontSize: `${EVOLUTION_TITLE_SIZE}px`,
         color: '#ffd166',
         fontStyle: 'bold'
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
-    this.container.add(title);
+    this.contentContainer.add(title);
 
-    this.container.add(this._buildEvolutionCard(cx, cardCenterY, evolution, cardW, cardH));
+    this.contentContainer.add(this._buildEvolutionCard(cx, cardCenterY, evolution, cardW, cardH));
 
     // clarão dourado rápido no instante em que a carta aparece — não
     // bloqueia clique (não é interativo), só dá aquele "impacto" de
@@ -279,7 +291,7 @@ export default class LevelUpUI {
     const flash = this.scene.add
       .rectangle(cx, screenH / 2, screenW, screenH, 0xffe9a8, 0.32)
       .setScrollFactor(0);
-    this.container.add(flash);
+    this.contentContainer.add(flash);
     this.scene.tweens.add({
       targets: flash,
       alpha: 0,
@@ -296,15 +308,22 @@ export default class LevelUpUI {
   // em telas muito largas.
   _computeEvolutionScale() {
     const screenW = this.scene.scale.width;
-    const screenH = this.scene.scale.height;
+    const visible = this._getVisibleUiBounds();
     const headerH = EVOLUTION_TITLE_TOP_MARGIN + EVOLUTION_TITLE_SIZE + EVOLUTION_TITLE_GAP;
-    const availableW = screenW - EVOLUTION_MARGIN_X * 2;
-    const availableH = screenH - headerH - EVOLUTION_MARGIN_BOTTOM;
+    const availableW = visible.right - visible.left - EVOLUTION_MARGIN_X * 2;
+    const availableH = visible.bottom - visible.top - headerH - EVOLUTION_MARGIN_BOTTOM;
     return Math.min(availableW / CARD_W, availableH / CARD_H, EVOLUTION_MAX_SCALE);
+  }
+
+  // O container já está preso à tela em pixels 1:1 (ver _applyZoomCompensation),
+  // então a área útil é simplesmente a tela inteira.
+  _getVisibleUiBounds() {
+    return { left: 0, right: this.scene.scale.width, top: 0, bottom: this.scene.scale.height };
   }
 
   // Comum a show() e showEvolution(): limpa a tela anterior e pausa o jog…
   _openOverlay() {
+    this._applyZoomCompensation(this.container); // zoom pode ter mudado desde o construtor
     this.container.removeAll(true);
     this.scene.physics.pause();
     this.scene.time.timeScale = 0;
@@ -316,6 +335,14 @@ export default class LevelUpUI {
       .rectangle(cx, cy, this.scene.scale.width, this.scene.scale.height, 0x000000, 0.65)
       .setScrollFactor(0);
     this.container.add(overlay);
+    this.contentContainer = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.container.add(this.contentContainer);
+  }
+
+  // Mantido por compatibilidade: o conteúdo agora usa sempre a mesma escala
+  // do container (a tela inteira em pixels 1:1), sem modo especial de Arsenal.
+  _setLevelUpContentMode() {
+    this.contentContainer?.setScale(1).setPosition(0, 0);
   }
 
   _buildCard(x, y, upgrade, cardW = CARD_W, cardH = CARD_H) {
@@ -726,6 +753,7 @@ export default class LevelUpUI {
   _buildRestockCard(x, y, h, w = RESTOCK_W) {
     const group = this.scene.add.container(x, y);
     const used = this._restockUsed;
+    const r = w / RESTOCK_W; // fontes/espaços acompanham o tamanho das cartas
 
     const idleBorder = used ? 0x3a444b : BORDER_IDLE;
     const idleTextColor = used ? '#5c666c' : TEXT_IDLE;
@@ -736,24 +764,24 @@ export default class LevelUpUI {
 
     const iconRadius = Math.min(w, h) * 0.15;
     const icon = this.scene.add.graphics().setScrollFactor(0);
-    icon.setPosition(0, -h / 2 + iconRadius + 22);
+    icon.setPosition(0, -h / 2 + iconRadius + 22 * r);
     this._drawRefreshIcon(icon, iconRadius, iconColor);
 
     const name = this.scene.add
-      .text(0, 4, 'RESTOCK', {
+      .text(0, 4 * r, 'RESTOCK', {
         fontFamily: PIXEL_FONT,
-        fontSize: '9px',
+        fontSize: `${Math.round(9 * r)}px`,
         color: idleTextColor,
         align: 'center',
-        wordWrap: { width: w - 14 }
+        wordWrap: { width: w - 14 * r }
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
 
     const desc = this.scene.add
-      .text(0, h / 2 - 28, used ? 'JÁ USADA\nNESTE LEVEL' : 'ROLAR\nDE NOVO', {
+      .text(0, h / 2 - 28 * r, used ? 'JÁ USADA\nNESTE LEVEL' : 'ROLAR\nDE NOVO', {
         fontFamily: PIXEL_FONT,
-        fontSize: '7px',
+        fontSize: `${Math.round(7 * r)}px`,
         color: idleTextColor,
         align: 'center',
         lineSpacing: 5

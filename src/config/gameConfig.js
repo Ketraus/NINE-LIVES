@@ -12,9 +12,7 @@ import FlickerPipeline from '../fx/FlickerPipeline.js';
 import BloomPipeline from '../fx/BloomPipeline.js';
 import ChromaticAberrationPipeline from '../fx/ChromaticAberrationPipeline.js';
 import StaticNoisePipeline from '../fx/StaticNoisePipeline.js';
-
-const BASE_WIDTH = 704;
-const BASE_HEIGHT = 512; // altura de referência: HUD e telas de carta são pensados pra caber nela
+import { BASE_WIDTH, BASE_HEIGHT } from './layout.js';
 
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 

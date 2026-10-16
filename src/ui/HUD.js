@@ -1,6 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 import MusicManager from '../systems/MusicManager.js';
 import SettingsManager from '../systems/SettingsManager.js';
+import { UI_SCALE, anchorToScreen, getUiSize } from '../config/layout.js';
 
 const SHIELD_BAR_COLOR = 0xffd166; // dourado — precisa contrastar com o gradiente ciano->vermelho da vida,…
 const SHIELD_FILL_ALPHA = 0.95; // escudo cobre a barra de vida por cima, então precisa ser bem mais opa…
@@ -203,6 +204,13 @@ export default class HUD {
     this.scene = scene;
     this._hudTextTargets = [];
 
+    // A HUD é desenhada em "pixels de design" (a tela inteira vale uiW x uiH
+    // deles; ver config/layout.js). Posições à direita/embaixo SEMPRE partem
+    // de uiW/uiH — nunca de scene.scale.width/height, que são pixels de tela.
+    const ui = getUiSize(scene);
+    this.uiW = ui.w;
+    this.uiH = ui.h;
+
     // Container único pra todo o HUD "fixo na tela" — ver _applyZoomCompens…
     // Fica acima do gameplay e dos FX, mas abaixo das telas modais.
     this.uiContainer = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(150);
@@ -223,22 +231,18 @@ export default class HUD {
 
     // gameOverGroup/winGroup/deathOverlayGroup são containers à parte (ver
     // _buildGameOverText/_buildDeathOverlay), cada um com sua própria depth
-    this._applyZoomCompensation(this.uiContainer);
-    this._applyZoomCompensation(this.gameOverGroup);
-    this._applyZoomCompensation(this.winGroup);
-    this._applyZoomCompensation(this.deathOverlayGroup);
+    this._applyZoomCompensation(this.uiContainer, UI_SCALE);
+    // overlays de tela cheia / mensagens centrais: pixels de tela (1:1)
+    this._applyZoomCompensation(this.gameOverGroup, 1);
+    this._applyZoomCompensation(this.winGroup, 1);
+    this._applyZoomCompensation(this.deathOverlayGroup, 1);
 
     this._bindEvents();
   }
 
   // BUG (zoom no celular): GameScene dá setZoom(1.4) na câmera em telas
-  _applyZoomCompensation(container) {
-    const cam = this.scene.cameras.main;
-    const zoom = cam.zoom || 1;
-    if (zoom === 1) return;
-    const inv = 1 / zoom;
-    container.setScale(inv);
-    container.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
+  _applyZoomCompensation(container, uiScale = UI_SCALE) {
+    anchorToScreen(container, this.scene.cameras.main, uiScale);
   }
 
   _registerHudText(text, baseFontSize) {
@@ -374,6 +378,9 @@ export default class HUD {
     const w = this.scene.scale.width;
     const h = this.scene.scale.height;
     const key = 'hud_low_hp_vignette';
+    // a vinheta vive no uiContainer (pixels de design): ocupa uiW x uiH
+    const vw = this.uiW;
+    const vh = this.uiH;
 
     if (!this.scene.textures.exists(key)) {
       const canvasTexture = this.scene.textures.createCanvas(key, w, h);
@@ -390,7 +397,8 @@ export default class HUD {
     }
 
     this.lowHpVignette = this.scene.add
-      .image(w / 2, h / 2, key)
+      .image(vw / 2, vh / 2, key)
+      .setDisplaySize(vw, vh)
       .setScrollFactor(0)
       .setDepth(130)
       .setAlpha(0);
@@ -818,7 +826,7 @@ export default class HUD {
   _buildKillCounter() {
     this.killText = this.scene.add
       // Fica abaixo do relÃ³gio e da Ã¡rea de toque do botÃ£o de pausa.
-      .text(this.scene.scale.width - 16, 82, 'Abates: 0', { fontSize: '12px', color: '#ffffff' })
+      .text(this.uiW - 16, 82, 'Abates: 0', { fontSize: '12px', color: '#ffffff' })
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(100);
@@ -828,7 +836,7 @@ export default class HUD {
 
   _buildRunTimer() {
     this.timeText = this.scene.add
-      .text(this.scene.scale.width / 2, 16, '00:00', { fontSize: '13px', color: '#ffffff' })
+      .text(this.uiW / 2, 16, '00:00', { fontSize: '13px', color: '#ffffff' })
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(100);
@@ -842,16 +850,16 @@ export default class HUD {
 
     if (hasBoss) {
       // O botÃ£o de pausa fica em y=32; abaixo dele nÃ£o hÃ¡ sobreposiÃ§Ã£o.
-      this.timeText.setPosition(this.scene.scale.width - 16, 58).setOrigin(1, 0);
+      this.timeText.setPosition(this.uiW - 16, 58).setOrigin(1, 0);
     } else {
-      this.timeText.setPosition(this.scene.scale.width / 2, 16).setOrigin(0.5, 0);
+      this.timeText.setPosition(this.uiW / 2, 16).setOrigin(0.5, 0);
     }
 
     this._timerBossLayout = hasBoss;
   }
 
   _buildBossBar() {
-    const W = this.scene.scale.width;
+    const W = this.uiW;
     // Deixa o canto superior esquerdo livre para vida/XP e mantém o encontro
     // visível no centro mesmo em telas menores.
     this.bossPanelW = Math.min(420, Math.max(240, W - 320));

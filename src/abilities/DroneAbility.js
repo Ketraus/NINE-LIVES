@@ -113,7 +113,10 @@ export default class DroneAbility {
     this.sprite = scene.add
       .image(player.x + this.offset.x, player.y + this.offset.y, this.laser ? 'gato_drone_catforce' : 'gato_drone')
       .setDepth(16)
-      .setScale(1.1);
+      // 1 pixel do sprite = 1 pixel de tela (o zoom da câmera é desfeito):
+      // antes era 1.1 * zoom ≈ 0.86, uma escala fracionária que descartava
+      // linhas/colunas do pixel art e deixava o drone serrilhado.
+      .setScale(1 / (scene.cameras.main.zoom || 1));
 
     this.bulletGroup = scene.physics.add.group();
     scene.physics.add.overlap(this.bulletGroup, enemyGroup, (bullet, enemy) => {

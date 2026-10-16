@@ -1,4 +1,5 @@
 import weaponsData from '../../data/weapons.js';
+import { UI_SCALE } from '../config/layout.js';
 
 // arte real das cartas (feita pelo Ketlin + usuário, ver assets/ui/) —
 // cada weapon.id de data/weapons.js mapeia pra uma textura pré-carregada.
@@ -21,7 +22,7 @@ const CHAMFER = 8;
 
 // arte nasce em 331x459 (ver assets/ui/); reduzida em relação ao valor
 // original (260) porque a moldura + labels novas precisam caber, com as
-// 3 cartas lado a lado, dentro da BASE_WIDTH de 704 (ver gameConfig.js).
+// 3 cartas lado a lado, dentro da base 16:9 (ver config/layout.js).
 const CARD_DISPLAY_H = 235;
 const CARD_DISPLAY_W = Math.round((331 / 459) * CARD_DISPLAY_H);
 const GAP = 40; // espaço entre molduras
@@ -295,14 +296,15 @@ export default class WeaponSelectScene extends Phaser.Scene {
   _playEntryAnimation() {
     this.cardGroups.forEach((group, i) => {
       const targetY = group.y;
-      group.setScale(0.15, 1);
+      group.setScale(0.15 * UI_SCALE, UI_SCALE);
       group.setAlpha(0);
       group.y = targetY - 10;
 
       this.tweens.add({
         targets: group,
-        scaleX: 1,
+        scaleX: UI_SCALE,
         alpha: 1,
+        scaleY: UI_SCALE,
         y: targetY,
         duration: ENTRY_DURATION_MS,
         delay: i * ENTRY_STAGGER_MS,
@@ -345,11 +347,23 @@ export default class WeaponSelectScene extends Phaser.Scene {
     this.cardGroups.forEach((g) => {
       if (g === chosenGroup) return;
       g.hitArea.disableInteractive();
-      this.tweens.add({ targets: g, alpha: 0, scale: 0.92, duration: OTHER_CARDS_FADE_MS });
+      this.tweens.add({
+        targets: g,
+        alpha: 0,
+        scaleX: UI_SCALE * 0.92,
+        scaleY: UI_SCALE * 0.92,
+        duration: OTHER_CARDS_FADE_MS
+      });
     });
     this._backButtonHitArea.disableInteractive();
     this.tweens.add({ targets: this.decorLayer, alpha: 0, duration: OTHER_CARDS_FADE_MS });
-    this.tweens.add({ targets: chosenGroup, scaleX: 1.06, scaleY: 1.06, duration: OTHER_CARDS_FADE_MS, yoyo: true });
+    this.tweens.add({
+      targets: chosenGroup,
+      scaleX: UI_SCALE * 1.06,
+      scaleY: UI_SCALE * 1.06,
+      duration: OTHER_CARDS_FADE_MS,
+      yoyo: true
+    });
 
     // CLACK + vibração, ao mesmo tempo (senão o shake roda com a tela já mudando)
     this.cameras.main.shake(VIBRATION_MS, VIBRATION_INTENSITY);

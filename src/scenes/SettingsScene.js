@@ -1,6 +1,7 @@
 import MusicManager from '../systems/MusicManager.js';
 import SettingsManager from '../systems/SettingsManager.js';
 import EventBus from '../systems/EventBus.js';
+import { UI_SCALE } from '../config/layout.js';
 
 // mesma paleta "terminal cyberpunk" do MainMenuScene — ver comentários lá
 const PANEL_FILL = 0x061014;
@@ -17,10 +18,10 @@ const CHAMFER = 8;
 // (transitionCover), então não recebe fade de câmera aqui.
 const SCENE_FADE_MS = 220;
 
-const TRACK_WIDTH = 240;
-const TRACK_HEIGHT = 6;
-const HANDLE_WIDTH = 10;
-const HANDLE_HEIGHT = 20;
+const TRACK_WIDTH = Math.round(240 * UI_SCALE);
+const TRACK_HEIGHT = Math.round(6 * UI_SCALE);
+const HANDLE_WIDTH = Math.round(10 * UI_SCALE);
+const HANDLE_HEIGHT = Math.round(20 * UI_SCALE);
 const TRACK_COLOR = 0x1c2a2f;
 const FILL_COLOR = 0x8fd6ff;
 
@@ -56,14 +57,14 @@ export default class SettingsScene extends Phaser.Scene {
     this.add
       .text(width / 2, height * 0.16, 'SETTINGS', {
         fontFamily: PIXEL_FONT,
-        fontSize: '22px',
+        fontSize: `${Math.round(22 * UI_SCALE)}px`,
         color: '#cfefff'
       })
       .setOrigin(0.5)
       .setShadow(2, 2, '#000000', 2, false, true);
 
     const startY = height * 0.30;
-    const spacing = 62;
+    const spacing = Math.round(62 * UI_SCALE);
 
     this._buildSlider(width / 2, startY, 'MASTER VOLUME', SettingsManager.getMaster(), (v) => {
       SettingsManager.setMaster(v);
@@ -84,11 +85,11 @@ export default class SettingsScene extends Phaser.Scene {
     });
 
     const accessibilityX = Math.max(110, width * 0.16);
-    const accessibilityY = height - 133;
+    const accessibilityY = height - Math.round(133 * UI_SCALE);
     this.add
-      .text(accessibilityX, accessibilityY - 42, 'ACESSIBILIDADE', {
+      .text(accessibilityX, accessibilityY - Math.round(42 * UI_SCALE), 'ACESSIBILIDADE', {
         fontFamily: PIXEL_FONT,
-        fontSize: '9px',
+        fontSize: `${Math.round(9 * UI_SCALE)}px`,
         color: TEXT_HOVER
       })
       .setOrigin(0.5);
@@ -96,31 +97,31 @@ export default class SettingsScene extends Phaser.Scene {
     this._buildToggle(accessibilityX, accessibilityY, 'REDUZIR TREMOR', SettingsManager.getReducedMotion(), (value) => {
       SettingsManager.setReducedMotion(value);
     });
-    this._buildToggle(accessibilityX, accessibilityY + 48, 'REDUZIR FLASH', SettingsManager.getReducedFlashes(), (value) => {
+    this._buildToggle(accessibilityX, accessibilityY + Math.round(48 * UI_SCALE), 'REDUZIR FLASH', SettingsManager.getReducedFlashes(), (value) => {
       SettingsManager.setReducedFlashes(value);
     });
-    this._buildToggle(accessibilityX, accessibilityY + 96, 'TEXTOS MAIORES', SettingsManager.getLargeHud(), (value) => {
+    this._buildToggle(accessibilityX, accessibilityY + Math.round(96 * UI_SCALE), 'TEXTOS MAIORES', SettingsManager.getLargeHud(), (value) => {
       SettingsManager.setLargeHud(value);
       EventBus.emit('accessibility-settings-changed');
     });
 
-    this._buildBackButton(width / 2, startY + spacing * 4 + 10);
+    this._buildBackButton(width / 2, startY + spacing * 4 + Math.round(10 * UI_SCALE));
 
     this._setupRetroFx();
   }
 
   _buildToggle(x, y, label, initialValue, onChange) {
-    const width = 180;
-    const height = 32;
+    const width = Math.round(180 * UI_SCALE);
+    const height = Math.round(32 * UI_SCALE);
     const container = this.add.container(x, y);
     const panel = this.add
       .rectangle(0, 0, width, height, PANEL_FILL, PANEL_FILL_ALPHA)
       .setStrokeStyle(1, BORDER_IDLE);
     const labelText = this.add
-      .text(-width / 2 + 10, 0, label, { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_IDLE })
+      .text(-width / 2 + 10 * UI_SCALE, 0, label, { fontFamily: PIXEL_FONT, fontSize: `${Math.round(8 * UI_SCALE)}px`, color: TEXT_IDLE })
       .setOrigin(0, 0.5);
     const stateText = this.add
-      .text(width / 2 - 10, 0, '', { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_IDLE })
+      .text(width / 2 - 10 * UI_SCALE, 0, '', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(8 * UI_SCALE)}px`, color: TEXT_IDLE })
       .setOrigin(1, 0.5);
     const hitArea = this.add
       .rectangle(0, 0, width, height, 0xffffff, 0)
@@ -175,25 +176,25 @@ export default class SettingsScene extends Phaser.Scene {
     const container = this.add.container(x, y);
 
     const labelText = this.add
-      .text(0, -20, label, { fontFamily: PIXEL_FONT, fontSize: '11px', color: TEXT_IDLE })
+      .text(0, -20 * UI_SCALE, label, { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: TEXT_IDLE })
       .setOrigin(0.5);
 
     const trackLeft = -TRACK_WIDTH / 2;
-    const track = this.add.rectangle(0, 6, TRACK_WIDTH, TRACK_HEIGHT, TRACK_COLOR).setOrigin(0, 0.5);
+    const track = this.add.rectangle(0, 6 * UI_SCALE, TRACK_WIDTH, TRACK_HEIGHT, TRACK_COLOR).setOrigin(0, 0.5);
     track.x = trackLeft;
 
-    const fill = this.add.rectangle(trackLeft, 6, TRACK_WIDTH * initialValue, TRACK_HEIGHT, FILL_COLOR).setOrigin(0, 0.5);
+    const fill = this.add.rectangle(trackLeft, 6 * UI_SCALE, TRACK_WIDTH * initialValue, TRACK_HEIGHT, FILL_COLOR).setOrigin(0, 0.5);
 
     const percentText = this.add
-      .text(TRACK_WIDTH / 2 + 34, 6, `${Math.round(initialValue * 100)}%`, {
+      .text(TRACK_WIDTH / 2 + 34 * UI_SCALE, 6 * UI_SCALE, `${Math.round(initialValue * 100)}%`, {
         fontFamily: PIXEL_FONT,
-        fontSize: '11px',
+        fontSize: `${Math.round(11 * UI_SCALE)}px`,
         color: TEXT_IDLE
       })
       .setOrigin(0.5);
 
     const handle = this.add
-      .rectangle(trackLeft + TRACK_WIDTH * initialValue, 6, HANDLE_WIDTH, HANDLE_HEIGHT, 0xe8f6ff)
+      .rectangle(trackLeft + TRACK_WIDTH * initialValue, 6 * UI_SCALE, HANDLE_WIDTH, HANDLE_HEIGHT, 0xe8f6ff)
       .setStrokeStyle(1, BORDER_HOVER)
       .setInteractive({ useHandCursor: true, draggable: true });
     this.input.setDraggable(handle);
@@ -248,7 +249,7 @@ export default class SettingsScene extends Phaser.Scene {
 
     // clicar/arrastar na trilha em si também move a alça pro ponto tocado
     const trackHit = this.add
-      .rectangle(trackLeft + TRACK_WIDTH / 2, 6, TRACK_WIDTH, HANDLE_HEIGHT, 0xffffff, 0)
+      .rectangle(trackLeft + TRACK_WIDTH / 2, 6 * UI_SCALE, TRACK_WIDTH, HANDLE_HEIGHT, 0xffffff, 0)
       .setInteractive({ useHandCursor: true });
     trackHit.on('pointerdown', (pointer) => applyFromX(pointer.x - x, { animate: true }));
 
@@ -257,20 +258,20 @@ export default class SettingsScene extends Phaser.Scene {
   }
 
   _buildBackButton(x, y) {
-    const w = 160;
-    const h = 36;
+    const w = Math.round(160 * UI_SCALE);
+    const h = Math.round(36 * UI_SCALE);
     const container = this.add.container(x, y);
 
     const panel = this.add.graphics();
     this._drawPanel(panel, w, h, BORDER_IDLE);
 
     const caret = this.add
-      .text(-w / 2 + 12, 0, '>', { fontFamily: PIXEL_FONT, fontSize: '11px', color: TEXT_HOVER })
+      .text(-w / 2 + 12 * UI_SCALE, 0, '>', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: TEXT_HOVER })
       .setOrigin(0, 0.5)
       .setVisible(false);
 
     const text = this.add
-      .text(4, 0, 'VOLTAR', { fontFamily: PIXEL_FONT, fontSize: '11px', color: TEXT_IDLE })
+      .text(4 * UI_SCALE, 0, 'VOLTAR', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: TEXT_IDLE })
       .setOrigin(0.5);
 
     const hitArea = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });

@@ -21,6 +21,7 @@ import SlowmoSystem from '../systems/SlowmoSystem.js';
 import MultiplayerManager from '../systems/MultiplayerManager.js';
 import MedkitRareFx from '../fx/MedkitRareFx.js';
 import WorldEndSystem from '../systems/WorldEndSystem.js';
+import { UI_SCALE } from '../config/layout.js';
 
 import enemiesData from '../../data/enemies.js';
 import weaponsData from '../../data/weapons.js';
@@ -396,7 +397,10 @@ export default class GameScene extends Phaser.Scene {
     // na tela. Dividindo o zoom pela mesma escala, a câmera puxa pra trás na
     // medida exata — a proporção gato:tile nova fica de pé, mas o tamanho do
     // gato na tela volta a ser o de antes (e ainda sobra mais mapa visível).
-    const baseZoom = 0.9 / BASE_VISUAL_SCALE;
+    // A viewport mais alta mostra mais mundo por padrão; compensamos com a
+    // escala vertical da nova resolução para preservar o enquadramento que
+    // já estava balanceado no mapa e nos spawns.
+    const baseZoom = (0.9 / BASE_VISUAL_SCALE) * UI_SCALE;
     // celular: câmera um pouco mais próxima, só estética/sensação de jogo
     // (mesmo bônus relativo de antes — 1.4x mais perto que o desktop)
     const zoom = this.sys.game.device.input.touch ? baseZoom * 1.4 : baseZoom;

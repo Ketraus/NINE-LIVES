@@ -1,5 +1,6 @@
 import SettingsManager from '../systems/SettingsManager.js';
 import config from '../../data/worldEnd.js';
+import { UI_SCALE } from '../config/layout.js';
 
 const DEPTH_WORLD_FOG = 9; // acima de chão/inimigos, abaixo do jogador (10)
 const DEPTH_PUFFS = 12; // lufadas passam por cima do jogador
@@ -437,7 +438,7 @@ export default class WorldEndFx {
     const cam = s.cameras.main;
     const zoom = cam.zoom || 1;
     if (zoom !== 1) {
-      const inv = 1 / zoom;
+      const inv = UI_SCALE / zoom;
       c.setScale(inv);
       c.setPosition(cam.centerX * (1 - inv), cam.centerY * (1 - inv));
     }
