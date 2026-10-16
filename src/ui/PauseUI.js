@@ -1,11 +1,13 @@
 import EventBus from '../systems/EventBus.js';
+import weaponsData from '../../data/weapons.js';
+import upgradesData from '../../data/upgrades.js';
 
 const BTN_RADIUS = 16;
 const BTN_HIT_RADIUS_DESKTOP = 22;
 const BTN_HIT_RADIUS_TOUCH = 26;
 const BTN_W = 220;
 const BTN_H = 40;
-const BTN_GAP = 56;
+const BTN_GAP = 48;
 
 // diálogo de confirmação (voltar pro menu inicial)
 const CONFIRM_BTN_W = 96;
@@ -29,11 +31,65 @@ const EXIT_MS = 130; // saída suave, um pouco mais rápida que a entrada
 const DIALOG_CROSSFADE_MS = 150; // crossfade entre botões principais <-> diálogo de confirmação
 const SETTINGS_COVER_MS = 260; // fade suave da cortina preta ao entrar/sair da Settings
 const QUIT_FADE_MS = 420; // fade suave pra preto antes de trocar pra MainMenuScene
+
+// Tela de build: cabe na mesma base 704x512 do resto da interface, mas usa
+// uma grade compacta para continuar legível também no celular em landscape.
+const BUILD_PANEL_W = 650;
+const BUILD_PANEL_H = 420;
+const BUILD_SECTION_Y = -4;
+const BUILD_SECTION_H = 322;
+const BUILD_BACK_Y = 193;
+const BUILD_LEFT_X = -238;
+const BUILD_LEFT_W = 145;
+const BUILD_CARDS_X = -7;
+const BUILD_CARDS_W = 300;
+const BUILD_SYSTEM_X = 220;
+const BUILD_SYSTEM_W = 155;
+const BUILD_GALLERY_TOP = -126;
+const BUILD_GALLERY_H = 276;
+const BUILD_GALLERY_CARD_W = 124;
+const BUILD_GALLERY_CARD_H = 172;
+const BUILD_GALLERY_GAP = 10;
+const BUILD_GALLERY_TRACK_X = BUILD_CARDS_X + BUILD_CARDS_W / 2 - 12;
+const BUILD_GALLERY_TRACK_TOP = -116;
+const BUILD_GALLERY_TRACK_H = 256;
+const BUILD_RARITY_COLORS = {
+  common: 0x3d5a66,
+  rare: 0x4fd1ff,
+  epic: 0xffd166
+};
+const BUILD_RARITY_TEXT = {
+  common: 'COMUM',
+  rare: 'RARA',
+  epic: 'EPICA'
+};
+const WEAPON_CARD_TEXTURES = {
+  fists: 'card_fists',
+  katana: 'card_katana',
+  pistol: 'card_pistol'
+};
+const ABILITY_LABELS = {
+  slam: 'Pancada Sísmica',
+  shockwave: 'Shockwave',
+  doubleStrike: 'Multi-Blade',
+  shuriken: 'Shuriken',
+  drone: 'GatoDrone',
+  fragmentation: 'Split Bullet',
+  allyDog: 'Purificação',
+  tornadoWalk: 'Tornado',
+  auraShock: 'Sobrecarga',
+  energyShield: 'Barreira',
+  smartShot: 'Smartshot',
+  chainShot: 'Instinto Caçador',
+  danceOfCuts: 'Dança de Cortes'
+};
+
 // Menu de pausa. Dois pedaços:
 export default class PauseUI {
   constructor(scene) {
     this.scene = scene;
     this.isOpen = false;
+    this.buildOpen = false;
     this.isWaitingForPlayer = false;
 
     this._buildButton();
@@ -134,7 +190,7 @@ export default class PauseUI {
       .setScrollFactor(0)
       .setInteractive(); // bloqueia clique vazando pro jogo por baixo
 
-    const title = this.scene.add
+    this.pauseTitle = this.scene.add
       .text(0, -120, 'PAUSADO', {
         fontFamily: PIXEL_FONT,
         fontSize: '26px',
@@ -144,21 +200,22 @@ export default class PauseUI {
       .setShadow(2, 2, '#000000', 2, false, true)
       .setScrollFactor(0);
 
-    this.panelContainer.add([overlay, title]);
+    this.panelContainer.add([overlay, this.pauseTitle]);
 
     // agrupa os botões principais (+ frame/readout) pra poder escondê-los
     // juntos quando o diálogo de confirmação abrir por cima (ver _showQuitConfirm)
     this.mainButtonsGroup = this.scene.add.container(0, 0);
     this.panelContainer.add(this.mainButtonsGroup);
 
-    const buttonYs = [-20, -20 + BTN_GAP, -20 + BTN_GAP * 2];
+    const buttonYs = [-20, -20 + BTN_GAP, -20 + BTN_GAP * 2, -20 + BTN_GAP * 3];
     this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[0], 'CONTINUAR', () => this.toggle()));
-    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[1], 'SETTINGS', () => this._openSettings()));
-    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[2], 'MENU INICIAL', () => this._showQuitConfirm()));
+    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[1], 'MINHA BUILD', () => this._showBuild()));
+    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[2], 'SETTINGS', () => this._openSettings()));
+    this.mainButtonsGroup.add(this._buildTerminalButton(0, buttonYs[3], 'MENU INICIAL', () => this._showQuitConfirm()));
 
     // só existe em dispositivo touch com suporte à Fullscreen API — mesma
     if (this.scene.sys.game.device.input.touch && this.scene.scale.fullscreen.available) {
-      const y = -20 + BTN_GAP * 3;
+      const y = -20 + BTN_GAP * 4;
       buttonYs.push(y);
       this.fullscreenButton = this._buildTerminalButton(0, y, '', () => this._toggleFullscreen());
       this._refreshFullscreenButton();
@@ -166,6 +223,7 @@ export default class PauseUI {
     }
 
     this._buildTechDetails(buttonYs);
+    this._buildBuildScreen();
     this._buildQuitConfirmDialog();
 
     // retângulo preto full-screen, por cima de tudo no painel — usado só
@@ -179,6 +237,509 @@ export default class PauseUI {
       .setScrollFactor(0)
       .setAlpha(0); // BUG anterior: fillAlpha=0 aqui deixava a cortina permanentemente invisível, já que tweenar .alpha (que já nascia em 1) não tinha efeito nenhum sobre o fill
     this.panelContainer.add(this.transitionCover);
+  }
+
+  // ---------- tela de build ----------
+
+  _buildBuildScreen() {
+    this.buildContainer = this.scene.add.container(0, 0).setVisible(false).setAlpha(0);
+
+    const frame = this.scene.add.graphics().setScrollFactor(0);
+    this._drawPanel(frame, BUILD_PANEL_W, BUILD_PANEL_H, BORDER_IDLE);
+
+    const title = this.scene.add
+      .text(0, -194, 'BUILD // LOADOUT', {
+        fontFamily: PIXEL_FONT,
+        fontSize: '19px',
+        color: '#cfefff'
+      })
+      .setOrigin(0.5)
+      .setShadow(2, 2, '#000000', 2, false, true)
+      .setScrollFactor(0);
+
+    const subtitle = this.scene.add
+      .text(0, -170, 'CONFIGURAÇÃO DA RUN ATUAL', {
+        fontFamily: PIXEL_FONT,
+        fontSize: '8px',
+        color: TEXT_IDLE
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+
+    const rule = this.scene.add.graphics().setScrollFactor(0);
+    rule.lineStyle(1, BORDER_IDLE, 0.8);
+    rule.lineBetween(-300, -155, 300, -155);
+
+    this.buildContainer.add([frame, title, subtitle, rule]);
+
+    const left = this._buildBuildSection(BUILD_LEFT_X, BUILD_SECTION_Y, BUILD_LEFT_W, BUILD_SECTION_H, 'ARMAMENTO');
+    const center = this._buildBuildSection(BUILD_CARDS_X, BUILD_SECTION_Y, BUILD_CARDS_W, BUILD_SECTION_H, 'CARTAS ATIVAS');
+    const right = this._buildBuildSection(BUILD_SYSTEM_X, BUILD_SECTION_Y, BUILD_SYSTEM_W, BUILD_SECTION_H, 'SISTEMA');
+    this.buildSectionTitles = { left, center, right };
+
+    this.buildDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildWeaponDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildCardsDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildStatsDynamic = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildCardsOverlay = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildGalleryContent = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildGalleryViewport = this.scene.add.container(0, 0).setScrollFactor(0);
+    this.buildGalleryViewport.add(this.buildGalleryContent);
+
+    // Máscara fixa: só a área abaixo de "CARTAS ATIVAS" rola; o cabeçalho,
+    // moldura e contador permanecem parados.
+    const maskGraphics = this.scene.make.graphics({ x: 0, y: 0, add: false });
+    const maskX = this.scene.scale.width / 2 + BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2;
+    const maskY = this.scene.scale.height / 2 + BUILD_GALLERY_TOP;
+    maskGraphics.fillStyle(0xffffff, 1);
+    maskGraphics.fillRect(maskX, maskY, BUILD_CARDS_W - 20, BUILD_GALLERY_H);
+    this.buildGalleryMaskGraphics = maskGraphics;
+    this.buildGalleryViewport.setMask(maskGraphics.createGeometryMask());
+
+    const track = this.scene.add
+      .rectangle(BUILD_GALLERY_TRACK_X, BUILD_GALLERY_TRACK_TOP + BUILD_GALLERY_TRACK_H / 2, 3, BUILD_GALLERY_TRACK_H, 0x1c2e36, 0.9)
+      .setScrollFactor(0);
+    this.buildGalleryScrollThumb = this.scene.add
+      .rectangle(BUILD_GALLERY_TRACK_X, BUILD_GALLERY_TRACK_TOP, 7, 30, 0x8fd6ff, 0.9)
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0);
+    this.buildCardsDynamic.add([
+      this.buildGalleryViewport,
+      track,
+      this.buildGalleryScrollThumb,
+      this.buildCardsOverlay
+    ]);
+    this.buildDynamic.add([
+      this.buildWeaponDynamic,
+      this.buildCardsDynamic,
+      this.buildStatsDynamic
+    ]);
+
+    this.buildGalleryScrollY = 0;
+    this.buildGalleryMaxScroll = 0;
+    this.buildGalleryDragging = false;
+    this._onBuildWheel = (_pointer, _gameObjects, _deltaX, deltaY) => {
+      if (!this.buildOpen || !this._isPointerInBuildGallery(_pointer)) return;
+      this._setBuildGalleryScroll(this.buildGalleryScrollY + deltaY * 0.65);
+    };
+    this._onBuildPointerDown = (pointer) => {
+      if (!this.buildOpen || !this._isPointerInBuildGallery(pointer)) return;
+      this.buildGalleryDragging = true;
+      this.buildGalleryDragStartY = pointer.y;
+      this.buildGalleryDragStartScroll = this.buildGalleryScrollY;
+    };
+    this._onBuildPointerMove = (pointer) => {
+      if (!this.buildGalleryDragging) return;
+      this._setBuildGalleryScroll(this.buildGalleryDragStartScroll + (pointer.y - this.buildGalleryDragStartY));
+    };
+    this._onBuildPointerUp = () => {
+      this.buildGalleryDragging = false;
+    };
+    this.scene.input.on('wheel', this._onBuildWheel);
+    this.scene.input.on('pointerdown', this._onBuildPointerDown);
+    this.scene.input.on('pointermove', this._onBuildPointerMove);
+    this.scene.input.on('pointerup', this._onBuildPointerUp);
+
+    this.buildBackButton = this._buildTerminalButton(
+      0,
+      BUILD_BACK_Y,
+      'VOLTAR',
+      () => this._hideBuild(),
+      180,
+      34
+    );
+
+    this.buildContainer.add([this.buildDynamic, this.buildBackButton]);
+    this.panelContainer.add(this.buildContainer);
+  }
+
+  _buildBuildSection(x, y, width, height, label) {
+    const panel = this.scene.add.graphics().setScrollFactor(0);
+    this._drawPanel(panel, width, height, BORDER_IDLE);
+    panel.setPosition(x, y);
+
+    const title = this.scene.add
+      .text(x - width / 2 + 12, y - height / 2 + 13, label, {
+        fontFamily: PIXEL_FONT,
+        fontSize: '9px',
+        color: TEXT_HOVER
+      })
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0);
+
+    const line = this.scene.add.graphics().setScrollFactor(0);
+    line.lineStyle(1, BORDER_IDLE, 0.7);
+    line.lineBetween(x - width / 2 + 10, y - height / 2 + 28, x + width / 2 - 10, y - height / 2 + 28);
+
+    this.buildContainer.add([panel, title, line]);
+    return { panel, title, line, x, y, width, height };
+  }
+
+  _showBuild() {
+    if (!this.isOpen || this._quitting || this.buildOpen) return;
+    this.buildOpen = true;
+    this._resetQuitConfirm();
+    this._renderBuildScreen();
+
+    this.mainButtonsGroup.setVisible(false);
+    this.pauseTitle.setVisible(false);
+    this._setPauseCameraFx(false);
+    this.scene.tweens.killTweensOf(this.buildContainer);
+    this.buildContainer.setVisible(true).setAlpha(0).setScale(0.96);
+    this.scene.tweens.add({
+      targets: this.buildContainer,
+      alpha: 1,
+      scale: 1,
+      duration: ENTER_MS,
+      ease: 'Cubic.easeOut'
+    });
+  }
+
+  _hideBuild(instant = false) {
+    if (!this.buildOpen) return;
+    this.buildOpen = false;
+    this.scene.tweens.killTweensOf(this.buildContainer);
+    this.pauseTitle.setVisible(true);
+    this.mainButtonsGroup.setVisible(true).setAlpha(instant ? 1 : 0);
+    this._setPauseCameraFx(true);
+
+    if (instant) {
+      this.buildContainer.setVisible(false).setAlpha(0).setScale(1);
+      return;
+    }
+
+    this.buildContainer.setVisible(true).setAlpha(1).setScale(1);
+    this.scene.tweens.add({
+      targets: this.buildContainer,
+      alpha: 0,
+      scale: 0.96,
+      duration: EXIT_MS,
+      ease: 'Cubic.easeIn',
+      onComplete: () => this.buildContainer.setVisible(false)
+    });
+    this.scene.tweens.add({
+      targets: this.mainButtonsGroup,
+      alpha: 1,
+      duration: EXIT_MS,
+      ease: 'Cubic.easeOut'
+    });
+  }
+
+  _renderBuildScreen() {
+    if (!this.buildDynamic) return;
+    this.buildWeaponDynamic.removeAll(true);
+    this.buildStatsDynamic.removeAll(true);
+    this.buildCardsOverlay.removeAll(true);
+    this.buildGalleryContent.removeAll(true);
+
+    const state = this.scene.runState;
+    const player = this.scene.player;
+    const weapon = weaponsData.find((item) => item.id === state.weaponId) || weaponsData[0];
+    const weaponDamage = Math.round(weapon.damage * (1 + state.damageMultiplier));
+    const weaponRange = Math.round(weapon.range * (1 + state.rangeMultiplier));
+    const weaponCooldown = Math.max(1, Math.round(weapon.cooldownMs * (1 - state.cooldownMultiplier)));
+
+    this._renderBuildWeapon(weapon, weaponDamage, weaponRange, weaponCooldown, state);
+    this._renderBuildCards(state);
+    this._renderBuildStats(state, player);
+  }
+
+  _renderBuildWeapon(weapon, damage, range, cooldown, state) {
+    const x = BUILD_LEFT_X;
+    const artKey = WEAPON_CARD_TEXTURES[weapon.id];
+    if (artKey && this.scene.textures.exists(artKey)) {
+      const art = this.scene.add.image(x, -45, artKey).setDisplaySize(78, 108).setScrollFactor(0);
+      this.buildWeaponDynamic.add(art);
+    }
+
+    const name = this.scene.add
+      .text(x, 24, weapon.name.toUpperCase(), {
+        fontFamily: PIXEL_FONT,
+        fontSize: '9px',
+        color: TEXT_HOVER,
+        align: 'center'
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    const type = weapon.type === 'ranged' ? 'DISTÂNCIA' : 'CORPO A CORPO';
+    const info = this.scene.add
+      .text(x, 47, `${type}\nDMG ${damage}  RNG ${range}\nCD ${cooldown}MS`, {
+        fontFamily: PIXEL_FONT,
+        fontSize: '8px',
+        color: TEXT_IDLE,
+        align: 'center',
+        lineSpacing: 6
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    const runInfo = this.scene.add
+      .text(x, 112, `LV ${state.level}  ·  KILLS ${state.kills}`, {
+        fontFamily: PIXEL_FONT,
+        fontSize: '8px',
+        color: '#7cfc9c',
+        align: 'center'
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    this.buildWeaponDynamic.add([name, info, runInfo]);
+  }
+
+  _renderBuildCards(state) {
+    const entries = [...state.ownedUpgradeIds]
+      .map((id) => upgradesData.find((upgrade) => upgrade.id === id))
+      .filter(Boolean)
+      .map((upgrade) => ({
+        upgrade,
+        count: state.upgradeCounts[upgrade.id] || 1
+      }))
+      .sort((a, b) => {
+        const aEvolution = a.upgrade.category === 'evolution' ? 1 : 0;
+        const bEvolution = b.upgrade.category === 'evolution' ? 1 : 0;
+        return aEvolution - bEvolution || a.upgrade.name.localeCompare(b.upgrade.name);
+      });
+
+    const rows = Math.ceil(entries.length / 2);
+    const contentHeight = rows > 0
+      ? rows * BUILD_GALLERY_CARD_H + Math.max(0, rows - 1) * BUILD_GALLERY_GAP
+      : 0;
+    this.buildGalleryContentHeight = contentHeight;
+    this.buildGalleryMaxScroll = Math.max(0, contentHeight - BUILD_GALLERY_H);
+    this._setBuildGalleryScroll(this.buildGalleryScrollY);
+
+    const countLabel = this.scene.add
+      .text(BUILD_CARDS_X + BUILD_CARDS_W / 2 - 12, -144, `${entries.length} ITENS`, {
+        fontFamily: PIXEL_FONT,
+        fontSize: '7px',
+        color: TEXT_IDLE
+      })
+      .setOrigin(1, 0.5)
+      .setScrollFactor(0);
+    this.buildCardsOverlay.add(countLabel);
+
+    if (entries.length === 0) {
+      const empty = this.scene.add
+        .text(BUILD_CARDS_X, 4, 'NENHUMA CARTA\nAINDA', {
+          fontFamily: PIXEL_FONT,
+          fontSize: '8px',
+          color: TEXT_IDLE,
+          align: 'center',
+          lineSpacing: 10
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      this.buildCardsOverlay.add(empty);
+      return;
+    }
+
+    entries.forEach((entry, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = BUILD_CARDS_X + (col === 0 ? -((BUILD_GALLERY_CARD_W + BUILD_GALLERY_GAP) / 2) : (BUILD_GALLERY_CARD_W + BUILD_GALLERY_GAP) / 2);
+      const y = BUILD_GALLERY_TOP + BUILD_GALLERY_CARD_H / 2 + row * (BUILD_GALLERY_CARD_H + BUILD_GALLERY_GAP);
+      this.buildGalleryContent.add(this._buildBuildGalleryCard(entry, x, y));
+    });
+  }
+
+  _buildBuildGalleryCard(entry, x, y) {
+    const { upgrade, count } = entry;
+    const rarity = upgrade.rarity || 'common';
+    const border = BUILD_RARITY_COLORS[rarity] || BUILD_RARITY_COLORS.common;
+    const tile = this.scene.add.container(x, y).setScrollFactor(0);
+
+    const artKey = this._getBuildArtKey(upgrade);
+    if (artKey) {
+      const art = this.scene.add.image(0, 0, artKey)
+        // A carta completa tem tÃ­tulo e descriÃ§Ã£o pequenos demais para virar
+        // miniatura. Mostramos sÃ³ a ilustraÃ§Ã£o central; o nome e o progresso
+        // ficam como texto real ao lado, sem virar uma mancha ilegÃ­vel.
+        .setDisplaySize(BUILD_GALLERY_CARD_W, BUILD_GALLERY_CARD_H)
+        .setScrollFactor(0);
+      tile.add(art);
+    } else {
+      const icon = this.scene.add
+        .text(0, 0, rarity === 'epic' ? '★' : rarity === 'rare' ? '◆' : '•', {
+          fontFamily: PIXEL_FONT,
+          fontSize: '13px',
+          color: `#${border.toString(16).padStart(6, '0')}`
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      tile.add(icon);
+    }
+
+    const frame = this.scene.add.graphics().setScrollFactor(0);
+    frame.lineStyle(2, border, 1);
+    frame.strokeRect(-BUILD_GALLERY_CARD_W / 2, -BUILD_GALLERY_CARD_H / 2, BUILD_GALLERY_CARD_W, BUILD_GALLERY_CARD_H);
+    tile.add(frame);
+
+    const progress = this._buildUpgradeProgress(upgrade, count);
+    const badge = this.scene.add.rectangle(
+      BUILD_GALLERY_CARD_W / 2 - 25,
+      -BUILD_GALLERY_CARD_H / 2 + 12,
+      42,
+      18,
+      0x061014,
+      0.9
+    ).setStrokeStyle(1, border, 1).setScrollFactor(0);
+    const badgeText = this.scene.add
+      .text(BUILD_GALLERY_CARD_W / 2 - 25, -BUILD_GALLERY_CARD_H / 2 + 12, upgrade.category === 'evolution' ? 'EVO' : progress, {
+        fontFamily: PIXEL_FONT,
+        fontSize: '7px',
+        color: upgrade.category === 'evolution' ? '#ffd166' : TEXT_HOVER,
+        align: 'center'
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    tile.add([badge, badgeText]);
+    return tile;
+  }
+
+  _renderBuildStats(state, player) {
+    const x = BUILD_SYSTEM_X;
+    const left = x - BUILD_SYSTEM_W / 2 + 12;
+    const right = x + BUILD_SYSTEM_W / 2 - 12;
+    const hp = player?.healthSystem;
+    const stats = [
+      ['XP', `${state.xp}/${state.xpToNext}`],
+      ['VIDA', `${Math.ceil(hp?.current ?? 0)}/${Math.ceil(hp?.maxHp ?? 0)}`],
+      ['DANO', `+${Math.round(state.damageMultiplier * 100)}%`],
+      ['VELOCIDADE', `+${Math.round(state.speedMultiplier * 100)}%`],
+      ['RECARGA', `-${Math.round(state.cooldownMultiplier * 100)}%`],
+      ['ALCANCE', `+${Math.round(state.rangeMultiplier * 100)}%`],
+      ['REDUÇÃO', `-${Math.round(state.damageReductionFraction * 100)}%`],
+      ['DESVIO', `${Math.round(state.dodgeChance * 100)}%`],
+      ['ESPINHOS', `${Math.round(state.thornsDamage)}`],
+      ['ROUBO', `${Math.round(state.lifestealFraction * 100)}%`]
+    ];
+
+    stats.forEach(([label, value], index) => {
+      const y = -111 + index * 17;
+      const labelText = this.scene.add
+        .text(left, y, label, { fontFamily: PIXEL_FONT, fontSize: '7px', color: TEXT_IDLE })
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0);
+      const valueText = this.scene.add
+        .text(right, y, value, { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_HOVER })
+        .setOrigin(1, 0.5)
+        .setScrollFactor(0);
+      this.buildStatsDynamic.add([labelText, valueText]);
+    });
+
+    const abilityHeader = this.scene.add
+      .text(left, 72, 'HABILIDADES', { fontFamily: PIXEL_FONT, fontSize: '8px', color: TEXT_HOVER })
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0);
+    this.buildStatsDynamic.add(abilityHeader);
+
+    const abilityIds = [...state.unlockedAbilities];
+    if (state.hasRestock) abilityIds.push('restock');
+    const abilities = [...new Set(abilityIds)];
+    if (abilities.length === 0) {
+      const empty = this.scene.add
+        .text(x, 105, 'NENHUMA\nDESBLOQUEADA', {
+          fontFamily: PIXEL_FONT,
+          fontSize: '6px',
+          color: TEXT_IDLE,
+          align: 'center',
+          lineSpacing: 7
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      this.buildStatsDynamic.add(empty);
+      return;
+    }
+
+    abilities.slice(0, 4).forEach((id, index) => {
+      const label = ABILITY_LABELS[id] || (id === 'restock' ? 'Restock' : id);
+      const abilityText = this.scene.add
+        .text(left, 91 + index * 14, `> ${this._shortBuildText(label, 20)}`, {
+          fontFamily: PIXEL_FONT,
+          fontSize: '7px',
+          color: id === 'restock' ? '#ffd166' : '#7cfc9c'
+        })
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0);
+      this.buildStatsDynamic.add(abilityText);
+    });
+
+    if (abilities.length > 4) {
+      const more = this.scene.add
+        .text(left, 149, `+${abilities.length - 4} SISTEMAS`, {
+          fontFamily: PIXEL_FONT,
+          fontSize: '6px',
+          color: TEXT_IDLE
+        })
+        .setOrigin(0, 0.5)
+        .setScrollFactor(0);
+      this.buildStatsDynamic.add(more);
+    }
+  }
+
+  _setBuildGalleryScroll(value) {
+    if (!this.buildGalleryContent) return;
+    const max = this.buildGalleryMaxScroll || 0;
+    this.buildGalleryScrollY = Phaser.Math.Clamp(value || 0, -max, 0);
+    this.buildGalleryContent.y = this.buildGalleryScrollY;
+    this._updateBuildGalleryScrollbar();
+  }
+
+  _updateBuildGalleryScrollbar() {
+    if (!this.buildGalleryScrollThumb) return;
+    const max = this.buildGalleryMaxScroll || 0;
+    if (max <= 0) {
+      this.buildGalleryScrollThumb.setVisible(false);
+      return;
+    }
+
+    const ratio = BUILD_GALLERY_H / Math.max(BUILD_GALLERY_H, this.buildGalleryContentHeight || BUILD_GALLERY_H);
+    const thumbHeight = Math.max(30, BUILD_GALLERY_TRACK_H * ratio);
+    const travel = BUILD_GALLERY_TRACK_H - thumbHeight;
+    const progress = Phaser.Math.Clamp(-this.buildGalleryScrollY / max, 0, 1);
+    this.buildGalleryScrollThumb
+      .setVisible(true)
+      .setSize(7, thumbHeight)
+      .setPosition(BUILD_GALLERY_TRACK_X, BUILD_GALLERY_TRACK_TOP + travel * progress);
+  }
+
+  _isPointerInBuildGallery(pointer) {
+    if (!pointer) return false;
+    const left = this.scene.scale.width / 2 + BUILD_CARDS_X - (BUILD_CARDS_W - 20) / 2;
+    const top = this.scene.scale.height / 2 + BUILD_GALLERY_TOP;
+    return pointer.x >= left && pointer.x <= left + BUILD_CARDS_W - 20 &&
+      pointer.y >= top && pointer.y <= top + BUILD_GALLERY_H;
+  }
+
+  _getBuildArtKey(upgrade) {
+    let artId = upgrade.id;
+    if (upgrade.id === 'dmg_up_evo_overcharge') {
+      artId = `${upgrade.id}_${this.scene.runState.weaponId}`;
+    }
+    const exact = `card_${artId}`;
+    if (this.scene.textures.exists(exact)) return exact;
+    if (upgrade.evolvesFrom) {
+      const base = `card_${upgrade.evolvesFrom}`;
+      if (this.scene.textures.exists(base)) return base;
+    }
+    return null;
+  }
+
+  _buildUpgradeName(upgrade) {
+    return upgrade.namesByWeapon?.[this.scene.runState.weaponId] || upgrade.name;
+  }
+
+  _buildUpgradeProgress(upgrade, count) {
+    if (upgrade.category === 'evolution') return 'EVOLUÇÃO';
+    const evolution = upgradesData.find((candidate) => {
+      if (candidate.category !== 'evolution' || candidate.evolvesFrom !== upgrade.id) return false;
+      return !candidate.weaponId || candidate.weaponId === this.scene.runState.weaponId;
+    });
+    if (!evolution) return `x${count}`;
+    return `x${count}/${upgrade.evolvesAtStacks ?? 5}`;
+  }
+
+  _shortBuildText(value, maxLength) {
+    if (value.length <= maxLength) return value;
+    return `${value.slice(0, maxLength - 1)}…`;
   }
 
   // Poucos detalhes técnicos ao redor do bloco de botões (reticle nos
@@ -247,6 +808,20 @@ export default class PauseUI {
     // filtro inicial: já nasce só desenhando o panelContainer
     this.refreshIgnoreList();
 
+    this._setPauseCameraFx(true);
+  }
+
+  // A build precisa ser consultada, não apenas sentida. Os filtros CRT ficam
+  // ótimos no menu curto, mas scanlines + onda CRT em fontes de 6/7px e mini
+  // cartas destroem a leitura. A gameplay e o menu continuam com o efeito;
+  // só a tela de build recebe este modo limpo.
+  _setPauseCameraFx(enabled) {
+    if (!this.pauseCam || this._pauseCameraFxEnabled === enabled) return;
+    this._pauseCameraFxEnabled = enabled;
+    if (!enabled) {
+      this.pauseCam.resetPostPipeline();
+      return;
+    }
     this.pauseCam.setPostPipeline(['Scanlines', 'CrtWave']);
     this.pauseCam.getPostPipeline('Scanlines').setLineHeight(2).setDarkAmount(0.12);
     this.pauseCam.getPostPipeline('CrtWave').setAmplitude(0.001).setFrequency(9).setSpeed(0.9);
@@ -557,6 +1132,12 @@ export default class PauseUI {
   // exatamente este método — um único fluxo de abrir/fechar para os dois.
   toggle() {
     if (this.scene.multiplayer?.togglePauseVote()) return;
+    // ESC e o botão de pausa funcionam como "voltar" quando a tela de build
+    // está aberta; só o segundo toque fecha a pausa de verdade.
+    if (this.isOpen && this.buildOpen) {
+      this._hideBuild();
+      return;
+    }
     this.isOpen ? this.close() : this.open();
   }
 
@@ -588,6 +1169,8 @@ export default class PauseUI {
   close() {
     if (!this.isOpen) return;
     this.isOpen = false;
+
+    if (this.buildOpen) this._hideBuild(true);
 
     // se o diálogo "tem certeza?" ficou aberto, reseta pra próxima vez que
     // a pausa abrir mostrar os botões principais, não o diálogo (instantâneo
@@ -629,6 +1212,11 @@ export default class PauseUI {
     if (this.scene.scene.isActive('SettingsScene')) this.scene.scene.stop('SettingsScene');
     this._readoutBlink?.stop();
     this.waitingBlink?.stop();
+    this.scene.input.off('wheel', this._onBuildWheel);
+    this.scene.input.off('pointerdown', this._onBuildPointerDown);
+    this.scene.input.off('pointermove', this._onBuildPointerMove);
+    this.scene.input.off('pointerup', this._onBuildPointerUp);
+    this.buildGalleryMaskGraphics?.destroy();
     this.waitingText?.destroy();
     if (this.pauseCam) this.scene.cameras.remove(this.pauseCam);
     this.buttonContainer?.destroy();

@@ -35,6 +35,9 @@ export const gameConfig = {
   disableVisibilityChange: true,
   pixelArt: false,
   render: {
+    // aproveita telas HiDPI sem aumentar a escala lÃ³gica das cenas;
+    // limita em 2x para nÃ£o multiplicar demais o custo das hordas.
+    resolution: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
     roundPixels: false
   },
   // registra os pipelines custom (efeitos "retrô" do menu — ver src/fx/)
