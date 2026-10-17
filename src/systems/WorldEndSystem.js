@@ -71,6 +71,9 @@ export class WorldEndField {
       console.warn(`[WorldEnd] Layer "${config.playableLayer}" não encontrada — fim do mundo desativado.`);
       return;
     }
+    const extraPlayable = (config.extraPlayableLayers || [])
+      .map((name) => map.getLayer(name)?.data)
+      .filter(Boolean);
     const seaLayer = Object.values(mapManager.collisionLayers || {}).find((l) => l?.layer?.name === config.seaLayer);
 
     const w = this.width;
@@ -81,7 +84,8 @@ export class WorldEndField {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
-        playable[i] = playableLayer.layer.data[y][x].index > 0 ? 1 : 0;
+        playable[i] = playableLayer.layer.data[y][x].index > 0 ||
+          extraPlayable.some((data) => data[y][x].index > 0) ? 1 : 0;
         const sea = seaLayer ? seaLayer.layer.data[y][x].index > 0 : false;
         if (!playable[i] && !sea) {
           danger[i] = 1;

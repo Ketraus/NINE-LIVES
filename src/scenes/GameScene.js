@@ -22,6 +22,7 @@ import MultiplayerManager from '../systems/MultiplayerManager.js';
 import MedkitRareFx from '../fx/MedkitRareFx.js';
 import WorldEndSystem from '../systems/WorldEndSystem.js';
 import SeaFx from '../fx/SeaFx.js';
+import ShoreFx from '../fx/ShoreFx.js';
 import { UI_SCALE } from '../config/layout.js';
 
 import enemiesData from '../../data/enemies.js';
@@ -172,6 +173,7 @@ export default class GameScene extends Phaser.Scene {
 
   update(time, delta) {
     this.seaFx?.update();
+    this.shoreFx?.update();
     this._updateRunTimer();
     this.multiplayer?.update(time, delta);
 
@@ -367,6 +369,8 @@ export default class GameScene extends Phaser.Scene {
     this.mapManager = new MapManager(this).build();
     // mar animado por shader (ver fx/SeaFx.js e data/seaFx.js); null se sem WebGL
     this.seaFx = SeaFx.create(this, this.mapManager);
+    // transição da praia com grama/água (ver fx/ShoreFx.js e data/shoreFx.js)
+    this.shoreFx = ShoreFx.create(this, this.mapManager);
     const bounds = this.mapManager.getWorldBounds();
     this.physics.world.setBounds(0, 0, bounds.width, bounds.height);
     this.cameras.main.setBounds(0, 0, bounds.width, bounds.height);

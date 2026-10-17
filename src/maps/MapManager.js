@@ -22,6 +22,10 @@ const LAYER_NAMES = {
     absolute: 'LimiteAbsoluto'
   }
 };
+// A praia (layer Costa) é andável: quem bloqueia o jogador é a ÁGUA (layer
+// Mar). O bloqueio de mar é refeito a partir da layer Mar na hora de montar o
+// mapa, então não depende do desenho da layer BloqueioMar no Tiled.
+const WATER_LAYER = 'Mar';
 const OBJECT_LAYER_NAME = 'Objects';
 const PLAYER_SPAWN_OBJECT_NAME = 'PlayerSpawn';
 const MAP_OBJECT_NAMES = {
@@ -54,6 +58,7 @@ export default class MapManager {
     );
     this.map = map;
     this.groundLayer = groundLayer;
+    this._rebuildSeaBlocker(layers);
     this.visualLayers = LAYER_NAMES.visual.map((name) => layers[name]).filter(Boolean);
     this.supportLayers = Object.fromEntries(
       LAYER_NAMES.support.filter((name) => layers[name]).map((name) => [name, layers[name]])
@@ -66,8 +71,7 @@ export default class MapManager {
     this.worldCollisionLayers = [this.collisionLayers.sea, this.collisionLayers.absolute].filter(Boolean);
     this.blockingLayers = [this.collisionLayers.player, ...this.worldCollisionLayers].filter(Boolean);
     this.spawnBlockedLayers = [
-      layers.Mar,
-      layers.Costa,
+      layers[WATER_LAYER],
       this.collisionLayers.player,
       this.collisionLayers.sea,
       this.collisionLayers.absolute
@@ -86,6 +90,21 @@ export default class MapManager {
     // qualquer tile não-vazio na layer Walls colide (gid 0 = vazio)
     // — só roda se a layer Walls existir no mapa atual (ver LAYER_NAMES acima)
     return this;
+  }
+
+  // Tile bloqueado = água. Edita os dados da layer de bloqueio do mar (que é
+  // invisível) antes de setCollisionByExclusion marcar a colisão.
+  _rebuildSeaBlocker(layers) {
+    const blocker = layers[LAYER_NAMES.collisions.sea];
+    const water = layers[WATER_LAYER];
+    if (!blocker || !water) return;
+    const wData = water.layer.data;
+    const bData = blocker.layer.data;
+    for (let y = 0; y < bData.length; y++) {
+      for (let x = 0; x < bData[y].length; x++) {
+        bData[y][x].index = wData[y][x].index > 0 ? 1 : -1;
+      }
+    }
   }
 
   // Registra colisão física entre um sprite/group e as paredes do mapa.

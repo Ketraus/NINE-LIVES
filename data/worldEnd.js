@@ -3,7 +3,8 @@
 // área jogável. Mexa só aqui pra calibrar.
 export default {
   playableLayer: 'AreaJogavel',
-  seaLayer: 'BloqueioMar', // mar não conta como fim do mundo (já tem barreira própria)
+  extraPlayableLayers: ['Costa'], // a praia é andável: conta como área jogável
+  seaLayer: 'BloqueioMar', // mar não conta como fim do mundo (já tem barreira própria; é refeita a partir da layer Mar, ver MapManager)
 
   warnTiles: 5, // a névoa começa a aparecer essa distância ANTES da borda
   maxDepthTiles: 7, // profundidade em que tudo chega no máximo (parede do mundo ~8)
