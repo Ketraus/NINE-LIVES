@@ -21,6 +21,7 @@ import SlowmoSystem from '../systems/SlowmoSystem.js';
 import MultiplayerManager from '../systems/MultiplayerManager.js';
 import MedkitRareFx from '../fx/MedkitRareFx.js';
 import WorldEndSystem from '../systems/WorldEndSystem.js';
+import SeaFx from '../fx/SeaFx.js';
 import { UI_SCALE } from '../config/layout.js';
 
 import enemiesData from '../../data/enemies.js';
@@ -37,6 +38,7 @@ import scoreValuesData from '../../data/scoreValues.js';
 const XP_ORB_MAGNET_RANGE = 90; // distância (px) a partir da qual o orb passa a ser puxado
 const XP_ORB_MAGNET_SPEED = 420; // velocidade (px/s) do orb voando até o jogador
 const MEDKIT_HEAL_AMOUNT = 20;
+const MEDKIT_BRUTE_DROP_CHANCE = 0.01;
 const MEDKIT_SCALE = 0.86;
 const MEDKIT_PULSE_SCALE = 1.07;
 const MEDKIT_PULSE_DURATION_MS = 850;
@@ -169,6 +171,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    this.seaFx?.update();
     this._updateRunTimer();
     this.multiplayer?.update(time, delta);
 
@@ -362,6 +365,8 @@ export default class GameScene extends Phaser.Scene {
 
   _buildMap() {
     this.mapManager = new MapManager(this).build();
+    // mar animado por shader (ver fx/SeaFx.js e data/seaFx.js); null se sem WebGL
+    this.seaFx = SeaFx.create(this, this.mapManager);
     const bounds = this.mapManager.getWorldBounds();
     this.physics.world.setBounds(0, 0, bounds.width, bounds.height);
     this.cameras.main.setBounds(0, 0, bounds.width, bounds.height);
@@ -594,13 +599,8 @@ export default class GameScene extends Phaser.Scene {
   // enquanto; quando formos sincronizá-lo, entra no mesmo pacote de drops.
   _rollDrops(death) {
     const drops = { orbId: this.nextPickupId++, medkit: null, magnet: null };
-    // O Elite mantém o drop garantido. Para os demais, o medkit usa a mesma
-    // tabela de chances do ímã, mas o Sealer fica deliberadamente excluído:
-    // ele pode dropar ímã, nunca medkit.
-    const medkitChance = death.enemyId === 'sealer'
-      ? 0
-      : MAGNET_DROP_CHANCES[death.enemyId] || 0;
-    if (death.enemyId === 'elite' || (medkitChance > 0 && Math.random() < medkitChance)) {
+    if (death.enemyId === 'elite' ||
+      (death.enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
       const offset = Phaser.Math.Between(MEDKIT_DROP_OFFSET_MIN, MEDKIT_DROP_OFFSET_MAX);
       drops.medkit = [
