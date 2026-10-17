@@ -23,6 +23,7 @@ import MedkitRareFx from '../fx/MedkitRareFx.js';
 import WorldEndSystem from '../systems/WorldEndSystem.js';
 import SeaFx from '../fx/SeaFx.js';
 import ShoreFx from '../fx/ShoreFx.js';
+import MistBorderFx from '../fx/MistBorderFx.js';
 import { UI_SCALE } from '../config/layout.js';
 
 import enemiesData from '../../data/enemies.js';
@@ -174,6 +175,7 @@ export default class GameScene extends Phaser.Scene {
   update(time, delta) {
     this.seaFx?.update();
     this.shoreFx?.update();
+    this.mistBorderFx?.update();
     this._updateRunTimer();
     this.multiplayer?.update(time, delta);
 
@@ -371,6 +373,8 @@ export default class GameScene extends Phaser.Scene {
     this.seaFx = SeaFx.create(this, this.mapManager);
     // transição da praia com grama/água (ver fx/ShoreFx.js e data/shoreFx.js)
     this.shoreFx = ShoreFx.create(this, this.mapManager);
+    // borda da névoa (grama x tiles escuros do FimDoMapa), ver fx/MistBorderFx.js
+    this.mistBorderFx = MistBorderFx.create(this, this.mapManager);
     const bounds = this.mapManager.getWorldBounds();
     this.physics.world.setBounds(0, 0, bounds.width, bounds.height);
     this.cameras.main.setBounds(0, 0, bounds.width, bounds.height);

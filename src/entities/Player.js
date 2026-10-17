@@ -25,6 +25,9 @@ const SHIELD_HIT_FLASH_MS = 90;
 // sempre, só que a partir desse novo tamanho-base). Se ainda estiver
 // pequeno/grande demais no mapa novo, é só ajustar este número.
 export const BASE_VISUAL_SCALE = 1.3;
+// Desce o círculo de colisão em direção aos pés (fração do raio). Faz a barreira
+// do mar/paredes ficar mais "acima" da cabeça do gato. 0 = centrado (antigo).
+const FEET_SHIFT = 0.5;
 
 // Sprite do gato por classe de arma (runState.weaponId). Katana e Paws têm
 // visual próprio; qualquer outro id cai no "default" (o mesmo da Pistola).
@@ -113,7 +116,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // raio/offset "base" (sem escala) guardados pra recalcular o body
     this._baseRadius = this.width / 2 - 2;
     this._baseOffsetX = this.width / 2 - this._baseRadius;
-    this._baseOffsetY = this.height / 2 - this._baseRadius;
+    this._baseOffsetY = this.height / 2 - this._baseRadius + this._baseRadius * FEET_SHIFT;
     this.body.setCircle(this._baseRadius, this._baseOffsetX, this._baseOffsetY);
     this.setDepth(10);
     // Sombra simples embaixo do jogador (mesma ideia da Enemy.js): elipse
@@ -257,7 +260,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const hitboxScale = BASE_VISUAL_SCALE * (1 + sizeMultiplier * HITBOX_GROWTH_FACTOR);
     const sourceRadius = (this._baseRadius * hitboxScale) / visualScale;
     const sourceOffsetX = this.width / 2 - sourceRadius;
-    const sourceOffsetY = this.height / 2 - sourceRadius;
+    const sourceOffsetY = this.height / 2 - sourceRadius + sourceRadius * FEET_SHIFT;
     this.body.setCircle(sourceRadius, sourceOffsetX, sourceOffsetY);
 
     const shadowWidth = this.displayWidth * 0.55;

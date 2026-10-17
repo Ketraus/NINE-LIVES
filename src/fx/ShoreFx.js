@@ -3,7 +3,9 @@ import SettingsManager from '../systems/SettingsManager.js';
 
 const MASK_KEY = 'shore_mask';
 const SHADER_KEY = 'shore_blend_shader';
-const NOISE_PERIOD = 16384;
+// MMC das escalas de ruído (48*64, 14*64, 4*64...) = 21504. Com 16384 o padrão
+// "pulava" a partir de x=16384 (o mapa tem 22400px). Mantido bem acima do mapa.
+const NOISE_PERIOD = 21504 * 4;
 const SD_RANGE_TILES = 6;
 
 const VERT = `
@@ -91,6 +93,26 @@ void main () {
 
   // saída rápida: longe de qualquer borda não há nada a desenhar
   if (abs(sdG) > 240.0 && abs(sdW) > 140.0) { gl_FragColor = vec4(0.0); return; }
+
+  // distância EXATA terra/água usando as células vizinhas (3x3). A máscara
+  // bilinear fazia diagonais nos cantos (o "triângulo" na quina do degrau).
+  vec2 cellI = floor(mp);
+  vec2 fpT = mp - cellI;
+  bool selfWater = texture2D(iChannel0, (cellI + 0.5) / uMaskSize).g < 0.5;
+  float dref = 1.0e4;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      if (i == 0 && j == 0) continue;
+      vec2 nc = vec2(float(i), float(j));
+      bool nbWater = texture2D(iChannel0, (cellI + nc + 0.5) / uMaskSize).g < 0.5;
+      if (nbWater != selfWater) {
+        vec2 dv = max(vec2(0.0), max(nc - fpT, fpT - (nc + 1.0)));
+        dref = min(dref, length(dv) * 64.0);
+      }
+    }
+  }
+  if (dref < 1.0e3) sdW = selfWater ? -dref : dref;
+  else sdW = selfWater ? min(sdW, -64.0) : max(sdW, 64.0);
 
   vec2 pc = floor(w / uPx);
   float n1 = vnoise(w / 48.0);

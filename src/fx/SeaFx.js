@@ -3,7 +3,7 @@ import SettingsManager from '../systems/SettingsManager.js';
 
 const MASK_KEY = 'sea_mask';
 const SHADER_KEY = 'sea_water_shader';
-const NOISE_PERIOD = 16384; // múltiplo comum das escalas de ruído (mantém a água contínua)
+const NOISE_PERIOD = 688128; // MMC das escalas de ruído (512*64, 192*64, 56*64...); 16384 quebrava a água/costa após x=16384
 const SHORE_CAP_TILES = 8;
 
 const VERT = `
@@ -30,6 +30,7 @@ uniform float uTime;
 uniform vec2 uWorldOffset;
 uniform vec2 uMaskOrigin;
 uniform vec2 uMaskScale;
+uniform vec2 uMaskSize;
 uniform float uSeaHeight;
 uniform float uQuality;
 uniform float uPx;
@@ -67,6 +68,24 @@ void main () {
 
   float t = uTime;
   float dpx = max(0.0, (m.g * ${SHORE_CAP_TILES}.0 - 0.5) * 64.0);
+  // distância EXATA até as células de terra vizinhas (3x3). A máscara bilinear
+  // formava diagonais nos cantos e a espuma virava triângulos claros.
+  vec2 mp = (uMaskOrigin + q * uMaskScale) * uMaskSize;
+  vec2 cellI = floor(mp);
+  vec2 fpT = mp - cellI;
+  float dref = 1.0e4;
+  for (int j = -1; j <= 1; j++) {
+    for (int i = -1; i <= 1; i++) {
+      if (i == 0 && j == 0) continue;
+      vec2 nc = vec2(float(i), float(j));
+      float nr = texture2D(iChannel0, (cellI + nc + 0.5) / uMaskSize).r;
+      if (nr < 0.5) {
+        vec2 dv = max(vec2(0.0), max(nc - fpT, fpT - (nc + 1.0)));
+        dref = min(dref, length(dv) * 64.0);
+      }
+    }
+  }
+  dpx = min(dref, max(dpx, 64.0));
   float yN = clamp(w.y / uSeaHeight, 0.0, 1.0);
 
   // ondulação larga (bandas de cor, estilo pixel art)
@@ -133,7 +152,10 @@ void main () {
   float arms = (step(dd.x, uPx * 0.55) * step(dd.y, uPx * 1.6) + step(dd.y, uPx * 0.55) * step(dd.x, uPx * 1.6)) * step(ph2, 0.06);
   col += vec3(0.72, 0.92, 1.0) * on * clamp(core + arms, 0.0, 1.0) * 0.9 * uSparkleAmount;
 
-  float a = smoothstep(0.5, 0.58, m.r + (nz - 0.5) * 0.06);
+  // célula de água inteira (sem interpolar): a máscara bilinear cortava os cantos
+  // diagonais e deixava o tile azul cru da layer Mar aparecendo (triângulos)
+  float wcell = texture2D(iChannel0, (floor(mp) + 0.5) / uMaskSize).r;
+  float a = step(0.5, wcell);
   gl_FragColor = vec4(col * a, a);
 }
 `;
@@ -190,6 +212,7 @@ export default class SeaFx {
       uWorldOffset: { type: '2f', value: { x: 0, y: 0 } },
       uMaskOrigin: { type: '2f', value: { x: 0, y: 0 } },
       uMaskScale: { type: '2f', value: { x: 1 / this.rect.w, y: 1 / this.rect.h } },
+      uMaskSize: { type: '2f', value: { x: cols, y: rows } },
       uSeaHeight: { type: '1f', value: this.rect.h - th },
       uQuality: { type: '1f', value: quality },
       uPx: { type: '1f', value: config.pixelSize },

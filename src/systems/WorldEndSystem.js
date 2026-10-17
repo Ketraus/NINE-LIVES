@@ -9,6 +9,20 @@ const smoothstep = (a, b, v) => {
   return t * t * (3 - 2 * t);
 };
 
+// O campo trabalha com a presença do tile, não com um intervalo de GIDs.
+// Em mapas com mais de um tileset, o primeiro tile de um tileset pode ter
+// índice local 0; em Phaser, uma célula vazia continua sendo -1.
+function hasTile(tile) {
+  if (!tile) return false;
+  if (Number.isFinite(tile.index)) return tile.index >= 0;
+  if (Number.isFinite(tile.gid)) return tile.gid > 0;
+  return false;
+}
+
+function tileAt(data, x, y) {
+  return data?.[y]?.[x] || null;
+}
+
 // transformada de distância euclidiana (Felzenszwalb): distância² de cada
 // célula até a fonte mais próxima. O(n), roda uma vez no início da run.
 function edt1d(f, n, d, v, z) {
@@ -84,9 +98,9 @@ export class WorldEndField {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
-        playable[i] = playableLayer.layer.data[y][x].index > 0 ||
-          extraPlayable.some((data) => data[y][x].index > 0) ? 1 : 0;
-        const sea = seaLayer ? seaLayer.layer.data[y][x].index > 0 : false;
+        playable[i] = hasTile(tileAt(playableLayer.layer.data, x, y)) ||
+          extraPlayable.some((data) => hasTile(tileAt(data, x, y))) ? 1 : 0;
+        const sea = seaLayer ? hasTile(tileAt(seaLayer.layer.data, x, y)) : false;
         if (!playable[i] && !sea) {
           danger[i] = 1;
           dangerCount++;
