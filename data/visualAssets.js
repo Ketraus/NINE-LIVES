@@ -22,5 +22,43 @@ export default [
         repeat: -1
       }
     ]
+  },
+  {
+    id: 'cyberus',
+    type: 'image',
+    key: 'asset_cyberus',
+    path: 'assets/sprites/cyberus.png'
+  },
+  {
+    id: 'cyberus-idle',
+    type: 'spritesheet',
+    key: 'asset_cyberus_idle',
+    path: 'assets/sprites/cyberus_idle.png',
+    frameWidth: 128,
+    frameHeight: 128,
+    animations: [
+      {
+        key: 'cyberus-idle',
+        frames: { start: 0, end: 5 },
+        frameRate: 8,
+        repeat: -1
+      }
+    ]
+  },
+  {
+    id: 'cyberus-walk',
+    type: 'spritesheet',
+    key: 'asset_cyberus_walk',
+    path: 'assets/sprites/cyberus_walk.png',
+    frameWidth: 128,
+    frameHeight: 128,
+    animations: [
+      {
+        key: 'cyberus-walk',
+        frames: { start: 0, end: 5 },
+        frameRate: 12,
+        repeat: -1
+      }
+    ]
   }
 ];

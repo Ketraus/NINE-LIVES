@@ -379,7 +379,10 @@ export default class PreloadScene extends Phaser.Scene {
       'laser_blue',
       'minotaur_meteor_aqua',
       'asset_purification_idle',
-      'asset_purification_walk'
+      'asset_purification_walk',
+      'asset_cyberus',
+      'asset_cyberus_idle',
+      'asset_cyberus_walk'
     ].forEach((key) => this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST));
     ['gato_drone', 'gato_drone_catforce'].forEach((key) => this.textures.get(key).setFilter(Phaser.Textures.FilterMode.LINEAR));
 

@@ -5,7 +5,10 @@ let nextInstanceId = 1;
 // ficam em ~1.0). O sprite 64x64 não perde mais linhas/colunas como acontecia
 // com escalas fracionárias (0.78 / 0.95) + NEAREST.
 const DOG_SCREEN_SCALE = 1;
-const CYBERUS_SCREEN_SCALE = 1.5;
+// O sprite do Cyberus é 128x128 (o dobro do cachorro base) — 1 = pixel nítido.
+const CYBERUS_SCREEN_SCALE = 1;
+// Raio do hitbox em pixels do sprite (o frame tem muito espaço vazio em volta).
+const CYBERUS_BODY_RADIUS = 36;
 
 // Cachorro aliado, criado pela carta base épica "Purificação" (ver
 export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
@@ -37,20 +40,20 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
     if (this._isCyberus) return;
     this._isCyberus = true;
 
-    // Até o asset próprio do Cyberus ser adicionado, a evolução continua
-    // usando o mesmo sprite do Dog Purify, sem o fallback da bolinha vermelha.
+    // Troca pro sprite próprio do Cyberus (frames 128x128, idle e walk).
     this.clearTint();
+    this.setTexture('asset_cyberus_idle', 0);
+    this.play('cyberus-idle');
     this.setScale(this._cyberusScale);
 
     // Arcade Body NÃO reescala sozinho com setScale (pegadinha conhecida
-    // já usada no resto do arquivo). this.width já reflete o frame 64x64
-    // do sprite novo (setado pelo play() acima), não mais os 26x26 do
-    // círculo 'enemy'.
-    this._applyBodyScale(this._cyberusScale);
+    // já usada no resto do arquivo). this.width já reflete o frame 128x128
+    // setado acima; o raio é fixo porque o frame tem muito espaço vazio.
+    this._applyBodyScale(this._cyberusScale, CYBERUS_BODY_RADIUS);
   }
 
-  _applyBodyScale(scale) {
-    const sourceRadius = this.width / 2 - 2;
+  _applyBodyScale(scale, radius) {
+    const sourceRadius = radius ?? this.width / 2 - 2;
     const offset = this.width / 2 - sourceRadius;
     this.body.setCircle(sourceRadius * scale, offset, offset);
   }
@@ -62,13 +65,14 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
     const distSq = dx * dx + dy * dy;
     if (distSq < 25) {
       this.setVelocity(0, 0);
-      this.pauseVisual();
+      this._showIdle();
       return;
     }
     if (dx > 0) this.setFlipX(true);
     else if (dx < 0) this.setFlipX(false);
-    if (!this.anims.isPlaying || this.anims.currentAnim?.key !== 'purification-walk') {
-      this.play('purification-walk');
+    const walkKey = this._isCyberus ? 'cyberus-walk' : 'purification-walk';
+    if (!this.anims.isPlaying || this.anims.currentAnim?.key !== walkKey) {
+      this.play(walkKey);
     }
     const dist = Math.sqrt(distSq);
     this.setVelocity((dx / dist) * speed, (dy / dist) * speed);
@@ -76,17 +80,37 @@ export default class AllyDog extends Phaser.Physics.Arcade.Sprite {
 
   stop() {
     this.setVelocity(0, 0);
-    this.pauseVisual();
+    this._showIdle();
   }
 
+  // Parado: Cyberus toca a animação idle; o cachorro base mostra a imagem idle.
+  _showIdle() {
+    if (!this.active) return;
+    if (this._isCyberus) {
+      this.play('cyberus-idle', true);
+      return;
+    }
+    this.anims.stop();
+    this.setTexture('asset_purification_idle');
+  }
+
+  // Pausa/retomada do jogo (GameScene -> AbilityManager.pauseVisuals).
   pauseVisual() {
     if (!this.active) return;
+    if (this._isCyberus) {
+      this.anims.pause();
+      return;
+    }
     this.anims.stop();
-    if (!this._isCyberus) this.setTexture('asset_purification_idle');
+    this.setTexture('asset_purification_idle');
   }
 
   resumeVisual() {
-    if (!this.active || this._isCyberus) return;
+    if (!this.active) return;
+    if (this._isCyberus) {
+      this.anims.resume();
+      return;
+    }
     if (this.body.velocity.lengthSq() > 25) this.play('purification-walk');
     else this.setTexture('asset_purification_idle');
   }
