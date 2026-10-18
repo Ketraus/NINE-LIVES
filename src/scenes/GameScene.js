@@ -306,15 +306,30 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  // Tempo esgotado: solo vence na hora; em multiplayer só o Host decide (e o
-  // resultado chega a todos como estado do grupo — ver applyGroupMatchState).
+  // Tempo esgotado: em multiplayer só o Host decide (e o resultado chega a
+  // todos como estado do grupo — ver applyGroupMatchState). Solo NÃO vence
+  // na hora: abre a sequência de vitória (a run segue viva, ver abaixo).
   _onRunTimeUp() {
     const multiplayer = this.multiplayer;
     if (multiplayer?.isMultiplayer && multiplayer.mqtt) {
       if (multiplayer.isRoomHost) multiplayer.declareMatchWon();
       return;
     }
-    this._triggerWin();
+    this._beginVictorySequence();
+  }
+
+  // Sequência cinematográfica de vitória (solo). Passo 1: o jogo continua
+  // rodando e o cronômetro segue avançando (não chama _triggerWin), mas o
+  // mundo "congela" — inimigos parados e sem dano, spawn automático cortado.
+  // As próximas etapas da cinemática devem partir daqui (evento abaixo) e,
+  // no fim, chamar _triggerWin().
+  _beginVictorySequence() {
+    if (this.victorySequenceStarted) return;
+    this.victorySequenceStarted = true;
+    this.enemiesDisarmed = true; // lido por DamageSystem._isDisarmedEnemyHit
+    this.spawnDirector.stop(); // só corta as levas: getElapsedMs() continua contando
+    this.enemySpawner.haltAll();
+    EventBus.emit('victory-sequence-started');
   }
 
   // Vitória/derrota do GRUPO, definida pelo Host (ver MultiplayerManager).
@@ -385,6 +400,8 @@ export default class GameScene extends Phaser.Scene {
     this.isGameOver = false;
     this.resultComplete = false; // vira true quando a tela de resultado (ResultUI) termina
     this.hasWon = false;
+    this.victorySequenceStarted = false; // sequência de vitória (solo) já disparada
+    this.enemiesDisarmed = false; // true na sequência: inimigos não causam dano (ver DamageSystem)
     this.groupWon = false; // vitória do grupo anunciada pelo Host (quem já tinha morrido também a recebe)
     this._pendingGroupRestart = false;
     this.isPaused = false;

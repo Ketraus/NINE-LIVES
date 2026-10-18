@@ -7,8 +7,16 @@ export default class DamageSystem {
   static MINOTAUR_HIT_SFX_KEYS = ['sfx_minotaur_hit1', 'sfx_minotaur_hit2', 'sfx_minotaur_hit3'];
   static _lastDenseHitSfxAt = new WeakMap();
 
+  // Sequência de vitória (GameScene.enemiesDisarmed): nenhum inimigo causa
+  // dano. Único ponto de bloqueio — contato, explosão, míssil, boss e Sealer
+  // passam por aqui, inclusive golpes agendados que ainda estavam no ar.
+  static _isDisarmedEnemyHit(attacker, target) {
+    return !!attacker?.def && !target?.def && attacker.scene?.enemiesDisarmed === true;
+  }
+
   // Dano de contato com cooldown por-alvo (evita tirar vida todo frame
   static applyContactDamage(attacker, target, damage, cooldownMs, nowMs) {
+    if (this._isDisarmedEnemyHit(attacker, target)) return false;
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
@@ -42,6 +50,7 @@ export default class DamageSystem {
 
   // Dano direto de um ataque de arma (sem cooldown próprio — quem
   static applyWeaponHit(target, damage, source, nowMs, feedback = {}) {
+    if (this._isDisarmedEnemyHit(source, target)) return false;
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;

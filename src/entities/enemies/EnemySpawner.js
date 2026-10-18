@@ -84,6 +84,22 @@ export default class EnemySpawner {
 
     // Freeze (cheat "freeze" do DevConsole, F9): true = inimigos param no
     this.frozen = false;
+
+    // Sequência de vitória (ver GameScene._beginVictorySequence): true = todos
+    // parados em idle, sem IA/ataques, e nenhum spawn automático.
+    this.halted = false;
+  }
+
+  // Interrompe todos os inimigos: cancela telegraphs/mísseis em andamento
+  // (mesmo gancho da fuga do boss) e trava o spawn automático.
+  haltAll() {
+    this.halted = true;
+    this.group.getChildren().forEach((enemy) => {
+      if (!enemy.active) return;
+      enemy._cancelActionsForFlee?.();
+      enemy._moveTo(0, 0);
+      enemy.updateAnimState();
+    });
   }
 
   // Muda o teto de inimigos vivos simultaneamente. Chamado pelo SpawnDire…
@@ -118,6 +134,7 @@ export default class EnemySpawner {
 
   // Núcleo compartilhado por spawnOne/spawnBatch: escolhe o tipo, acha
   _spawnOneAt(nowMs, weights, baseAngle) {
+    if (this.halted) return null;
     if (this.group.countActive(true) >= this.maxAlive) return null;
 
     const def = weights ? this._pickWeighted(weights) : this._pickUniform(nowMs);
@@ -514,7 +531,11 @@ export default class EnemySpawner {
           target = candidate;
         }
       }
-      if (this.frozen) {
+      if (this.halted) {
+        // parado de verdade: sem chase/ataque/fuga, e volta pra textura idle
+        enemy._moveTo(0, 0);
+        enemy.updateAnimState();
+      } else if (this.frozen) {
         enemy.setVelocity(0, 0);
       } else if (
         stride === 1 ||
@@ -549,7 +570,7 @@ export default class EnemySpawner {
     // Resolve sobreposições DEPOIS de todos definirem a velocity. O método usa
     // o mesmo spatial hash reconstruído acima, processa apenas vizinhos locais
     // e cada par só uma vez. Mantém a horda encorpada sem virar uma pilha.
-    if (!this.frozen && active.length > 1) this.swarmSystem.resolveOverlaps(active);
+    if (!this.frozen && !this.halted && active.length > 1) this.swarmSystem.resolveOverlaps(active);
   }
 
   // Cheat (DevConsole "freeze"): liga/desliga o congelamento de todos os…
