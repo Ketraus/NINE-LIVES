@@ -94,7 +94,35 @@ export default class AbilityManager {
   }
 
   // Chamado todo frame pela GameScene, junto com player.update().
+  // Sequência de vitória: desliga TODAS as habilidades de vez. Remove o que
+  // causa dano ou voa (projéteis, ondas, tornados, aura, chamas, granadas) e
+  // deixa só os aliados (cachorro/drone), que seguem o jogador sem atacar.
+  suspendAll() {
+    this.suspended = true;
+    this.active.forEach((ability) => {
+      try {
+        ability.bulletGroup?.clear(true, true);
+        ability.group?.clear(true, true);
+        ability.tornadoes?.forEach((t) => t.fx?.destroy?.());
+        ability.tornadoes = ability.tornadoes && [];
+        ability.fx?.destroy?.();
+        ability.fx = null;
+        ability.flameZones?.forEach((z) => z.fx?.destroy?.());
+        ability.flameZones = ability.flameZones && [];
+        ability.grenadesInFlight?.forEach((g) => g.fx?.destroy?.());
+        ability.grenadesInFlight = ability.grenadesInFlight && [];
+      } catch (e) {
+        // melhor esforço, igual ao reset()
+      }
+    });
+  }
+
   update(time) {
+    if (this.suspended) {
+      // aliados (drone/cachorro) continuam acompanhando o jogador, sem atacar
+      this.active.forEach((ability) => ability.followOnly?.(time, this.player));
+      return;
+    }
     this.active.forEach((ability) => ability.update(time, this.player, this.enemyGroup, this.scene));
   }
 

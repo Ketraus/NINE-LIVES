@@ -562,6 +562,13 @@ export default class AllyDogAbility {
     return found;
   }
 
+  // Sequência de vitória: acompanha o jogador, sem atacar ninguém.
+  followOnly(time, player) {
+    if (!this.dog?.active) return;
+    if (this.evoDef) this.dog.becomeCyberus();
+    this._followPlayer(player, this.evoDef?.cyberusSpeed ?? this.def.speed);
+  }
+
   _followPlayer(player, speed) {
     const targetX = player.x + this.offset.x;
     const targetY = player.y + this.offset.y;

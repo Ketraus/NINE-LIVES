@@ -65,6 +65,13 @@ const GROUP_SIZE_WEIGHTS = [
   { size: 6, weight: 1 }
 ];
 
+// Sequência de vitória: duração (sorteada por inimigo) da desaceleração até
+// parar, fração mínima da velocidade do susto e abertura do desvio angular.
+const HALT_STOP_MIN_MS = 2200;
+const HALT_STOP_MAX_MS = 4200;
+const HALT_SPEED_MUL_MIN = 0.55;
+const HALT_SCATTER_SPREAD = 1.1;
+
 // Responsável só por CRIAR inimigos: escolhe o tipo, acha uma posição f…
 export default class EnemySpawner {
   // repassado pro SwarmSystem (comportamento de enxame, ver updateAll)
@@ -94,12 +101,39 @@ export default class EnemySpawner {
   // (mesmo gancho da fuga do boss) e trava o spawn automático.
   haltAll() {
     this.halted = true;
+    this.haltStartMs = this.scene.time.now;
     this.group.getChildren().forEach((enemy) => {
       if (!enemy.active) return;
       enemy._cancelActionsForFlee?.();
-      enemy._moveTo(0, 0);
-      enemy.updateAnimState();
+      enemy.bleedUntil = 0; // sangramento (Hemorragia) não continua tirando vida na sequência
+      // cada um reage no seu ritmo: foge um pouco do jogador (assustado) e vai
+      // desacelerando até parar — nada de congelar todo mundo no mesmo frame
+      enemy._haltStopMs = Phaser.Math.Between(HALT_STOP_MIN_MS, HALT_STOP_MAX_MS);
+      enemy._haltSpeedMul = Phaser.Math.FloatBetween(HALT_SPEED_MUL_MIN, 1);
+      enemy._haltDir = null;
     });
+  }
+
+  // Um frame da "perda de fôlego": anda na direção de susto (afastando do
+  // alvo, com desvio aleatório) numa velocidade que cai suavemente até 0.
+  _windDown(enemy, target, nowMs) {
+    if (!enemy._haltDir) {
+      const away = Phaser.Math.Angle.Between(target.x, target.y, enemy.x, enemy.y);
+      const angle = away + Phaser.Math.FloatBetween(-HALT_SCATTER_SPREAD, HALT_SCATTER_SPREAD);
+      enemy._haltDir = { x: Math.cos(angle), y: Math.sin(angle) };
+    }
+    const p = Phaser.Math.Clamp((nowMs - this.haltStartMs) / (enemy._haltStopMs ?? HALT_STOP_MAX_MS), 0, 1);
+    const f = Math.pow(1 - p, 1.5);
+    const speed = enemy.def.speed * (enemy._haltSpeedMul ?? 1) * f;
+    if (speed < 6) {
+      enemy._moveTo(0, 0);
+      enemy._crowding = 0;
+    } else {
+      enemy._moveTo(enemy._haltDir.x * speed, enemy._haltDir.y * speed);
+      enemy._crowding = 1 - f; // reaproveita o sinal que desacelera a animação de andar
+    }
+    enemy.updateFacing(nowMs);
+    enemy.updateAnimState();
   }
 
   // Muda o teto de inimigos vivos simultaneamente. Chamado pelo SpawnDire…
@@ -532,9 +566,8 @@ export default class EnemySpawner {
         }
       }
       if (this.halted) {
-        // parado de verdade: sem chase/ataque/fuga, e volta pra textura idle
-        enemy._moveTo(0, 0);
-        enemy.updateAnimState();
+        // sem chase/ataque/fuga: só o susto e a desaceleração (ver _windDown)
+        this._windDown(enemy, target, nowMs);
       } else if (this.frozen) {
         enemy.setVelocity(0, 0);
       } else if (
@@ -570,7 +603,7 @@ export default class EnemySpawner {
     // Resolve sobreposições DEPOIS de todos definirem a velocity. O método usa
     // o mesmo spatial hash reconstruído acima, processa apenas vizinhos locais
     // e cada par só uma vez. Mantém a horda encorpada sem virar uma pilha.
-    if (!this.frozen && !this.halted && active.length > 1) this.swarmSystem.resolveOverlaps(active);
+    if (!this.frozen && active.length > 1 && (!this.halted || nowMs - this.haltStartMs < HALT_STOP_MAX_MS + 300)) this.swarmSystem.resolveOverlaps(active);
   }
 
   // Cheat (DevConsole "freeze"): liga/desliga o congelamento de todos os…

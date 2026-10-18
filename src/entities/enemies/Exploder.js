@@ -16,6 +16,19 @@ export default class Exploder extends Enemy {
     return this._updateExplosive(target, nowMs);
   }
 
+  // Interrompe carga/preparo de explosão (fuga do boss, sequência de vitória):
+  // desliga o pisca, volta ao tamanho/cor normais e à perseguição comum.
+  _cancelActionsForFlee() {
+    if (this.explodeState !== 'preparing' && this.explodeState !== 'charging') return;
+    this._explodeFlashTimer?.remove();
+    this.scene.tweens.killTweensOf(this);
+    this.setScale(this.baseScale);
+    this.clearTint();
+    this._currentStatusTint = null;
+    this._refreshStatusTint(this.scene.time.now);
+    this.explodeState = 'chasing';
+  }
+
   _cleanupSpecial() {
     // Exploder: o timer do pisca-pisca frenético de explosão também não
     // morre sozinho com o sprite, senão continua chamando callback à toa.

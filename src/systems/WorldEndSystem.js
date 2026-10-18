@@ -207,6 +207,8 @@ export default class WorldEndSystem {
     // logo após escolher carta o jogador fica invulnerável por um instante
     if (p._levelUpInvulnerableUntil && this.scene.time.now < p._levelUpInvulnerableUntil) return;
 
+    if (this.scene.enemiesDisarmed) return; // sequência de vitória: nenhum dano residual no jogador
+
     const hp = p.healthSystem;
     const pct = cfg.minPercentMaxHp + (cfg.maxPercentMaxHp - cfg.minPercentMaxHp) * Math.pow(this.deep, 1.1);
     const damage = Math.max(cfg.minFlat, Math.round(hp.maxHp * pct));

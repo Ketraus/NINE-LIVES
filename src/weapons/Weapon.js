@@ -55,6 +55,7 @@ export default class Weapon {
       const swingRange = range * style.rangeMultiplier;
 
       const doSwing = () => {
+        if (scene.playerAttacksDisabled) return; // combo agendado não continua na sequência de vitória
         // corte final da Dança de Cortes: sempre reto na direção ATUAL do
         // jogador (calculada só na hora que o golpe sai, depois do delay),
         // não herda o desvio angular acumulado dos cortes anteriores —

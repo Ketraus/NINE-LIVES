@@ -327,6 +327,9 @@ export default class GameScene extends Phaser.Scene {
     if (this.victorySequenceStarted) return;
     this.victorySequenceStarted = true;
     this.enemiesDisarmed = true; // lido por DamageSystem._isDisarmedEnemyHit
+    this.playerAttacksDisabled = true; // lido por DamageSystem/Weapon/Shuriken: lado do jogador desligado
+    this.weaponManager?.disable();
+    this.abilityManager?.suspendAll();
     this.spawnDirector.stop(); // só corta as levas: getElapsedMs() continua contando
     this.enemySpawner.haltAll();
     EventBus.emit('victory-sequence-started');
@@ -401,6 +404,7 @@ export default class GameScene extends Phaser.Scene {
     this.resultComplete = false; // vira true quando a tela de resultado (ResultUI) termina
     this.hasWon = false;
     this.victorySequenceStarted = false; // sequência de vitória (solo) já disparada
+    this.playerAttacksDisabled = false; // true na sequência: jogador/armas/habilidades não atacam
     this.enemiesDisarmed = false; // true na sequência: inimigos não causam dano (ver DamageSystem)
     this.groupWon = false; // vitória do grupo anunciada pelo Host (quem já tinha morrido também a recebe)
     this._pendingGroupRestart = false;

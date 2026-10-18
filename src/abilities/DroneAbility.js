@@ -86,6 +86,11 @@ export default class DroneAbility {
     this._fire(scene, target);
   }
 
+  // Sequência de vitória: segue o jogador normalmente, mas não atira mais.
+  followOnly(time, player) {
+    if (this.sprite) this._follow(player, time);
+  }
+
   // Chamado pela evolução CatForce 2.0 (upgradeAbility, não unlockAbility…
   upgrade(def) {
     this.laser = true;

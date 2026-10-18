@@ -17,7 +17,14 @@ export default class WeaponManager {
   }
 
   // Chamado todo frame por Player.update() — o cooldown interno decide se…
+  // Sequência de vitória: para de atacar de vez e some com os projéteis no ar.
+  disable() {
+    this.disabled = true;
+    this.currentWeapon.bulletGroup?.clear(true, true);
+  }
+
   tryAttack(player) {
+    if (this.disabled) return;
     const now = this.scene.time.now;
     // quantidade de cópias já pegas da carta exclusiva "pistol_fragmentatio…
     const fragmentationStacks = this.runState.upgradeCounts.pistol_fragmentation || 0;

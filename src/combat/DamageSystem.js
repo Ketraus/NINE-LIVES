@@ -14,9 +14,16 @@ export default class DamageSystem {
     return !!attacker?.def && !target?.def && attacker.scene?.enemiesDisarmed === true;
   }
 
+  // Mesma ideia pro lado do jogador (GameScene.playerAttacksDisabled): arma,
+  // habilidade, aliado ou golpe agendado não ferem mais nenhum inimigo.
+  static _isDisarmedPlayerSideHit(source, target) {
+    return !!target?.def && !source?.def && target.scene?.playerAttacksDisabled === true;
+  }
+
   // Dano de contato com cooldown por-alvo (evita tirar vida todo frame
   static applyContactDamage(attacker, target, damage, cooldownMs, nowMs) {
     if (this._isDisarmedEnemyHit(attacker, target)) return false;
+    if (this._isDisarmedPlayerSideHit(attacker, target)) return false;
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
@@ -51,6 +58,7 @@ export default class DamageSystem {
   // Dano direto de um ataque de arma (sem cooldown próprio — quem
   static applyWeaponHit(target, damage, source, nowMs, feedback = {}) {
     if (this._isDisarmedEnemyHit(source, target)) return false;
+    if (this._isDisarmedPlayerSideHit(source, target)) return false;
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;

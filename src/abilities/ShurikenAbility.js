@@ -137,6 +137,7 @@ export default class ShurikenAbility {
   _fireVolley(scene, player, targets) {
     targets.forEach((target, i) => {
       scene.time.delayedCall(i * VOLLEY_STAGGER_MS, () => {
+        if (scene.playerAttacksDisabled) return; // sequência de vitória: rajada agendada não sai
         if (!player.active || !target.active) return; // alvo morreu enquanto a rajada ainda disparava
         this._throw(scene, player, target);
       });
