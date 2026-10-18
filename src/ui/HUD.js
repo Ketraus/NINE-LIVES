@@ -157,6 +157,11 @@ const VICTORY_MSG_FADE_MS = 2200;
 const VICTORY_MSG_SPACING_START = 16;
 const VICTORY_MSG_SPACING_END = 2;
 const VICTORY_MSG_RISE_PX = 12;
+// Escurecimento da cinemática (ver systems/VictoryTremor.js): do preto azulado
+// (estranheza) ao vinho escuro pulsante (catástrofe).
+const VICTORY_DARK_MAX_ALPHA = 0.55;
+const VICTORY_DARK_COLOR_START = 0x05070c;
+const VICTORY_DARK_COLOR_END = 0x240208;
 const BIG_MESSAGE_FADE_IN_MS = 650;
 const BIG_MESSAGE_START_SCALE = 0.85;
 const BIG_MESSAGE_HOLD_MS = 1500;
@@ -234,6 +239,7 @@ export default class HUD {
     this._buildGameOverText();
     this._buildWinText();
     this._buildVictoryMessage();
+    this._buildVictoryDarkness();
     this._buildLowHpVignette();
     this._setupCameraFx();
     // ducking de música pela vida (ver _updateMusicDuck) — independe de
@@ -1163,6 +1169,32 @@ export default class HUD {
     this._applyZoomCompensation(this.victoryGroup, 1);
   }
 
+  // Véu escuro de tela cheia (depth 99: abaixo das barras do HUD, acima do mundo).
+  _buildVictoryDarkness() {
+    const W = this.scene.scale.width;
+    const H = this.scene.scale.height;
+    this.victoryDarkGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(99).setVisible(false);
+    this.victoryDark = this.scene.add
+      .rectangle(W / 2, H / 2, W + 8, H + 8, VICTORY_DARK_COLOR_START, 1)
+      .setScrollFactor(0)
+      .setAlpha(0);
+    this.victoryDarkGroup.add(this.victoryDark);
+    this._applyZoomCompensation(this.victoryDarkGroup, 1);
+  }
+
+  // level 0..1 (VictoryTremor): escurece, esquenta a cor e, perto do fim,
+  // pulsa como batimento cada vez mais rápido.
+  setVictoryAtmosphere(level, timeMs) {
+    if (!this.victoryDark) return;
+    const pulse = Math.sin(timeMs / Phaser.Math.Linear(900, 380, level)) * 0.07 * level * level;
+    this.victoryDarkGroup.setVisible(level > 0);
+    const from = Phaser.Display.Color.IntegerToColor(VICTORY_DARK_COLOR_START);
+    const to = Phaser.Display.Color.IntegerToColor(VICTORY_DARK_COLOR_END);
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(from, to, 100, Math.round(level * 100));
+    this.victoryDark.setFillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b), 1);
+    this.victoryDark.setAlpha(Phaser.Math.Clamp(level * VICTORY_DARK_MAX_ALPHA + pulse, 0, 0.7));
+  }
+
   _playVictoryMessage() {
     const scene = this.scene;
     const cy = scene.scale.height / 2;
@@ -1457,6 +1489,8 @@ export default class HUD {
     EventBus.on('victory-message-show', () => this._playVictoryMessage());
 
     EventBus.on('run-restart', () => {
+      this.victoryDarkGroup?.setVisible(false);
+      this.victoryDark?.setAlpha(0);
       this.scene.tweens.killTweensOf(this.victoryMessage);
       this.victoryGroup.setVisible(false);
       this.victoryMessage.setAlpha(0);

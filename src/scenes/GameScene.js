@@ -1,4 +1,5 @@
 import EventBus from '../systems/EventBus.js';
+import VictoryTremor from '../systems/VictoryTremor.js';
 import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
 import Player, { BASE_VISUAL_SCALE } from '../entities/Player.js';
@@ -194,6 +195,7 @@ export default class GameScene extends Phaser.Scene {
       this.enemySpawner.updateAll(this.time.now);
     }
     this.abilityManager.update(this.time.now);
+    this.victoryTremor?.update(delta);
     this.hud?.update(time, delta);
     this._updateXpOrbMagnet(time);
     this._updateXpGlows();
@@ -408,6 +410,8 @@ export default class GameScene extends Phaser.Scene {
     this.isGameOver = false;
     this.resultComplete = false; // vira true quando a tela de resultado (ResultUI) termina
     this.hasWon = false;
+    this.victoryTremor = new VictoryTremor(this); // tremores crescentes da cinemática (começa após a mensagem)
+    this.victoryTremorLevel = 0; // 0..1, lido pelos inimigos pra tremerem de medo
     this.victorySequenceStarted = false; // sequência de vitória (solo) já disparada
     this.playerAttacksDisabled = false; // true na sequência: jogador/armas/habilidades não atacam
     this.enemiesDisarmed = false; // true na sequência: inimigos não causam dano (ver DamageSystem)
@@ -584,6 +588,8 @@ export default class GameScene extends Phaser.Scene {
       }
       this.scoreManager.finalize(false, { finalLevel: this.runState.level });
     });
+
+    EventBus.on('victory-message-shown', () => this.victoryTremor.start());
 
     EventBus.on('levelup-opened', () => {
       this.isPaused = true;

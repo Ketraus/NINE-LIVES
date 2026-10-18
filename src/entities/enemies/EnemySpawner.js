@@ -72,6 +72,8 @@ const HALT_STOP_MAX_MS = 5500;
 const HALT_SPEED_MUL_MIN = 0.9;
 const HALT_SPEED_MUL_MAX = 1.5; // acima de 1: o susto faz alguns dispararem mais rápido que o normal
 const HALT_SCATTER_SPREAD = 1.6;
+const HALT_SHIVER_MIN = 0.015; // rad de balanço no início do tremor (~1º)
+const HALT_SHIVER_MAX = 0.12; // ... e no pico (~7º)
 
 // Responsável só por CRIAR inimigos: escolhe o tipo, acha uma posição f…
 export default class EnemySpawner {
@@ -135,6 +137,15 @@ export default class EnemySpawner {
     }
     enemy.updateFacing(nowMs);
     enemy.updateAnimState();
+
+    // Tremor de medo (VictoryTremor): balanço rápido do sprite, que cresce com
+    // o nível do tremor da câmera. É só rotação visual — não mexe no corpo
+    // físico nem na escala — pra a horda parada não parecer estátua.
+    const fear = this.scene.victoryTremorLevel || 0;
+    if (fear > 0) {
+      const amp = Phaser.Math.Linear(HALT_SHIVER_MIN, HALT_SHIVER_MAX, fear);
+      enemy.setRotation(Phaser.Math.FloatBetween(-amp, amp));
+    }
   }
 
   // Muda o teto de inimigos vivos simultaneamente. Chamado pelo SpawnDire…
