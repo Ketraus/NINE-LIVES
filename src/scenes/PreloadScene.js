@@ -13,6 +13,7 @@ import { loadMinotaurStompSheet, createMinotaurStompTextures } from '../fx/Minot
 import { loadMinotaurChargeSwing, prepareMinotaurChargeSwing } from '../fx/MinotaurChargeSwingFx.js';
 import cardArtIds from '../../data/cardArt.js';
 import AssetManager from '../systems/AssetManager.js';
+import { buildLoadingScreen } from '../ui/LoadingScreen.js';
 
 export default class PreloadScene extends Phaser.Scene {
   constructor() {
@@ -20,7 +21,7 @@ export default class PreloadScene extends Phaser.Scene {
   }
 
   preload() {
-    this._buildLoadingBar();
+    this._loading = buildLoadingScreen(this);
     AssetManager.preload(this);
 
     // arte das cartas normais (comuns/épicas/raras/evoluções) — só carrega
@@ -544,20 +545,8 @@ export default class PreloadScene extends Phaser.Scene {
       repeat: -1
     });
 
-    this.scene.start('MainMenuScene');
-  }
-
-  _buildLoadingBar() {
-    const { width, height } = this.scale;
-    const box = this.add.rectangle(width / 2, height / 2, 220, 20, 0x222222).setStrokeStyle(1, 0x555555);
-    const bar = this.add.rectangle(width / 2 - 108, height / 2, 4, 14, 0x4fd1ff).setOrigin(0, 0.5);
-
-    this.load.on('progress', (value) => {
-      bar.width = 216 * value;
-    });
-    this.load.on('complete', () => {
-      box.destroy();
-      bar.destroy();
-    });
+    // aviso de fotossensibilidade -> loading -> "toque para iniciar" -> fade;
+    // só troca pra o menu quando a tela de abertura terminou
+    this._loading.finish().then(() => this.scene.start('MainMenuScene'));
   }
 }
