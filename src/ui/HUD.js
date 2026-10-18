@@ -147,6 +147,16 @@ const GAMEOVER_FX_RAMP_MS = 2600;
 // sozinha, sai por completo, só então o relatório (ResultUI) começa a
 // entrar. A dica de reiniciar/escolher arma só aparece no fim de tudo,
 // depois que o placar final do ResultUI termina (ver 'result-complete').
+// Mensagem da sequência de vitória: mesmo estilo do aviso da névoa
+// (fx/WorldEndFx.js: Press Start 2P, cor, contorno preto), só maior. Entra
+// devagar — letras se juntam, sobe um fio e aparece — e FICA na tela.
+const VICTORY_MSG_TEXT = 'PARABÉNS, VOCÊ VENCEU O JOGO.';
+const VICTORY_MSG_COLOR = '#ff3d6e';
+const VICTORY_MSG_FONT_SIZE = 18;
+const VICTORY_MSG_FADE_MS = 2200;
+const VICTORY_MSG_SPACING_START = 16;
+const VICTORY_MSG_SPACING_END = 2;
+const VICTORY_MSG_RISE_PX = 12;
 const BIG_MESSAGE_FADE_IN_MS = 650;
 const BIG_MESSAGE_START_SCALE = 0.85;
 const BIG_MESSAGE_HOLD_MS = 1500;
@@ -223,6 +233,7 @@ export default class HUD {
     this._applyLargeHudText();
     this._buildGameOverText();
     this._buildWinText();
+    this._buildVictoryMessage();
     this._buildLowHpVignette();
     this._setupCameraFx();
     // ducking de música pela vida (ver _updateMusicDuck) — independe de
@@ -1130,6 +1141,53 @@ export default class HUD {
     this.winGroup.add(this.winMessage);
   }
 
+  // Mensagem central da sequência de vitória (ver GameScene._beginVictorySequence).
+  _buildVictoryMessage() {
+    this.victoryGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(200).setVisible(false);
+    const cx = this.scene.scale.width / 2;
+    const cy = this.scene.scale.height / 2;
+    this.victoryText = this.scene.add
+      .text(0, 0, VICTORY_MSG_TEXT, {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: `${VICTORY_MSG_FONT_SIZE}px`,
+        color: VICTORY_MSG_COLOR,
+        align: 'center',
+        stroke: '#000000',
+        strokeThickness: 4
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0);
+    this.victoryMessage = this.scene.add.container(cx, cy).setScrollFactor(0).setAlpha(0);
+    this.victoryMessage.add([this.victoryText]);
+    this.victoryGroup.add(this.victoryMessage);
+    this._applyZoomCompensation(this.victoryGroup, 1);
+  }
+
+  _playVictoryMessage() {
+    const scene = this.scene;
+    const cy = scene.scale.height / 2;
+    const proxy = { spacing: VICTORY_MSG_SPACING_START };
+    scene.tweens.killTweensOf(this.victoryMessage);
+    this.victoryGroup.setVisible(true);
+    this.victoryText.setLetterSpacing(VICTORY_MSG_SPACING_START);
+    this.victoryMessage.setAlpha(0).setY(cy + VICTORY_MSG_RISE_PX);
+    scene.tweens.add({
+      targets: this.victoryMessage,
+      alpha: 1,
+      y: cy,
+      duration: VICTORY_MSG_FADE_MS,
+      ease: 'Sine.easeOut'
+    });
+    scene.tweens.add({
+      targets: proxy,
+      spacing: VICTORY_MSG_SPACING_END,
+      duration: VICTORY_MSG_FADE_MS,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => this.victoryText.setLetterSpacing(proxy.spacing),
+      onComplete: () => EventBus.emit('victory-message-shown')
+    });
+  }
+
   // Uma "mensagem grande" (Você Morreu / vitória): fade+scale in devagar
   // (com presença) -> fica sozinha na tela -> fade+scale out por completo
   // -> só então onDone() roda (é o que dispara o ResultUI). Nunca convive
@@ -1396,7 +1454,12 @@ export default class HUD {
       this._playBigMessage(this.winGroup, this.winMessage, () => EventBus.emit('win-shown'));
     });
 
+    EventBus.on('victory-message-show', () => this._playVictoryMessage());
+
     EventBus.on('run-restart', () => {
+      this.scene.tweens.killTweensOf(this.victoryMessage);
+      this.victoryGroup.setVisible(false);
+      this.victoryMessage.setAlpha(0);
       this.scene.tweens.killTweensOf(this.gameOverMessage);
       this.scene.tweens.killTweensOf(this.winMessage);
       this.gameOverGroup.setVisible(false);

@@ -69,6 +69,7 @@ const MAGNET_ALL_XP_STAGGER_MS = 180;
 const PICKUP_MAGNET_UPDATE_INTERVAL_MS = 33; // ~30 Hz: centenas de gemas sem recalcular todo frame
 const XP_COLLECT_SFX_MIN_INTERVAL_MS = 45; // evita centenas de instâncias de áudio quando o ímã junta tudo
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
+const VICTORY_MESSAGE_DELAY_MS = 5000; // espera os inimigos se espalharem/pararem antes do "PARABÉNS"
 const PICKUP_CLAIM_RETRY_MS = 600; // cliente repete o pedido de coleta se o Host não confirmar
 
 // Sprite do cristal de XP por faixa de valor — dá pra reconhecer de longe
@@ -333,6 +334,10 @@ export default class GameScene extends Phaser.Scene {
     this.spawnDirector.stop(); // só corta as levas: getElapsedMs() continua contando
     this.enemySpawner.haltAll();
     EventBus.emit('victory-sequence-started');
+    // a mensagem entra depois que a horda terminou de se espalhar e parar
+    this.time.delayedCall(VICTORY_MESSAGE_DELAY_MS, () => {
+      if (!this.isGameOver) EventBus.emit('victory-message-show');
+    });
   }
 
   // Vitória/derrota do GRUPO, definida pelo Host (ver MultiplayerManager).

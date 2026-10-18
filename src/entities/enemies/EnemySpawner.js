@@ -67,10 +67,11 @@ const GROUP_SIZE_WEIGHTS = [
 
 // Sequência de vitória: duração (sorteada por inimigo) da desaceleração até
 // parar, fração mínima da velocidade do susto e abertura do desvio angular.
-const HALT_STOP_MIN_MS = 2200;
-const HALT_STOP_MAX_MS = 4200;
-const HALT_SPEED_MUL_MIN = 0.55;
-const HALT_SCATTER_SPREAD = 1.1;
+const HALT_STOP_MIN_MS = 3000;
+const HALT_STOP_MAX_MS = 5500;
+const HALT_SPEED_MUL_MIN = 0.9;
+const HALT_SPEED_MUL_MAX = 1.5; // acima de 1: o susto faz alguns dispararem mais rápido que o normal
+const HALT_SCATTER_SPREAD = 1.6;
 
 // Responsável só por CRIAR inimigos: escolhe o tipo, acha uma posição f…
 export default class EnemySpawner {
@@ -109,7 +110,7 @@ export default class EnemySpawner {
       // cada um reage no seu ritmo: foge um pouco do jogador (assustado) e vai
       // desacelerando até parar — nada de congelar todo mundo no mesmo frame
       enemy._haltStopMs = Phaser.Math.Between(HALT_STOP_MIN_MS, HALT_STOP_MAX_MS);
-      enemy._haltSpeedMul = Phaser.Math.FloatBetween(HALT_SPEED_MUL_MIN, 1);
+      enemy._haltSpeedMul = Phaser.Math.FloatBetween(HALT_SPEED_MUL_MIN, HALT_SPEED_MUL_MAX);
       enemy._haltDir = null;
     });
   }
@@ -123,7 +124,7 @@ export default class EnemySpawner {
       enemy._haltDir = { x: Math.cos(angle), y: Math.sin(angle) };
     }
     const p = Phaser.Math.Clamp((nowMs - this.haltStartMs) / (enemy._haltStopMs ?? HALT_STOP_MAX_MS), 0, 1);
-    const f = Math.pow(1 - p, 1.5);
+    const f = Math.pow(1 - p, 1.3);
     const speed = enemy.def.speed * (enemy._haltSpeedMul ?? 1) * f;
     if (speed < 6) {
       enemy._moveTo(0, 0);
