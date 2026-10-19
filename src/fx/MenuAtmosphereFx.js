@@ -82,6 +82,7 @@ export default class MenuAtmosphereFx {
     this.layer = scene.add.container(0, 0);
     this.cars = [];
     this._nextCar = 2500;
+    this._collisionSeq = 0;
 
     this._buildAnchored();
     this._buildFog();
@@ -169,9 +170,9 @@ export default class MenuAtmosphereFx {
   }
 
   // "hovercar" distante cruzando o céu: ponto quente + lanterna vermelha
-  _spawnCar() {
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    const y = rand(300, 470);
+  _spawnCar({ dir = null, y = null, collisionId = null } = {}) {
+    dir ??= Math.random() < 0.5 ? 1 : -1;
+    y ??= rand(300, 470);
     const x = dir > 0 ? -40 : this.imgW + 40;
     const p = this._p(x, y);
     const c = this.scene.add.container(p.x, p.y);
@@ -194,6 +195,7 @@ export default class MenuAtmosphereFx {
     c.add([trail, head, tail, hit]);
     c.vx = rand(55, 95) * dir;
     c.ix = x;
+    c.collisionId = collisionId;
     this.carLayer.add(c);
     this.cars.push(c);
   }
@@ -249,10 +251,18 @@ export default class MenuAtmosphereFx {
     this.beacon.setAlpha(beat < 0.28 ? Math.sin((beat / 0.28) * Math.PI) * 0.85 : 0);
 
     // Na maior parte do tempo passa uma nave; às vezes vem um pequeno
-    // comboio, para o menu parecer um minigame vivo.
+    // comboio. Em 1% dos spawns, duas entram de lados opostos para uma
+    // colisão rara e intencional.
     if (time > this._nextCar) {
-      const convoySize = Math.random() < 0.28 ? Phaser.Math.Between(2, 3) : 1;
-      for (let i = 0; i < convoySize; i++) this._spawnCar();
+      if (Math.random() < 0.01) {
+        const collisionId = ++this._collisionSeq;
+        const collisionY = rand(330, 450);
+        this._spawnCar({ dir: 1, y: collisionY, collisionId });
+        this._spawnCar({ dir: -1, y: collisionY, collisionId });
+      } else {
+        const convoySize = Math.random() < 0.28 ? Phaser.Math.Between(2, 3) : 1;
+        for (let i = 0; i < convoySize; i++) this._spawnCar();
+      }
       this._nextCar = time + rand(5000, 11000);
     }
     for (let i = this.cars.length - 1; i >= 0; i--) {
@@ -267,6 +277,18 @@ export default class MenuAtmosphereFx {
       if (c.ix < -60 || c.ix > this.imgW + 60) {
         c.destroy();
         this.cars.splice(i, 1);
+      }
+    }
+
+    // Detecta apenas o par marcado para a colisão rara, sem transformar as
+    // naves comuns em obstáculos umas das outras.
+    for (let i = this.cars.length - 1; i >= 0; i--) {
+      const car = this.cars[i];
+      if (!car.active || car.collisionId == null) continue;
+      const other = this.cars.find((candidate) => candidate !== car && candidate.active && candidate.collisionId === car.collisionId);
+      if (other && Phaser.Math.Distance.Between(car.x, car.y, other.x, other.y) < 18) {
+        this._explodeCar(car);
+        this._explodeCar(other);
       }
     }
 
