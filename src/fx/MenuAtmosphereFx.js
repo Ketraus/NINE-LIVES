@@ -284,13 +284,16 @@ export default class MenuAtmosphereFx {
     // naves comuns em obstáculos umas das outras.
     for (let i = this.cars.length - 1; i >= 0; i--) {
       const car = this.cars[i];
-      if (!car.active || car.collisionId == null) continue;
-      const other = this.cars.find((candidate) => candidate !== car && candidate.active && candidate.collisionId === car.collisionId);
+      // _explodeCar remove itens do array; a checagem opcional evita ler
+      // propriedades de uma posição que deixou de existir nesta iteração.
+      if (!car?.active || car.collisionId == null) continue;
+      const other = this.cars.find((candidate) => candidate && candidate !== car && candidate.active && candidate.collisionId === car.collisionId);
       // A área de toque da nave tem 34 px de largura; os centros podem ficar
       // até essa distância quando as bordas encostam visualmente.
       if (other && Phaser.Math.Distance.Between(car.x, car.y, other.x, other.y) < 34) {
         this._explodeCar(car);
         this._explodeCar(other);
+        break;
       }
     }
 
