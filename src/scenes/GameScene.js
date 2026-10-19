@@ -3,6 +3,9 @@ import VictoryTremor from '../systems/VictoryTremor.js';
 import VictoryFinale from '../systems/VictoryFinale.js';
 import VictoryImpact from '../systems/VictoryImpact.js';
 import VictoryAudio from '../systems/VictoryAudio.js';
+import VictoryParticles from '../systems/VictoryParticles.js';
+import VictorySecondThump from '../systems/VictorySecondThump.js';
+import VictoryDeparture from '../systems/VictoryDeparture.js';
 import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
 import Player, { BASE_VISUAL_SCALE } from '../entities/Player.js';
@@ -112,6 +115,7 @@ const AMBIENT_SFX_MAX_DELAY_MS = 240000; // 4min
 const MAP_FADE_IN_MS = 220;
 const HUD_FADE_IN_DELAY_MS = 80;
 const HUD_FADE_IN_MS = 180;
+const HUD_VICTORY_FADE_OUT_MS = 700; // aos 10:00 o HUD some suave (termina antes da pancada, ver VICTORY_IMPACT_DELAY_MS)
 const LEVEL_UP_INVULNERABILITY_MS = 2000;
 const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
   'player_idle', 'player_walk', 'player_white_idle', 'player_white_walk', 'player_white_katana_idle', 'player_white_katana_walk', 'player_white_paws_idle', 'player_white_paws_walk', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
@@ -201,6 +205,9 @@ export default class GameScene extends Phaser.Scene {
     }
     this.abilityManager.update(this.time.now);
     this.victoryTremor?.update(delta);
+    this.victoryParticles?.update(delta);
+    this.victorySecondThump?.update(delta);
+    this.victoryDeparture?.update(delta);
     this.hud?.update(time, delta);
     this._updateXpOrbMagnet(time);
     this._updateXpGlows();
@@ -336,6 +343,10 @@ export default class GameScene extends Phaser.Scene {
     if (this.victorySequenceStarted) return;
     this.victorySequenceStarted = true; // RunManager.collectXp para de dar XP/level-up
     this.spawnDirector.stop(); // só corta as levas: getElapsedMs() continua contando
+    // HUD some com fade (nada de sumir seco, parece bug) e a pausa fica travada
+    // até o fim da cinemática (ESC, botão, auto-pausa por blur)
+    this.hud?.fadeOutForVictory(HUD_VICTORY_FADE_OUT_MS);
+    this.pauseUI?.lockForVictory(HUD_VICTORY_FADE_OUT_MS);
     this.time.delayedCall(VICTORY_IMPACT_DELAY_MS, () => {
       if (this.isGameOver) return; // morreu nesse 1 s: vale o game over normal
       this.victoryImpact.play();
@@ -416,6 +427,10 @@ export default class GameScene extends Phaser.Scene {
     this.hasWon = false;
     this.victoryTremor = new VictoryTremor(this); // tremores crescentes da cinemática (começa após a mensagem)
     this.victoryImpact = new VictoryImpact(this); // Cena 01: a pancada aos 10:00
+    this.victoryParticles = new VictoryParticles(this); // Cena 02: partículas azuis subindo (começam no silêncio pós-pancada)
+    this.victorySecondThump = new VictorySecondThump(this); // Cena 03: a segunda pancada (~10:10), luz fria e corrupção pulsando
+    this.victoryDeparture = new VictoryDeparture(this); // Cena 04: a câmera se abre, 3ª pancada e a travessia até o mar
+    this.victoryShakeFloor = 0; // vibração mínima da câmera deixada pela 2ª pancada (lida pelo VictoryTremor)
     this.playerFrozen = false; // true na cinemática: protagonista parado (ver Player.update)
     this.victoryResidualFear = 0;
     this.victoryFinale = new VictoryFinale(this); // câmera abandona o jogador -> "MAS NÃO A GUERRA." -> créditos

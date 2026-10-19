@@ -103,6 +103,7 @@ export default class PauseUI {
     this.isOpen = false;
     this.buildOpen = false;
     this.isWaitingForPlayer = false;
+    this.lockedForVictory = false; // cinemática de vitória: pausa desativada
 
     this._buildButton();
     this._buildWaitingMessage();
@@ -113,6 +114,7 @@ export default class PauseUI {
     EventBus.on('player-won', () => this._setButtonVisible(false));
     EventBus.on('run-restart', () => {
       this.close();
+      this._unlockAfterVictory();
       this._setButtonVisible(true);
     });
 
@@ -1476,9 +1478,36 @@ export default class PauseUI {
     this.buttonContainer.setVisible(visible);
   }
 
+  // Aos 10:00 (início da sequência de vitória) a pausa deixa de existir: o
+  // botão do canto some com fade e open()/toggle() viram no-op (cobre ESC,
+  // clique/toque e a auto-pausa por perda de foco).
+  lockForVictory(fadeMs = 700) {
+    if (this.lockedForVictory) return;
+    this.lockedForVictory = true;
+    this.toggleBg?.disableInteractive();
+    const scene = this.scene;
+    scene.tweens.killTweensOf(this.buttonContainer);
+    scene.tweens.add({
+      targets: this.buttonContainer,
+      alpha: 0,
+      duration: fadeMs,
+      ease: 'Sine.easeInOut',
+      onComplete: () => this.buttonContainer.setVisible(false)
+    });
+  }
+
+  _unlockAfterVictory() {
+    if (!this.lockedForVictory) return;
+    this.lockedForVictory = false;
+    this.scene.tweens.killTweensOf(this.buttonContainer);
+    this.buttonContainer.setAlpha(1);
+    this.toggleBg?.setInteractive({ useHandCursor: true });
+  }
+
   // ESC (keydown-ESC no GameScene._buildInput) e o botão do canto chamam
   // exatamente este método — um único fluxo de abrir/fechar para os dois.
   toggle() {
+    if (this.lockedForVictory) return;
     if (this.scene.multiplayer?.togglePauseVote()) return;
     // ESC e o botão de pausa funcionam como "voltar" quando a tela de build
     // está aberta; só o segundo toque fecha a pausa de verdade.
@@ -1490,7 +1519,7 @@ export default class PauseUI {
   }
 
   open() {
-    if (this.isOpen || this.scene.isGameOver || this.scene.levelUpUI?.container.visible) return;
+    if (this.lockedForVictory || this.isOpen || this.scene.isGameOver || this.scene.levelUpUI?.container.visible) return;
     this.isOpen = true;
     this._refreshFullscreenButton();
     this.scene.physics.pause();

@@ -96,6 +96,11 @@ export default class VictoryImpact {
     scene.time.delayedCall(SOUND_END_AFTER_MS, () => {
       VictoryAudio.cutQuake();
       scene.sound.stopAll();
+      // CENA 02: no silêncio, o primeiro ponto azul aparece e sobe (ver VictoryParticles)
+      if (!scene.isGameOver) {
+        scene.victoryParticles?.start();
+        scene.victorySecondThump?.start(); // CENA 03: ~5 s depois, a segunda pancada
+      }
     });
   }
 

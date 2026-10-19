@@ -56,6 +56,7 @@ export default class VictoryTremor {
     this._musicFaded = false;
     this.kick = 0;
     this.overdrive = 0; // 0..1, ver setOverdrive
+    this.shaking = false; // true depois do START_DELAY: a partir daí o tremor é quem balança a câmera (ver VictorySecondThump)
   }
 
   // 0..1 — pilotado pela câmera deixando o jogador (VictoryFinale).
@@ -66,6 +67,8 @@ export default class VictoryTremor {
   // Corta tudo de uma vez (o instante de silêncio antes do impacto final).
   stop() {
     this.active = false;
+    this.shaking = false;
+    this.scene.victorySecondThump?.stop(); // silêncio antes do impacto final: some a vibração residual da 2ª pancada
     this.level = 0;
     this.kick = 0;
     this.scene.victoryTremorLevel = 0;
@@ -94,13 +97,16 @@ export default class VictoryTremor {
     // não derruba o estremecer residual deixado pela pancada (VictoryImpact)
     this.scene.victoryTremorLevel = Math.max(this.level, this.scene.victoryResidualFear || 0);
     if (this.elapsedMs < START_DELAY_MS) return;
+    this.shaking = true;
 
     const scene = this.scene;
     const now = this.elapsedMs;
     if (now >= this._nextShakeMs) {
       this._nextShakeMs = now + SHAKE_REFRESH_MS;
       const peak = Phaser.Math.Linear(SHAKE_MAX, SHAKE_PEAK, this.overdrive);
-      const intensity = Phaser.Math.Linear(SHAKE_MIN, peak, this.level) * (1 + this.kick * KICK_SHAKE_BOOST);
+      const base = Phaser.Math.Linear(SHAKE_MIN, peak, this.level) * (1 + this.kick * KICK_SHAKE_BOOST);
+      // a vibração que a 2ª pancada deixou (VictorySecondThump) é o piso: o tremor nunca cai abaixo dela
+      const intensity = Math.max(base, scene.victoryShakeFloor || 0);
       scene.cameras.main.shake(SHAKE_PULSE_MS, intensity, true);
       VictoryAudio.setDroneLevel(this.level + this.overdrive * OVERDRIVE_DRONE_BOOST);
     }

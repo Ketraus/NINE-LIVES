@@ -17,9 +17,10 @@ import gameVersion from '../../data/gameVersion.js';
 //   4) CORTE PRA PRETO -> silêncio -> CreditsScene (créditos na 'feira';
 //      cartões de encerramento na 'snct'; volta pro menu no fim).
 
-const PAN_SPEED_PX_PER_S = 380;
-const PAN_MIN_MS = 12000;
-const PAN_MAX_MS = 30000;
+// A travessia dura SEMPRE o mesmo (roteiro, Cena 04: duração cinematográfica
+// consistente, não importa onde o gato esteja no mapa): a velocidade da câmera
+// é que se adapta à distância até o mar. Começa devagar e termina devagar.
+const TRAVEL_MS = 13000;
 const PAN_EASE = 'Sine.easeInOut';
 const MESSAGE_FADE_OUT_MS = 3000;
 const DRONE_FADE_IN_MS = 5000;
@@ -50,11 +51,10 @@ export default class VictoryFinale {
     VictoryAudio.startDrone(scene, DRONE_FADE_IN_MS);
 
     const target = this._resolveTarget();
-    const dist = Phaser.Math.Distance.Between(cam.midPoint.x, cam.midPoint.y, target.x, target.y);
-    const duration = Phaser.Math.Clamp((dist / PAN_SPEED_PX_PER_S) * 1000, PAN_MIN_MS, PAN_MAX_MS);
 
-    cam.pan(target.x, target.y, duration, PAN_EASE, true, (camera, progress) => {
+    cam.pan(target.x, target.y, TRAVEL_MS, PAN_EASE, true, (camera, progress) => {
       scene.victoryTremor?.setOverdrive(progress);
+      scene.victoryDeparture?.onPanProgress(progress); // intensifica efeitos e dispara a 4ª pancada
       if (progress >= 1 && !this._arrived) {
         this._arrived = true;
         this._onArrive();

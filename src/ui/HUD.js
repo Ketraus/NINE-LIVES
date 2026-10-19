@@ -151,7 +151,7 @@ const GAMEOVER_FX_RAMP_MS = 2600;
 // (fx/WorldEndFx.js: Press Start 2P, cor, contorno preto), só maior. Entra
 // devagar — letras se juntam, sobe um fio e aparece — e FICA na tela.
 const VICTORY_MSG_TEXT = 'PARABÉNS, VOCÊ VENCEU O JOGO.';
-const VICTORY_MSG_COLOR = '#ff3d6e';
+const VICTORY_MSG_COLOR = '#ffffff';
 const VICTORY_MSG_FONT_SIZE = 18;
 const VICTORY_MSG_FADE_MS = 2200;
 // Continuação "MAS NÃO A GUERRA." (ver systems/VictoryFinale.js): entra de
@@ -172,6 +172,7 @@ const VICTORY_DARK_MAX_ALPHA = 0.55;
 const VICTORY_DARK_CAP_ALPHA = 0.82; // teto com o overdrive
 const VICTORY_DARK_KICK_ALPHA = 0.16; // escurecimento extra no instante de cada baque (× level)
 const VICTORY_DARK_COLOR_START = 0x05070c;
+const COLD_GRADE_COLOR = 0x5a7cc4; // multiplicador final da Cena 03: tira o vermelho/verde, deixa o azul
 const VICTORY_DARK_COLOR_END = 0x041224; // azul profundo (roteiro) — nada de vermelho/vinho
 const BIG_MESSAGE_FADE_IN_MS = 650;
 const BIG_MESSAGE_START_SCALE = 0.85;
@@ -251,6 +252,7 @@ export default class HUD {
     this._buildWinText();
     this._buildVictoryMessage();
     this._buildVictoryDarkness();
+    this._buildVictoryColdGrade();
     this._buildLowHpVignette();
     this._setupCameraFx();
     // ducking de música pela vida (ver _updateMusicDuck) — independe de
@@ -271,6 +273,17 @@ export default class HUD {
   // BUG (zoom no celular): GameScene dá setZoom(1.4) na câmera em telas
   _applyZoomCompensation(container, uiScale = UI_SCALE) {
     anchorToScreen(container, this.scene.cameras.main, uiScale);
+  }
+
+  // Cena 04: o zoom da câmera muda (zoom-out da cinemática) e todo overlay de
+  // tela cheia precisa ser reancorado, senão encolhe/deixa bordas (ver
+  // anchorToScreen em config/layout.js).
+  refreshZoomCompensation() {
+    this._applyZoomCompensation(this.uiContainer, UI_SCALE);
+    [
+      this.gameOverGroup, this.winGroup, this.deathOverlayGroup, this.victoryGroup,
+      this.victoryFinaleGroup, this.victoryDarkGroup, this.victoryColdGroup
+    ].forEach((group) => group && this._applyZoomCompensation(group, 1));
   }
 
   _registerHudText(text, baseFontSize) {
@@ -1277,6 +1290,20 @@ export default class HUD {
     });
   }
 
+  // Aos 10:00: vida, XP, abates, tempo, barra do boss e vinheta de vida baixa
+  // (tudo que vive no uiContainer) somem com fade. As mensagens/overlays da
+  // vitória são containers à parte, então não são afetados.
+  fadeOutForVictory(durationMs = 700) {
+    if (!this.uiContainer?.active) return;
+    this.scene.tweens.killTweensOf(this.uiContainer);
+    this.scene.tweens.add({
+      targets: this.uiContainer,
+      alpha: 0,
+      duration: durationMs,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
   // Corte seco pra preto (sem fade): cobre mundo, HUD e mensagem.
   cutToBlack() {
     this.scene.tweens.killTweensOf([this.victoryFlash, this.victoryCont]);
@@ -1295,6 +1322,31 @@ export default class HUD {
       .setAlpha(0);
     this.victoryDarkGroup.add(this.victoryDark);
     this._applyZoomCompensation(this.victoryDarkGroup, 1);
+  }
+
+  // Cena 03: o mundo perde as cores habituais e esfria (azul profundo). É uma
+  // camada MULTIPLY de tela cheia (depth 98, logo abaixo do véu escuro): a cor
+  // vai de branco (sem efeito) até COLD_GRADE_COLOR conforme o level (0..1).
+  _buildVictoryColdGrade() {
+    const W = this.scene.scale.width;
+    const H = this.scene.scale.height;
+    this.victoryColdGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(98).setVisible(false);
+    this.victoryColdRect = this.scene.add
+      .rectangle(W / 2, H / 2, W + 8, H + 8, 0xffffff, 1)
+      .setScrollFactor(0)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY);
+    this.victoryColdGroup.add(this.victoryColdRect);
+    this._applyZoomCompensation(this.victoryColdGroup, 1);
+  }
+
+  setColdGrade(level) {
+    if (!this.victoryColdRect) return;
+    const l = Phaser.Math.Clamp(level, 0, 1);
+    this.victoryColdGroup.setVisible(l > 0.001);
+    const r = Math.round(Phaser.Math.Linear(255, (COLD_GRADE_COLOR >> 16) & 0xff, l));
+    const g = Math.round(Phaser.Math.Linear(255, (COLD_GRADE_COLOR >> 8) & 0xff, l));
+    const b = Math.round(Phaser.Math.Linear(255, COLD_GRADE_COLOR & 0xff, l));
+    this.victoryColdRect.setFillStyle(Phaser.Display.Color.GetColor(r, g, b), 1);
   }
 
   // level 0..1 (VictoryTremor): escurece, esquenta a cor e, perto do fim,
@@ -1606,7 +1658,12 @@ export default class HUD {
     EventBus.on('victory-message-show', () => this._playVictoryMessage());
 
     EventBus.on('run-restart', () => {
+      if (this.uiContainer?.active) {
+        this.scene.tweens.killTweensOf(this.uiContainer);
+        this.uiContainer.setAlpha(1);
+      }
       this.victoryDarkGroup?.setVisible(false);
+      this.victoryColdGroup?.setVisible(false);
       this.victoryDark?.setAlpha(0);
       this.victoryCont?.setAlpha(0);
       this.victoryFlash?.setAlpha(0);
