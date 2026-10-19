@@ -183,11 +183,54 @@ export default class MenuAtmosphereFx {
       .setBlendMode(Phaser.BlendModes.ADD);
     const head = this.scene.add.image(0, 0, 'menu_fx_dot').setTint(0xffe9b0).setBlendMode(Phaser.BlendModes.ADD);
     const tail = this.scene.add.image(-dir * 4, 0, 'menu_fx_dot').setTint(0xff4a4a).setAlpha(0.8);
-    c.add([trail, head, tail]);
+    // Área maior que a nave para facilitar o clique/toque em movimento.
+    const hit = this.scene.add
+      .rectangle(0, 0, 34, 18, 0xffffff, 0)
+      .setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', (pointer, localX, localY, event) => {
+      event?.stopPropagation?.();
+      this._explodeCar(c);
+    });
+    c.add([trail, head, tail, hit]);
     c.vx = rand(55, 95) * dir;
     c.ix = x;
     this.carLayer.add(c);
     this.cars.push(c);
+  }
+
+  _explodeCar(car) {
+    if (!car?.active || car._exploded) return;
+    car._exploded = true;
+
+    const index = this.cars.indexOf(car);
+    if (index !== -1) this.cars.splice(index, 1);
+
+    // Explosão mínima: só alguns pixels ciano se espalhando, sem asset novo.
+    const burst = this.scene.add.container(car.x, car.y);
+    const particles = [];
+    for (let i = 0; i < 7; i++) {
+      const angle = (Math.PI * 2 * i) / 7 + rand(-0.2, 0.2);
+      const distance = rand(8, 18);
+      const particle = this.scene.add
+        .circle(0, 0, rand(0.8, 1.6), i % 2 ? 0x8fe9ff : 0x4fd1ff, 0.9)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      burst.add(particle);
+      particles.push({ particle, x: Math.cos(angle) * distance, y: Math.sin(angle) * distance });
+    }
+    this.carLayer.add(burst);
+
+    car.destroy();
+    particles.forEach(({ particle, x, y }, i) => {
+      this.scene.tweens.add({
+        targets: particle,
+        x,
+        y,
+        alpha: 0,
+        duration: 240 + i * 18,
+        ease: 'Cubic.easeOut'
+      });
+    });
+    this.scene.time.delayedCall(380, () => burst.destroy());
   }
 
   update(time, delta, bg, px, py) {
@@ -205,13 +248,19 @@ export default class MenuAtmosphereFx {
     const beat = (time % 1800) / 1800; // luz de aviso da antena: ~0.55 Hz
     this.beacon.setAlpha(beat < 0.28 ? Math.sin((beat / 0.28) * Math.PI) * 0.85 : 0);
 
-    // hovercars
+    // Na maior parte do tempo passa uma nave; às vezes vem um pequeno
+    // comboio, para o menu parecer um minigame vivo.
     if (time > this._nextCar) {
-      this._spawnCar();
+      const convoySize = Math.random() < 0.28 ? Phaser.Math.Between(2, 3) : 1;
+      for (let i = 0; i < convoySize; i++) this._spawnCar();
       this._nextCar = time + rand(5000, 11000);
     }
     for (let i = this.cars.length - 1; i >= 0; i--) {
       const c = this.cars[i];
+      if (!c.active || c._exploded) {
+        this.cars.splice(i, 1);
+        continue;
+      }
       c.ix += c.vx * dt;
       c.x += c.vx * dt;
       c.setAlpha(Phaser.Math.Clamp(Math.min(c.ix, this.imgW - c.ix) / 120, 0, 1));
