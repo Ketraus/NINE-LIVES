@@ -31,6 +31,21 @@ class MusicManager {
     this._silenced = false;
   }
 
+  // Corte SECO de toda a música (a pancada das 10:00): sem fade, as faixas
+  // param no mesmo frame e nada traz a música de volta nesta run.
+  cutAll(scene) {
+    this._silenced = true;
+    [this.currentSound, this.bossSound, this.duckedSound].forEach((sound) => {
+      if (!sound) return;
+      scene.tweens.killTweensOf(sound);
+      sound.stop();
+    });
+    this.currentSound = null;
+    this.currentKey = null;
+    this.bossSound = null;
+    this.duckedSound = null;
+  }
+
   // Sequência de vitória: TODAS as faixas (jogo, Boss, cartas) somem num fade
   // lento e a música não volta mais nesta run. Ease-in: o começo é quase
   // imperceptível — o jogador só nota quando já está no silêncio.

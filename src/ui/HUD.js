@@ -167,12 +167,12 @@ const VICTORY_MSG_SPACING_START = 16;
 const VICTORY_MSG_SPACING_END = 2;
 const VICTORY_MSG_RISE_PX = 12;
 // Escurecimento da cinemática (ver systems/VictoryTremor.js): do preto azulado
-// (estranheza) ao vinho escuro pulsante (catástrofe).
+// (estranheza) ao azul profundo pulsante (catástrofe). Sem tons vermelhos.
 const VICTORY_DARK_MAX_ALPHA = 0.55;
 const VICTORY_DARK_CAP_ALPHA = 0.82; // teto com o overdrive
 const VICTORY_DARK_KICK_ALPHA = 0.16; // escurecimento extra no instante de cada baque (× level)
 const VICTORY_DARK_COLOR_START = 0x05070c;
-const VICTORY_DARK_COLOR_END = 0x240208;
+const VICTORY_DARK_COLOR_END = 0x041224; // azul profundo (roteiro) — nada de vermelho/vinho
 const BIG_MESSAGE_FADE_IN_MS = 650;
 const BIG_MESSAGE_START_SCALE = 0.85;
 const BIG_MESSAGE_HOLD_MS = 1500;
@@ -1242,6 +1242,39 @@ export default class HUD {
     scene.tweens.add({ targets: this.victoryContGhostCyan, x: 3, duration: 650, ease: 'Cubic.easeOut' });
     this.victoryFlash.setAlpha(1);
     scene.tweens.add({ targets: this.victoryFlash, alpha: 0, duration: VICTORY_FLASH_MS, ease: 'Expo.easeOut' });
+  }
+
+  // A luz do mundo oscila na pancada das 10:00 (VictoryImpact): clarão
+  // branco, queda pro azul-escuro, segundo clarão fraco, nova queda e volta.
+  // ~0,6 s no total — "uma fração de segundo" que o jogador sente mais do
+  // que vê. O véu de atmosfera (setVictoryAtmosphere) assume depois.
+  playImpactFlicker() {
+    const scene = this.scene;
+    const flash = this.victoryFlash;
+    const dark = this.victoryDark;
+    scene.tweens.killTweensOf([flash, dark]);
+    dark.setFillStyle(VICTORY_DARK_COLOR_START, 1);
+    const flashTo = (alpha, ms) => {
+      flash.setAlpha(alpha);
+      scene.tweens.add({ targets: flash, alpha: 0, duration: ms, ease: 'Quad.easeOut' });
+    };
+    const darkSet = (alpha) => {
+      this.victoryDarkGroup.setVisible(true);
+      dark.setAlpha(alpha);
+    };
+    flashTo(0.92, 120);
+    scene.time.delayedCall(120, () => darkSet(0.66));
+    scene.time.delayedCall(210, () => { darkSet(0); flashTo(0.38, 90); });
+    scene.time.delayedCall(310, () => darkSet(0.42));
+    scene.time.delayedCall(380, () => {
+      scene.tweens.add({
+        targets: dark,
+        alpha: 0,
+        duration: 320,
+        ease: 'Sine.easeOut',
+        onComplete: () => { if (!scene.victoryTremor?.active) this.victoryDarkGroup.setVisible(false); }
+      });
+    });
   }
 
   // Corte seco pra preto (sem fade): cobre mundo, HUD e mensagem.

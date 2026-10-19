@@ -70,6 +70,7 @@ export default class VictoryTremor {
     this.kick = 0;
     this.scene.victoryTremorLevel = 0;
     this.scene.victoryTremorKick = 0;
+    this.scene.victoryResidualFear = 0;
   }
 
   start() {
@@ -90,7 +91,8 @@ export default class VictoryTremor {
     this.scene.victoryTremorKick = this.kick;
     const t = Phaser.Math.Clamp((this.elapsedMs - START_DELAY_MS) / BUILD_MS, 0, 1);
     this.level = t * t;
-    this.scene.victoryTremorLevel = this.level;
+    // não derruba o estremecer residual deixado pela pancada (VictoryImpact)
+    this.scene.victoryTremorLevel = Math.max(this.level, this.scene.victoryResidualFear || 0);
     if (this.elapsedMs < START_DELAY_MS) return;
 
     const scene = this.scene;

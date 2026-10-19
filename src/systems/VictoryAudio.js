@@ -18,6 +18,7 @@ const DRONE_FREQ_SAW = 68;
 
 let drone = null;
 let impactBus = null;
+let quakeBus = null;
 
 function manager(scene) {
   const sm = scene?.sound;
@@ -193,9 +194,124 @@ const VictoryAudio = {
     crack.start(t0);
   },
 
+  // A pancada das 10:00 (Cena 01): NÃO é uma explosão — é uma massa gigante se
+  // deslocando nas entranhas do planeta. Ataque curto mas sem "clique", sub
+  // despencando, um gemido tectônico e um ruído grave áspero. Dura o que o
+  // VictoryImpact deixar: depois vem cutQuake() e o silêncio absoluto.
+  playQuake(scene) {
+    scene.sound.play('sfx_minotaur_stomp', { volume: 1, rate: 0.25 });
+    scene.sound.play('sfx_slam_impact', { volume: 1, rate: 0.33 });
+
+    const sm = manager(scene);
+    if (!sm) return;
+    const ctx = sm.context;
+    const t0 = ctx.currentTime;
+
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -12;
+    compressor.ratio.value = 10;
+    const bus = ctx.createGain();
+    bus.gain.value = 1.25 * SettingsManager.getSfx();
+    compressor.connect(bus);
+    bus.connect(sm.masterVolumeNode);
+    quakeBus = bus;
+
+    // 1) sub-grave: 62 Hz despencando pra 20 Hz, ataque de 30 ms
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(62, t0);
+    sub.frequency.exponentialRampToValueAtTime(20, t0 + 3);
+    const subGain = ctx.createGain();
+    subGain.gain.setValueAtTime(0.0001, t0);
+    subGain.gain.exponentialRampToValueAtTime(1.0, t0 + 0.03);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.2);
+    sub.connect(subGain);
+    subGain.connect(compressor);
+    sub.start(t0);
+    sub.stop(t0 + 3.3);
+
+    // 2) gemido tectônico: dente-de-serra grave com vibrato lento, fechando
+    const groan = ctx.createOscillator();
+    groan.type = 'sawtooth';
+    groan.frequency.setValueAtTime(46, t0);
+    groan.frequency.exponentialRampToValueAtTime(27, t0 + 2.6);
+    const vibrato = ctx.createOscillator();
+    vibrato.frequency.value = 5.5;
+    const vibratoDepth = ctx.createGain();
+    vibratoDepth.gain.value = 3;
+    vibrato.connect(vibratoDepth);
+    vibratoDepth.connect(groan.frequency);
+    const groanFilter = ctx.createBiquadFilter();
+    groanFilter.type = 'lowpass';
+    groanFilter.frequency.setValueAtTime(190, t0);
+    groanFilter.frequency.exponentialRampToValueAtTime(55, t0 + 2.4);
+    const groanGain = ctx.createGain();
+    groanGain.gain.setValueAtTime(0.0001, t0);
+    groanGain.gain.exponentialRampToValueAtTime(0.7, t0 + 0.06);
+    groanGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.8);
+    groan.connect(groanFilter);
+    groanFilter.connect(groanGain);
+    groanGain.connect(compressor);
+    groan.start(t0);
+    vibrato.start(t0);
+    groan.stop(t0 + 2.9);
+    vibrato.stop(t0 + 2.9);
+
+    // 3) ruído grave áspero (a "aspereza" é modulação rápida de volume)
+    const rumble = ctx.createBufferSource();
+    rumble.buffer = noiseBuffer(ctx, 3.2);
+    const rumbleFilter = ctx.createBiquadFilter();
+    rumbleFilter.type = 'lowpass';
+    rumbleFilter.frequency.setValueAtTime(240, t0);
+    rumbleFilter.frequency.exponentialRampToValueAtTime(70, t0 + 3);
+    const am = ctx.createGain();
+    am.gain.value = 0.7;
+    const amLfo = ctx.createOscillator();
+    amLfo.frequency.value = 9;
+    const amDepth = ctx.createGain();
+    amDepth.gain.value = 0.3;
+    amLfo.connect(amDepth);
+    amDepth.connect(am.gain);
+    const rumbleGain = ctx.createGain();
+    rumbleGain.gain.setValueAtTime(0.0001, t0);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.9, t0 + 0.05);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.1);
+    rumble.connect(rumbleFilter);
+    rumbleFilter.connect(am);
+    am.connect(rumbleGain);
+    rumbleGain.connect(compressor);
+    rumble.start(t0);
+    amLfo.start(t0);
+    amLfo.stop(t0 + 3.2);
+
+    // 4) baque abafado de ataque (só corpo, sem agudo)
+    const thump = ctx.createBufferSource();
+    thump.buffer = noiseBuffer(ctx, 0.25);
+    const thumpFilter = ctx.createBiquadFilter();
+    thumpFilter.type = 'lowpass';
+    thumpFilter.frequency.value = 320;
+    const thumpGain = ctx.createGain();
+    thumpGain.gain.setValueAtTime(1.0, t0);
+    thumpGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    thump.connect(thumpFilter);
+    thumpFilter.connect(thumpGain);
+    thumpGain.connect(compressor);
+    thump.start(t0);
+  },
+
+  // O CORTE SONORO depois da pancada: tudo some em ~25 ms.
+  cutQuake() {
+    if (!quakeBus) return;
+    const bus = quakeBus;
+    quakeBus = null;
+    bus.gain.cancelScheduledValues(bus.context.currentTime);
+    bus.gain.setTargetAtTime(0, bus.context.currentTime, 0.008);
+  },
+
   // Corta tudo que a cinemática ainda esteja tocando (drone + cauda do impacto).
   silenceAll(scene) {
     this.stopDrone(50);
+    this.cutQuake();
     if (impactBus) {
       const bus = impactBus;
       impactBus = null;

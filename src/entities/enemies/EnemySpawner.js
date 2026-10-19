@@ -67,8 +67,8 @@ const GROUP_SIZE_WEIGHTS = [
 
 // Sequência de vitória: duração (sorteada por inimigo) da desaceleração até
 // parar, fração mínima da velocidade do susto e abertura do desvio angular.
-const HALT_STOP_MIN_MS = 3000;
-const HALT_STOP_MAX_MS = 5500;
+const HALT_STOP_MIN_MS = 0; // 0 = congela no mesmo frame (roteiro: "os inimigos interrompem seus movimentos")
+const HALT_STOP_MAX_MS = 0; // (desacelerar: ex. 3000 e 5500)
 const HALT_SPEED_MUL_MIN = 0.9;
 const HALT_SPEED_MUL_MAX = 1.5; // acima de 1: o susto faz alguns dispararem mais rápido que o normal
 const HALT_SCATTER_SPREAD = 1.6;

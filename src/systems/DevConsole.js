@@ -102,6 +102,7 @@ export default class DevConsole {
         this._log('freeze — liga/desliga o congelamento de todos os inimigos');
         this._log('autospawn — liga/desliga as levas automáticas (spawn manual continua funcionando)');
         this._log('settime <segundos> — ajusta o tempo decorrido da run (afeta dificuldade e vitória aos 10:00)');
+        this._log('fim [segundos] — simula o fim: limpa a arena, só horda base (sem Minotauro/eventos) e pula pro tempo (padrão 595 = 9:55)');
         break;
 
       case 'list': {
@@ -234,6 +235,28 @@ export default class DevConsole {
         }
         this.scene.spawnDirector.setElapsedMs(sec * 1000);
         this._log(`Tempo de run ajustado pra ${sec}s.`);
+        break;
+      }
+
+      case 'fim': {
+        const scene = this.scene;
+        if (scene.victorySequenceStarted) {
+          this._log('A sequência de vitória já começou — reinicie a run (R) pra testar de novo.');
+          break;
+        }
+        const sec = args[0] === undefined ? 595 : Number(args[0]);
+        if (!Number.isFinite(sec) || sec < 0) {
+          this._log('Uso: fim [segundos] (padrão 595)');
+          break;
+        }
+        scene.enemySpawner.killAll();
+        scene.spawnDirector.skipAllEvents();
+        scene._magnetHasAppeared = true; // sem ímã garantido do boss
+        scene.spawnDirector.setElapsedMs(sec * 1000);
+        scene.enemySpawner.spawnByDefId('grunt', 14);
+        scene.enemySpawner.spawnByDefId('cyber_hound', 6);
+        scene.enemySpawner.spawnByDefId('cyber_brute', 3);
+        this._log(`Fim simulado: tempo em ${sec}s, 23 inimigos base, sem Minotauro/Elite/Sealer. Vitória em ${Math.max(0, 600 - sec).toFixed(0)}s.`);
         break;
       }
 

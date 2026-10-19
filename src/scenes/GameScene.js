@@ -1,6 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 import VictoryTremor from '../systems/VictoryTremor.js';
 import VictoryFinale from '../systems/VictoryFinale.js';
+import VictoryImpact from '../systems/VictoryImpact.js';
 import VictoryAudio from '../systems/VictoryAudio.js';
 import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
@@ -72,7 +73,8 @@ const MAGNET_ALL_XP_STAGGER_MS = 180;
 const PICKUP_MAGNET_UPDATE_INTERVAL_MS = 33; // ~30 Hz: centenas de gemas sem recalcular todo frame
 const XP_COLLECT_SFX_MIN_INTERVAL_MS = 45; // evita centenas de instâncias de áudio quando o ímã junta tudo
 const RUN_WIN_SECONDS = 600; // 10:00 — sobreviver até aqui vence a run
-const VICTORY_MESSAGE_DELAY_MS = 5000; // espera os inimigos se espalharem/pararem antes do "PARABÉNS"
+const VICTORY_IMPACT_DELAY_MS = 1000; // Cena 01: o jogo segue NORMAL por ~1 s depois dos 10:00, e então vem a pancada
+const VICTORY_MESSAGE_DELAY_MS = 5700; // contado do início da onda (chega ~0,7 s depois; som dura ~3,4 s): ~1,5 s de silêncio e então o "PARABÉNS" 
 const PICKUP_CLAIM_RETRY_MS = 600; // cliente repete o pedido de coleta se o Host não confirmar
 
 // Sprite do cristal de XP por faixa de valor — dá pra reconhecer de longe
@@ -324,24 +326,23 @@ export default class GameScene extends Phaser.Scene {
     this._beginVictorySequence();
   }
 
-  // Sequência cinematográfica de vitória (solo). Passo 1: o jogo continua
-  // rodando e o cronômetro segue avançando (não chama _triggerWin), mas o
-  // mundo "congela" — inimigos parados e sem dano, spawn automático cortado.
-  // As próximas etapas da cinemática devem partir daqui (evento abaixo) e,
-  // no fim, chamar _triggerWin().
+  // Sequência cinematográfica de vitória (solo), na ordem do roteiro. Aos
+  // 10:00 NADA muda na tela por ~1 s (o cronômetro segue contando, inimigos e
+  // jogador continuam lutando — Cena 01); só o spawn e o XP já são cortados.
+  // Então VictoryImpact.play() solta a pancada: música corta, câmera tranca,
+  // mundo e protagonista congelam, sem dano. Depois de ~3 s de silêncio
+  // entra o "PARABÉNS" e a escalada de tremores (VictoryTremor -> VictoryFinale).
   _beginVictorySequence() {
     if (this.victorySequenceStarted) return;
-    this.victorySequenceStarted = true;
-    this.enemiesDisarmed = true; // lido por DamageSystem._isDisarmedEnemyHit
-    this.playerAttacksDisabled = true; // lido por DamageSystem/Weapon/Shuriken: lado do jogador desligado
-    this.weaponManager?.disable();
-    this.abilityManager?.suspendAll();
+    this.victorySequenceStarted = true; // RunManager.collectXp para de dar XP/level-up
     this.spawnDirector.stop(); // só corta as levas: getElapsedMs() continua contando
-    this.enemySpawner.haltAll();
-    EventBus.emit('victory-sequence-started');
-    // a mensagem entra depois que a horda terminou de se espalhar e parar
-    this.time.delayedCall(VICTORY_MESSAGE_DELAY_MS, () => {
-      if (!this.isGameOver) EventBus.emit('victory-message-show');
+    this.time.delayedCall(VICTORY_IMPACT_DELAY_MS, () => {
+      if (this.isGameOver) return; // morreu nesse 1 s: vale o game over normal
+      this.victoryImpact.play();
+      EventBus.emit('victory-sequence-started');
+      this.time.delayedCall(VICTORY_MESSAGE_DELAY_MS, () => {
+        if (!this.isGameOver) EventBus.emit('victory-message-show');
+      });
     });
   }
 
@@ -414,6 +415,9 @@ export default class GameScene extends Phaser.Scene {
     this.resultComplete = false; // vira true quando a tela de resultado (ResultUI) termina
     this.hasWon = false;
     this.victoryTremor = new VictoryTremor(this); // tremores crescentes da cinemática (começa após a mensagem)
+    this.victoryImpact = new VictoryImpact(this); // Cena 01: a pancada aos 10:00
+    this.playerFrozen = false; // true na cinemática: protagonista parado (ver Player.update)
+    this.victoryResidualFear = 0;
     this.victoryFinale = new VictoryFinale(this); // câmera abandona o jogador -> "MAS NÃO A GUERRA." -> créditos
     this.victoryTremorLevel = 0; // 0..1, lido pelos inimigos pra tremerem de medo
     this.victorySequenceStarted = false; // sequência de vitória (solo) já disparada

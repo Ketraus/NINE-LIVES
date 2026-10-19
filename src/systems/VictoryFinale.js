@@ -1,5 +1,6 @@
 import EventBus from './EventBus.js';
 import VictoryAudio from './VictoryAudio.js';
+import gameVersion from '../../data/gameVersion.js';
 
 // Final da cinemática de vitória. Começa no pico do tremor (VictoryTremor) e
 // encadeia:
@@ -11,8 +12,10 @@ import VictoryAudio from './VictoryAudio.js';
 //   2) O DESPERTAR — GANCHO VAZIO (_playAwakening): o Leviatã vai aqui. Hoje
 //      só segura o olhar no oceano por AWAKENING_PLACEHOLDER_HOLD_MS.
 //   3) A VERDADEIRA MENSAGEM — o mundo corta pro silêncio, a primeira linha
-//      volta sozinha, uma pausa, e "MAS NÃO A GUERRA." chega com impacto.
-//   4) CORTE PRA PRETO -> silêncio -> CreditsScene (volta pro menu no fim).
+//      volta sozinha e, SÓ NA VERSÃO 'feira' (data/gameVersion.js), uma pausa
+//      e "MAS NÃO A GUERRA." chega com impacto. Na 'snct' ela fica sozinha.
+//   4) CORTE PRA PRETO -> silêncio -> CreditsScene (créditos na 'feira';
+//      cartões de encerramento na 'snct'; volta pro menu no fim).
 
 const PAN_SPEED_PX_PER_S = 380;
 const PAN_MIN_MS = 12000;
@@ -23,6 +26,7 @@ const DRONE_FADE_IN_MS = 5000;
 
 const AWAKENING_PLACEHOLDER_HOLD_MS = 3500; // trocar pela cena do Leviatã
 const SILENCE_BEFORE_IMPACT_MS = 1500; // tudo cala; só a primeira linha na tela
+const SNCT_HOLD_ON_MESSAGE_MS = 4000; // 'snct': a frase fica sozinha no silêncio antes do preto
 const IMPACT_SHAKE_MS = 1000;
 const IMPACT_SHAKE_INTENSITY = 0.05;
 const HOLD_AFTER_IMPACT_MS = 4500;
@@ -91,23 +95,33 @@ export default class VictoryFinale {
     scene.cameras.main.resetFX();
     hud?.showVictoryLineInstant();
 
+    // SNCT: sem Leviatã e sem "MAS NÃO A GUERRA." — só a frase, o silêncio e o preto
+    if (gameVersion.version !== 'feira') {
+      scene.time.delayedCall(SNCT_HOLD_ON_MESSAGE_MS, () => this._cutToBlackThenCredits());
+      return;
+    }
+
     scene.time.delayedCall(SILENCE_BEFORE_IMPACT_MS, () => {
       if (this._aborted()) return;
       VictoryAudio.playImpact(scene);
       scene.cameras.main.shake(IMPACT_SHAKE_MS, IMPACT_SHAKE_INTENSITY, true);
       hud?.playVictoryContinuation();
 
-      scene.time.delayedCall(HOLD_AFTER_IMPACT_MS, () => {
-        if (this._aborted()) return;
-        hud?.cutToBlack();
-        scene.cameras.main.resetFX();
-        VictoryAudio.silenceAll(scene);
+      scene.time.delayedCall(HOLD_AFTER_IMPACT_MS, () => this._cutToBlackThenCredits());
+    });
+  }
 
-        scene.time.delayedCall(BLACK_SILENCE_MS, () => {
-          if (this._aborted()) return;
-          scene.scene.start('CreditsScene');
-        });
-      });
+  // Corte seco pra preto, silêncio e CreditsScene (que escolhe créditos ou
+  // cartões da SNCT conforme data/gameVersion.js).
+  _cutToBlackThenCredits() {
+    if (this._aborted()) return;
+    const scene = this.scene;
+    scene.hud?.cutToBlack();
+    scene.cameras.main.resetFX();
+    VictoryAudio.silenceAll(scene);
+    scene.time.delayedCall(BLACK_SILENCE_MS, () => {
+      if (this._aborted()) return;
+      scene.scene.start('CreditsScene');
     });
   }
 

@@ -278,6 +278,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
+    // Cinemática de vitória (VictoryImpact): o protagonista para junto com o mundo
+    if (this.scene.playerFrozen) {
+      this.stopMovement();
+      this._updateShadow();
+      return;
+    }
+
     this._handleMovement();
     this._autoAttack();
     this._updateInvulnerableFlash();

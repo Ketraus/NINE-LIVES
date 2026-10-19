@@ -171,6 +171,17 @@ export default class SpawnDirector {
     }
   }
 
+  // Cheat (DevConsole "fim"): marca TODOS os eventos manuais (Sealer, Elite,
+  // Boss) como já disparados, pra só a horda base nascer.
+  skipAllEvents() {
+    (this.sealerSchedule || []).forEach((_, i) => this.sealerTriggered.add(i));
+    (this.eliteSchedule || []).forEach((_, i) => this.eliteTriggered.add(i));
+    this.bossTriggered = true;
+    this.bossHasSpawned = true;
+    this._bossMusicRestoreDone = true;
+    this.bossRecoveryUntilMs = 0;
+  }
+
   // Cheat (DevConsole "settime"): ajusta o relógio da run pra um tempo
   setElapsedMs(targetMs) {
     const now = this._now();

@@ -11,5 +11,14 @@ export default {
     // { heading: 'GAME DESIGN & PROGRAMAÇÃO', lines: ['Seu Nome'] },
     // { heading: 'ARTE E MÚSICA', lines: ['Nome'] }
   ],
-  closing: 'OBRIGADO POR JOGAR.'
+  closing: 'OBRIGADO POR JOGAR.',
+
+  // Encerramento da versão SNCT (data/gameVersion.js): cartões sobre preto,
+  // um de cada vez (fade in -> fica -> fade out). Cada cartão: `title`
+  // (opcional, maior) e `lines`. Depois do último volta pro menu.
+  snctEpilogue: [
+    { title: 'NINE LIVES', lines: ['Você presenciou apenas o começo.'] },
+    { lines: ['Esta é uma versão experimental.', 'Descubra o que desperta nas profundezas', 'na Feira de Jogos.'] },
+    { lines: ['Obrigado por participar.'] }
+  ]
 };
