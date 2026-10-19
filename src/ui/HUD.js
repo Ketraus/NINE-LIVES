@@ -154,12 +154,23 @@ const VICTORY_MSG_TEXT = 'PARABÉNS, VOCÊ VENCEU O JOGO.';
 const VICTORY_MSG_COLOR = '#ff3d6e';
 const VICTORY_MSG_FONT_SIZE = 18;
 const VICTORY_MSG_FADE_MS = 2200;
+// Continuação "MAS NÃO A GUERRA." (ver systems/VictoryFinale.js): entra de
+// supetão — slam grande, clarão branco, cópias RGB que convergem.
+const VICTORY_LINE_GAP = 26; // distância (px) de cada linha ao centro da tela
+const VICTORY_CONT_TEXT = 'MAS NÃO A GUERRA.';
+const VICTORY_CONT_COLOR = '#ff1e3c';
+const VICTORY_CONT_FONT_SIZE = 30;
+const VICTORY_CONT_SLAM_START_SCALE = 3.2;
+const VICTORY_CONT_SLAM_MS = 120;
+const VICTORY_FLASH_MS = 900;
 const VICTORY_MSG_SPACING_START = 16;
 const VICTORY_MSG_SPACING_END = 2;
 const VICTORY_MSG_RISE_PX = 12;
 // Escurecimento da cinemática (ver systems/VictoryTremor.js): do preto azulado
 // (estranheza) ao vinho escuro pulsante (catástrofe).
 const VICTORY_DARK_MAX_ALPHA = 0.55;
+const VICTORY_DARK_CAP_ALPHA = 0.82; // teto com o overdrive
+const VICTORY_DARK_KICK_ALPHA = 0.16; // escurecimento extra no instante de cada baque (× level)
 const VICTORY_DARK_COLOR_START = 0x05070c;
 const VICTORY_DARK_COLOR_END = 0x240208;
 const BIG_MESSAGE_FADE_IN_MS = 650;
@@ -1163,10 +1174,81 @@ export default class HUD {
       })
       .setOrigin(0.5)
       .setScrollFactor(0);
+    this.victoryText.setY(-VICTORY_LINE_GAP);
     this.victoryMessage = this.scene.add.container(cx, cy).setScrollFactor(0).setAlpha(0);
     this.victoryMessage.add([this.victoryText]);
     this.victoryGroup.add(this.victoryMessage);
+
+    // continuação: três camadas (cópias RGB aditivas + texto) num container
+    // próprio, que faz o slam em volta do próprio centro
+    const contStyle = (color) => {
+      const style = {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: `${VICTORY_CONT_FONT_SIZE}px`,
+        color,
+        align: 'center'
+      };
+      if (color === VICTORY_CONT_COLOR) Object.assign(style, { stroke: '#000000', strokeThickness: 5 });
+      return style;
+    };
+    const mk = (color, add) => {
+      const t = this.scene.add.text(0, 0, VICTORY_CONT_TEXT, contStyle(color)).setOrigin(0.5).setScrollFactor(0).setLetterSpacing(3);
+      if (add) t.setBlendMode(Phaser.BlendModes.ADD);
+      return t;
+    };
+    this.victoryContGhostRed = mk('#ff0033', true);
+    this.victoryContGhostCyan = mk('#00e5ff', true);
+    this.victoryContText = mk(VICTORY_CONT_COLOR, false).setShadow(0, 0, '#ff1e3c', 26, false, true);
+    this.victoryCont = this.scene.add.container(cx, cy + VICTORY_LINE_GAP + 8).setScrollFactor(0).setAlpha(0);
+    this.victoryCont.add([this.victoryContGhostRed, this.victoryContGhostCyan, this.victoryContText]);
+    this.victoryGroup.add(this.victoryCont);
     this._applyZoomCompensation(this.victoryGroup, 1);
+
+    // clarão branco e corte pra preto (acima de tudo, inclusive da mensagem)
+    const W = this.scene.scale.width;
+    const H = this.scene.scale.height;
+    this.victoryFinaleGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(300);
+    this.victoryFlash = this.scene.add.rectangle(W / 2, H / 2, W + 8, H + 8, 0xffffff, 1).setScrollFactor(0).setAlpha(0);
+    this.victoryBlack = this.scene.add.rectangle(W / 2, H / 2, W + 8, H + 8, 0x000000, 1).setScrollFactor(0).setAlpha(0);
+    this.victoryFinaleGroup.add([this.victoryFlash, this.victoryBlack]);
+    this._applyZoomCompensation(this.victoryFinaleGroup, 1);
+  }
+
+  // A câmera abandona o jogador: a mensagem some devagar (a tela fica só com o mundo).
+  fadeOutVictoryMessage(durationMs = 2500) {
+    this.scene.tweens.killTweensOf(this.victoryMessage);
+    this.scene.tweens.add({ targets: this.victoryMessage, alpha: 0, duration: durationMs, ease: 'Sine.easeInOut' });
+  }
+
+  // Volta a primeira linha de uma vez, sem animação (o jogador lê e o som corta).
+  showVictoryLineInstant() {
+    this.scene.tweens.killTweensOf(this.victoryMessage);
+    this.victoryGroup.setVisible(true);
+    this.victoryText.setLetterSpacing(VICTORY_MSG_SPACING_END);
+    this.victoryMessage.setAlpha(1).setY(this.scene.scale.height / 2);
+  }
+
+  // "MAS NÃO A GUERRA." — o impacto visual: slam de escala, clarão branco que
+  // decai, cópias RGB separadas que convergem e um tremor de câmera brutal
+  // (o tremor e o som ficam por conta do VictoryFinale).
+  playVictoryContinuation() {
+    const scene = this.scene;
+    scene.tweens.killTweensOf([this.victoryCont, this.victoryFlash, this.victoryContGhostRed, this.victoryContGhostCyan]);
+    this.victoryCont.setAlpha(1).setScale(VICTORY_CONT_SLAM_START_SCALE);
+    this.victoryContGhostRed.setX(-26);
+    this.victoryContGhostCyan.setX(26);
+    scene.tweens.add({ targets: this.victoryCont, scale: 1, duration: VICTORY_CONT_SLAM_MS, ease: 'Cubic.easeIn' });
+    scene.tweens.add({ targets: this.victoryContGhostRed, x: -3, duration: 650, ease: 'Cubic.easeOut' });
+    scene.tweens.add({ targets: this.victoryContGhostCyan, x: 3, duration: 650, ease: 'Cubic.easeOut' });
+    this.victoryFlash.setAlpha(1);
+    scene.tweens.add({ targets: this.victoryFlash, alpha: 0, duration: VICTORY_FLASH_MS, ease: 'Expo.easeOut' });
+  }
+
+  // Corte seco pra preto (sem fade): cobre mundo, HUD e mensagem.
+  cutToBlack() {
+    this.scene.tweens.killTweensOf([this.victoryFlash, this.victoryCont]);
+    this.victoryFlash.setAlpha(0);
+    this.victoryBlack.setAlpha(1);
   }
 
   // Véu escuro de tela cheia (depth 99: abaixo das barras do HUD, acima do mundo).
@@ -1184,15 +1266,17 @@ export default class HUD {
 
   // level 0..1 (VictoryTremor): escurece, esquenta a cor e, perto do fim,
   // pulsa como batimento cada vez mais rápido.
-  setVictoryAtmosphere(level, timeMs) {
+  setVictoryAtmosphere(level, timeMs, kick = 0) {
     if (!this.victoryDark) return;
-    const pulse = Math.sin(timeMs / Phaser.Math.Linear(900, 380, level)) * 0.07 * level * level;
+    // batimento lento de fundo + "soco" de escuridão a cada baque (kick 1 -> 0)
+    const pulse = Math.sin(timeMs / Phaser.Math.Linear(900, 380, level)) * 0.04 * level * level
+      + kick * VICTORY_DARK_KICK_ALPHA * level;
     this.victoryDarkGroup.setVisible(level > 0);
     const from = Phaser.Display.Color.IntegerToColor(VICTORY_DARK_COLOR_START);
     const to = Phaser.Display.Color.IntegerToColor(VICTORY_DARK_COLOR_END);
-    const c = Phaser.Display.Color.Interpolate.ColorWithColor(from, to, 100, Math.round(level * 100));
+    const c = Phaser.Display.Color.Interpolate.ColorWithColor(from, to, 100, Math.round(Math.min(level, 1) * 100));
     this.victoryDark.setFillStyle(Phaser.Display.Color.GetColor(c.r, c.g, c.b), 1);
-    this.victoryDark.setAlpha(Phaser.Math.Clamp(level * VICTORY_DARK_MAX_ALPHA + pulse, 0, 0.7));
+    this.victoryDark.setAlpha(Phaser.Math.Clamp(level * VICTORY_DARK_MAX_ALPHA + pulse, 0, VICTORY_DARK_CAP_ALPHA));
   }
 
   _playVictoryMessage() {
@@ -1491,6 +1575,9 @@ export default class HUD {
     EventBus.on('run-restart', () => {
       this.victoryDarkGroup?.setVisible(false);
       this.victoryDark?.setAlpha(0);
+      this.victoryCont?.setAlpha(0);
+      this.victoryFlash?.setAlpha(0);
+      this.victoryBlack?.setAlpha(0);
       this.scene.tweens.killTweensOf(this.victoryMessage);
       this.victoryGroup.setVisible(false);
       this.victoryMessage.setAlpha(0);

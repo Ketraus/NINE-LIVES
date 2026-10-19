@@ -26,6 +26,34 @@ class MusicManager {
     // volume base de qualquer faixa tocando agora, pilotado pela HUD
     // conforme a vida do jogador cai — ver setHpDuckFactor/_applyHpDuck.
     this._hpDuckFactor = 1;
+    // sequência de vitória (ver fadeOutAll): true = a música foi apagada de
+    // propósito e nada (cartas, vida, slider) pode trazê-la de volta
+    this._silenced = false;
+  }
+
+  // Sequência de vitória: TODAS as faixas (jogo, Boss, cartas) somem num fade
+  // lento e a música não volta mais nesta run. Ease-in: o começo é quase
+  // imperceptível — o jogador só nota quando já está no silêncio.
+  fadeOutAll(scene, durationMs) {
+    if (this._silenced) return;
+    this._silenced = true;
+    [this.currentSound, this.bossSound, this.duckedSound].forEach((sound) => {
+      if (!sound) return;
+      scene.tweens.killTweensOf(sound);
+      scene.tweens.add({
+        targets: sound,
+        volume: 0,
+        duration: durationMs,
+        ease: 'Sine.easeIn',
+        onComplete: () => {
+          sound.stop();
+          // solta as referências: a próxima play() (menu) começa do zero
+          if (this.currentSound === sound) { this.currentSound = null; this.currentKey = null; }
+          if (this.bossSound === sound) this.bossSound = null;
+          if (this.duckedSound === sound) this.duckedSound = null;
+        }
+      });
+    });
   }
 
   // scene.sound/scene.tweens/scene.cache; a faixa em si sobrevive à
@@ -70,6 +98,7 @@ class MusicManager {
     // run anterior pode ter deixado isso baixo, e essa é sempre uma faixa
     // nova (menu, ou início/restart de run)
     this._hpDuckFactor = 1;
+    this._silenced = false;
 
     const sound = scene.sound.add(key, { loop: true, volume: 0 });
     sound.play();
@@ -93,6 +122,7 @@ class MusicManager {
   }
 
   _applyHpDuck() {
+    if (this._silenced) return;
     const track = this._activeTrack();
     if (!track) return;
     track.sound.volume = track.baseVolume * SettingsManager.getMusic() * this._hpDuckFactor;
@@ -132,6 +162,7 @@ class MusicManager {
   // tema do Boss se ele estiver na tela, senão a música de jogo — dá
   // fade e a trilha da tela de cartas sobe por cima (nunca as duas juntas)
   duckForCards(scene) {
+    if (this._silenced) return; // sequência de vitória: sem trilha nova de cartas
     if (this.duckedSound) return; // já ducked (chamada repetida do mesmo open)
     const active = this.bossSound || this.currentSound;
     if (!active) return; // nada tocando, nada a abaixar
@@ -148,6 +179,7 @@ class MusicManager {
   // Tela de cartas fechou: a trilha dela dá fade out (e para/destrói) e a
   // que estava tocando antes (Boss ou jogo) volta ao volume normal
   restoreFromCards(scene) {
+    if (this._silenced) return;
     if (!this.duckedSound) return;
     const overlay = this.duckedSound;
     this.duckedSound = null;
@@ -176,6 +208,7 @@ class MusicManager {
 
   // Fim da entrada do Boss (ver SpawnDirector._triggerBossEntrance): a
   restoreFromBoss(scene, durationMs = FADE_MS) {
+    if (this._silenced) return;
     if (!this._bossDucked) return;
     this._bossDucked = false;
     if (!this.currentSound) return;
@@ -221,6 +254,7 @@ class MusicManager {
   // hora a faixa que estiver tocando de verdade (a ducked, se a tela de
   // cartas estiver aberta; senão a principal), sem esperar o próximo fade.
   applyLiveMusicVolume() {
+    if (this._silenced) return;
     if (this.duckedSound) {
       this.duckedSound.volume = CARD_MUSIC_VOLUME * SettingsManager.getMusic() * this._hpDuckFactor;
     } else if (this.bossSound) {

@@ -1,5 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 import VictoryTremor from '../systems/VictoryTremor.js';
+import VictoryFinale from '../systems/VictoryFinale.js';
+import VictoryAudio from '../systems/VictoryAudio.js';
 import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
 import Player, { BASE_VISUAL_SCALE } from '../entities/Player.js';
@@ -160,6 +162,7 @@ export default class GameScene extends Phaser.Scene {
     // EventBus é global e sobrevive ao scene.restart() (morte + R/toque) —
     this.events.once('shutdown', () => {
       this.spawnDirector?.stop();
+      VictoryAudio.silenceAll(); // drone/impacto da cinemática nunca vazam pra outra cena
       this._ambientSfxEvent?.remove();
       EventBus.removeAllListeners();
     });
@@ -411,6 +414,7 @@ export default class GameScene extends Phaser.Scene {
     this.resultComplete = false; // vira true quando a tela de resultado (ResultUI) termina
     this.hasWon = false;
     this.victoryTremor = new VictoryTremor(this); // tremores crescentes da cinemática (começa após a mensagem)
+    this.victoryFinale = new VictoryFinale(this); // câmera abandona o jogador -> "MAS NÃO A GUERRA." -> créditos
     this.victoryTremorLevel = 0; // 0..1, lido pelos inimigos pra tremerem de medo
     this.victorySequenceStarted = false; // sequência de vitória (solo) já disparada
     this.playerAttacksDisabled = false; // true na sequência: jogador/armas/habilidades não atacam
@@ -590,6 +594,7 @@ export default class GameScene extends Phaser.Scene {
     });
 
     EventBus.on('victory-message-shown', () => this.victoryTremor.start());
+    EventBus.on('victory-tremor-peak', () => this.victoryFinale.start());
 
     EventBus.on('levelup-opened', () => {
       this.isPaused = true;

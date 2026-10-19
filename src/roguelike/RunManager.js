@@ -1,3 +1,4 @@
+
 import EventBus from '../systems/EventBus.js';
 import { BASE_MAX_HP } from '../entities/Player.js';
 
@@ -26,6 +27,8 @@ export default class RunManager {
   }
 
   collectXp(amount) {
+    // cinemática de vitória: nada de XP/level-up por cima da cena
+    if (this.player?.scene?.victorySequenceStarted) return;
     const levelsGained = this.runState.addXp(amount);
     EventBus.emit('xp-changed', {
       xp: this.runState.xp,

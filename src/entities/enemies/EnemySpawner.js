@@ -73,6 +73,7 @@ const HALT_SPEED_MUL_MIN = 0.9;
 const HALT_SPEED_MUL_MAX = 1.5; // acima de 1: o susto faz alguns dispararem mais rápido que o normal
 const HALT_SCATTER_SPREAD = 1.6;
 const HALT_SHIVER_MIN = 0.015; // rad de balanço no início do tremor (~1º)
+const HALT_SHIVER_KICK_BOOST = 1.2;
 const HALT_SHIVER_MAX = 0.12; // ... e no pico (~7º)
 
 // Responsável só por CRIAR inimigos: escolhe o tipo, acha uma posição f…
@@ -125,7 +126,8 @@ export default class EnemySpawner {
       const angle = away + Phaser.Math.FloatBetween(-HALT_SCATTER_SPREAD, HALT_SCATTER_SPREAD);
       enemy._haltDir = { x: Math.cos(angle), y: Math.sin(angle) };
     }
-    const p = Phaser.Math.Clamp((nowMs - this.haltStartMs) / (enemy._haltStopMs ?? HALT_STOP_MAX_MS), 0, 1);
+    const stopMs = enemy._haltStopMs ?? HALT_STOP_MAX_MS;
+    const p = stopMs <= 0 ? 1 : Phaser.Math.Clamp((nowMs - this.haltStartMs) / stopMs, 0, 1); // 0 = congela na hora
     const f = Math.pow(1 - p, 1.3);
     const speed = enemy.def.speed * (enemy._haltSpeedMul ?? 1) * f;
     if (speed < 6) {
@@ -143,7 +145,9 @@ export default class EnemySpawner {
     // físico nem na escala — pra a horda parada não parecer estátua.
     const fear = this.scene.victoryTremorLevel || 0;
     if (fear > 0) {
-      const amp = Phaser.Math.Linear(HALT_SHIVER_MIN, HALT_SHIVER_MAX, fear);
+      // o baque de cada tremor (victoryTremorKick) faz todos estremecerem junto
+      const amp = Phaser.Math.Linear(HALT_SHIVER_MIN, HALT_SHIVER_MAX, fear)
+        * (1 + (this.scene.victoryTremorKick || 0) * HALT_SHIVER_KICK_BOOST);
       enemy.setRotation(Phaser.Math.FloatBetween(-amp, amp));
     }
   }
