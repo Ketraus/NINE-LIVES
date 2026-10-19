@@ -286,7 +286,9 @@ export default class MenuAtmosphereFx {
       const car = this.cars[i];
       if (!car.active || car.collisionId == null) continue;
       const other = this.cars.find((candidate) => candidate !== car && candidate.active && candidate.collisionId === car.collisionId);
-      if (other && Phaser.Math.Distance.Between(car.x, car.y, other.x, other.y) < 18) {
+      // A área de toque da nave tem 34 px de largura; os centros podem ficar
+      // até essa distância quando as bordas encostam visualmente.
+      if (other && Phaser.Math.Distance.Between(car.x, car.y, other.x, other.y) < 34) {
         this._explodeCar(car);
         this._explodeCar(other);
       }
