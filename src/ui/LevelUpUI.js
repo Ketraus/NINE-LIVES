@@ -132,8 +132,14 @@ export default class LevelUpUI {
   show(options) {
     if (this.scene.isGameOver || this.scene.hasWon) return;
     const excludedIds = this.scene.multiplayer?.getSelectedUpgradeIds() || [];
-    const distinctOptions = options.filter((option) => !excludedIds.includes(option.id));
-    if (distinctOptions.length > 0) options = distinctOptions;
+    // prioriza cartas que os outros jogadores não pegaram, mas NUNCA reduz a
+    // quantidade: as repetidas vão pro fim da lista (antes sobravam 1-2 cartas)
+    if (excludedIds.length > 0) {
+      options = [
+        ...options.filter((option) => !excludedIds.includes(option.id)),
+        ...options.filter((option) => excludedIds.includes(option.id))
+      ];
+    }
     this._selectedUpgradeId = null;
     this._openOverlay();
 

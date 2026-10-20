@@ -419,6 +419,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
+  // Multiplayer: morri, mas a partida do grupo ainda está rolando.
+  isWaitingForGroup() {
+    const multiplayer = this.multiplayer;
+    return Boolean(multiplayer?.isMultiplayer && multiplayer.mqtt?.connected &&
+      multiplayer.matchState === 'running');
+  }
+
   _restartOrGoToWeaponSelect() {
     // Multiplayer: a partida só acaba quando o Host declara vitória/derrota do
     // grupo. Quem morreu antes espera aqui (o pedido fica na fila).

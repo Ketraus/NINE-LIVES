@@ -606,11 +606,16 @@ export default class MultiplayerManager {
     this.scene.multiplayerWaitingForLevelUp = false;
   }
 
+  // Cartas já escolhidas por OUTROS jogadores na rodada atual (pra variar as
+  // opções). Fora da rodada ou as minhas próprias escolhas não excluem nada —
+  // antes isso acumulava e as opções encolhiam pra 2 ou 1 carta.
   getSelectedUpgradeIds() {
-    return [...new Set([
-      ...this.levelUpChoices.map((choice) => choice.upgradeId),
-      ...this.levelUpChoiceIds
-    ])];
+    if (this.levelUpPhase !== 'selecting') return [];
+    return [...new Set(
+      this.levelUpChoices
+        .filter((choice) => choice.playerId !== this.playerId)
+        .map((choice) => choice.upgradeId)
+    )];
   }
 
   completeLevelUpChoice(upgradeId) {

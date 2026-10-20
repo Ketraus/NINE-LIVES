@@ -393,14 +393,29 @@ export default class ResultUI {
     const { cx, H } = this;
     const won = !!this.scene.hasWon;
     let acted = false;
-    const once = (fn) => () => {
+    let waitText = null;
+    // Multiplayer: se o grupo ainda joga, REINICIAR só entra na fila de espera
+    // e NÃO trava o botão MENU (antes os dois compartilhavam o mesmo "acted" e
+    // o jogador morto ficava preso no limbo, sem conseguir sair).
+    const primary = () => {
+      if (acted) return;
+      this._sfx('sfx_ui_click', 0.6);
+      const waiting = !won && this.scene.isWaitingForGroup?.();
+      this.scene._restartOrGoToWeaponSelect();
+      if (!waiting) {
+        acted = true;
+        return;
+      }
+      if (!waitText) {
+        waitText = this._txt(cx, H - 190, 'AGUARDANDO O GRUPO TERMINAR...', 10, COLOR.dim);
+      }
+    };
+    const toMenu = () => {
       if (acted) return;
       acted = true;
       this._sfx('sfx_ui_click', 0.6);
-      fn();
+      this.scene.scene.start('MainMenuScene');
     };
-    const primary = once(() => this.scene._restartOrGoToWeaponSelect());
-    const toMenu = once(() => this.scene.scene.start('MainMenuScene'));
 
     this._button(cx, H - 142, won ? 'ESCOLHER ARMA' : 'REINICIAR', primary);
     this._button(cx, H - 90, 'MENU', toMenu);

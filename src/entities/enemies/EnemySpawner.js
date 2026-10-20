@@ -568,7 +568,12 @@ export default class EnemySpawner {
     const abandonmentDistance = Math.hypot(view.width, view.height) / 2 + SPAWN_MARGIN_BEYOND_VIEW + ABANDONED_DISTANCE_MARGIN;
 
     for (const enemy of active) {
-      if (targets.length === 0) continue;
+      if (targets.length === 0) {
+        // todos os alvos mortos: sem isso a última velocidade ficava viva e os
+        // inimigos deslizavam sozinhos
+        enemy.setVelocity(0, 0);
+        continue;
+      }
       let target = targets[0];
       let nearestDistanceSq = (enemy.x - target.x) ** 2 + (enemy.y - target.y) ** 2;
       for (let i = 1; i < targets.length; i++) {
