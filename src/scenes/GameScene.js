@@ -962,10 +962,9 @@ export default class GameScene extends Phaser.Scene {
       if (event.button === 2) this.rightMouseDown = false;
     };
     const handleVisibilityChange = () => {
-      if (this.multiplayer?.isMultiplayer) {
-        if (document.hidden && this.multiplayer.isRoomHost) this.multiplayer.pauseForHiddenHost();
-        return;
-      }
+      // Multiplayer: NUNCA pausa sozinho ao minimizar/trocar de aba (nem o Host);
+      // só o singleplayer mantém a pausa automática.
+      if (this.multiplayer?.isMultiplayer) return;
       if (document.hidden) {
         handleBlur();
         this.sys.game.loop.sleep();

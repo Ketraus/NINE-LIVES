@@ -1485,8 +1485,9 @@ export default class MultiplayerManager {
 
   _syncPauseVote() {
     const now = Date.now();
+    // jogador morto não vota: antes a pausa ficava eternamente "aguardando"
     const activeRemotes = [...this.remotePlayers.values()].filter(
-      (remote) => now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS
+      (remote) => now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS && remote.hp > 0
     );
     const hasRemotePlayers = activeRemotes.length > 0;
     const allVoted = hasRemotePlayers && this.pauseRequested &&
