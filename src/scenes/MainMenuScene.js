@@ -1,6 +1,7 @@
 import MusicManager from '../systems/MusicManager.js';
 import { UI_SCALE } from '../config/layout.js';
 import MenuAtmosphereFx from '../fx/MenuAtmosphereFx.js';
+import RoomMenuUI from '../ui/RoomMenuUI.js';
 
 // paleta "terminal cyberpunk" pedida: fundo do botão quase transparente,
 const PANEL_FILL = 0x061014;
@@ -27,15 +28,21 @@ const BAR_START_H = 150; // altura inicial, antes de recolher
 const CORP_NAME = 'NINE LIVES CORP.';
 const SETTINGS_FADE_MS = 220;
 
+// transição MULTIPLAYER <-> botões principais (leve: fade + deslize curto)
+const ROOM_SWITCH_MS = 170;
+const ROOM_SWITCH_SLIDE = 10;
+
 export default class MainMenuScene extends Phaser.Scene {
   constructor() {
     super('MainMenuScene');
   }
 
-  create() {
+  create(data) {
     const { width, height } = this.scale;
 
     this._transitioning = false; // trava clique duplo durante a saída
+    this._roomSwitching = false;
+    this.roomMenuOpen = false;
 
     // fade de entrada (chegando do Boot ou voltando da SettingsScene/pause)
     const firstTime = !MainMenuScene._introPlayed;
@@ -78,40 +85,20 @@ export default class MainMenuScene extends Phaser.Scene {
       this._goToSettings();
     });
 
-    const createRoomButton = this._buildTerminalButton(
-      width / 2,
-      height * 0.6,
-      300,
-      40,
-      'CRIAR SALA',
-      () => this._createRoom()
-    ).setVisible(false);
-    const joinRoomButton = this._buildTerminalButton(
-      width / 2,
-      height * 0.6 + 56,
-      300,
-      40,
-      'ENTRAR EM SALA',
-      () => this._joinRoom()
-    ).setVisible(false);
-    const backButton = this._buildTerminalButton(
-      width / 2,
-      height * 0.6 + 112,
-      220,
-      40,
-      'VOLTAR',
-      () => this._setRoomMenuOpen(false)
-    ).setVisible(false);
+    // painéis do multiplayer (criar sala / lista de salas) — ver ui/RoomMenuUI.js
+    this.roomUI = new RoomMenuUI(this);
 
-    this.roomMenuButtons = [createRoomButton, joinRoomButton, backButton];
     this.menuButtons = [button, multiplayerButton, settingsButton];
+    this.menuButtons.forEach((b) => {
+      b._finalY = b.y;
+    });
     this.menuLayer.add([
       bg,
       title,
       button,
       multiplayerButton,
       settingsButton,
-      ...this.roomMenuButtons
+      this.roomUI.container
     ]);
     this.menuLayer
       .setScale(UI_SCALE)
@@ -121,10 +108,38 @@ export default class MainMenuScene extends Phaser.Scene {
 
     this._buildCinema({ bg, title, firstTime });
 
-    this.input.keyboard.once('keydown-SPACE', () => {
-      if (this._transitioning || this.roomMenuOpen) return;
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (this._transitioning || this.roomMenuOpen || this._roomSwitching) return;
       this.sound.play('sfx_ui_click', { volume: 0.6 });
       this._start();
+    });
+
+    // aviso vindo de outra cena (ex.: sala cheia / senha incorreta)
+    if (data?.notice) this._showNotice(data.notice);
+  }
+
+  // Aviso curto no rodapé, some sozinho.
+  _showNotice(message) {
+    const { width, height } = this.scale;
+    const text = this.add
+      .text(width / 2, height - 62, message, {
+        fontFamily: PIXEL_FONT,
+        fontSize: '9px',
+        color: '#ff8a8a',
+        backgroundColor: '#061014',
+        padding: { x: 10, y: 7 },
+        align: 'center'
+      })
+      .setOrigin(0.5)
+      .setDepth(1000)
+      .setAlpha(0);
+    this.tweens.add({
+      targets: text,
+      alpha: 1,
+      duration: 220,
+      hold: 3600,
+      yoyo: true,
+      onComplete: () => text.destroy()
     });
   }
 
@@ -391,22 +406,47 @@ export default class MainMenuScene extends Phaser.Scene {
     }
   }
 
+  // Transição leve MULTIPLAYER <-> botões principais: os botões saem com fade
+  // + deslize curto e o painel de salas entra do mesmo jeito (o fundo, o
+  // título e a atmosfera não mexem — dá a sensação de ir pra outra tela).
   _setRoomMenuOpen(open) {
-    if (this._transitioning) return;
+    if (this._transitioning || this._roomSwitching) return;
+    this._roomSwitching = true;
     this.roomMenuOpen = open;
-    this.menuButtons.forEach((button) => button.setVisible(!open));
-    this.roomMenuButtons.forEach((button) => button.setVisible(open));
+
+    if (open) {
+      this._slideButtons(false, () => {
+        this.roomUI.open();
+        this._roomSwitching = false;
+      });
+    } else {
+      this.roomUI.close(() => {
+        this._slideButtons(true, () => {
+          this._roomSwitching = false;
+        });
+      });
+    }
   }
 
-  _createRoom() {
-    const roomId = `sala-${Math.random().toString(36).slice(2, 8)}`;
-    window.prompt('ID da sala criada. Copie para compartilhar:', roomId);
-    this._start(roomId, true);
-  }
-
-  _joinRoom() {
-    const roomId = window.prompt('Digite o ID da sala:')?.trim();
-    if (roomId) this._start(roomId, false);
+  _slideButtons(show, onDone) {
+    this.menuButtons.forEach((b, i) => {
+      this.tweens.killTweensOf(b);
+      if (show) {
+        b.setVisible(true).setAlpha(0).setY(b._finalY + ROOM_SWITCH_SLIDE);
+      }
+      this.tweens.add({
+        targets: b,
+        alpha: show ? 1 : 0,
+        y: show ? b._finalY : b._finalY + ROOM_SWITCH_SLIDE,
+        duration: ROOM_SWITCH_MS,
+        delay: show ? i * 40 : 0,
+        ease: show ? 'Cubic.easeOut' : 'Cubic.easeIn',
+        onComplete: () => {
+          if (!show) b.setVisible(false);
+          if (i === this.menuButtons.length - 1) onDone?.();
+        }
+      });
+    });
   }
 
   // Efeitos "retrô" do menu inteiro: bloom/bleeding sutil nas áreas claras
@@ -529,10 +569,10 @@ export default class MainMenuScene extends Phaser.Scene {
     g.strokePoints(points, true);
   }
 
-  _start(multiplayerRoom = null, isRoomHost = false) {
+  _start(multiplayerRoom = null, isRoomHost = false, roomMeta = null) {
     if (this._transitioning) return;
     this._transitioning = true;
-    this.nextSceneData = multiplayerRoom ? { multiplayerRoom, isRoomHost } : {};
+    this.nextSceneData = multiplayerRoom ? { multiplayerRoom, isRoomHost, roomMeta } : {};
 
     // celular: aproveita esse mesmo toque (gesto do usuário, exigido pela
     if (this.sys.game.device.input.touch && this.scale.fullscreen.available && !this.scale.isFullscreen) {

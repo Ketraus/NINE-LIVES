@@ -56,6 +56,7 @@ export default class WeaponSelectScene extends Phaser.Scene {
     this._transitioning = false;
     this.multiplayerRoom = data?.multiplayerRoom || null;
     this.isRoomHost = Boolean(data?.isRoomHost);
+    this.roomMeta = data?.roomMeta || null;
     this.cardGroups = [];
 
     // chega em preto (ver MainMenuScene._playExitTransition) e clareia —
@@ -378,7 +379,8 @@ export default class WeaponSelectScene extends Phaser.Scene {
           this.scene.start('GameScene', {
             weaponId: weapon.id,
             multiplayerRoom: this.multiplayerRoom,
-            isRoomHost: this.isRoomHost
+            isRoomHost: this.isRoomHost,
+            roomMeta: this.roomMeta
           });
         });
       });

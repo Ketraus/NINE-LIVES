@@ -4,6 +4,7 @@ import MainMenuScene from '../scenes/MainMenuScene.js';
 import SettingsScene from '../scenes/SettingsScene.js';
 import WeaponSelectScene from '../scenes/WeaponSelectScene.js';
 import GameScene from '../scenes/GameScene.js';
+import LobbyGateScene from '../scenes/LobbyGateScene.js';
 import CreditsScene from '../scenes/CreditsScene.js';
 import CrtWavePipeline from '../fx/CrtWavePipeline.js';
 import WorldEndPipeline from '../fx/WorldEndPipeline.js';
@@ -61,5 +62,5 @@ export const gameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH
   },
-  scene: [BootScene, PreloadScene, MainMenuScene, SettingsScene, WeaponSelectScene, GameScene, CreditsScene]
+  scene: [BootScene, PreloadScene, MainMenuScene, SettingsScene, WeaponSelectScene, GameScene, LobbyGateScene, CreditsScene]
 };

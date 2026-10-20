@@ -6,6 +6,13 @@ import { hasPunchFx, playPunchSmear, WHIFF_POINT } from '../fx/PunchFx.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
 import DamageSystem from '../combat/DamageSystem.js';
 import EventBus from './EventBus.js';
+import {
+  DEFAULT_BROKER_URL,
+  LOBBY_TOPIC_PREFIX,
+  MAX_ROOM_PLAYERS,
+  MIN_PLAYERS_TO_START,
+  ROOM_ADVERT_INTERVAL_MS
+} from './roomConfig.js';
 import { hasSlamFx, playSlamFx } from '../fx/SlamFx.js';
 import { hasQuakeFx, playQuakeSequence } from '../fx/QuakeFx.js';
 import { hasPlasmaGrenadeFx, playPlasmaExplosion } from '../fx/PlasmaGrenadeFx.js';
@@ -21,6 +28,8 @@ import {
   breakShieldFx
 } from '../fx/ShieldFx.js';
 
+// Quanto tempo fora do roster do Host (sala cheia / senha errada) até desistir.
+const REJECTED_AFTER_MS = 3000;
 const POSITION_INTERVAL_MS = 100;
 const ENEMY_SNAPSHOT_INTERVAL_MS = 200;
 const ENEMY_HIT_INTERVAL_MS = 100;
@@ -29,7 +38,6 @@ const MAX_DAMAGE_PER_MESSAGE = 5000;
 const ATTACK_MIN_INTERVAL_MS = 60;
 const PLAYER_TIMEOUT_MS = 5000;
 const HOST_ELECTION_GRACE_MS = 1000;
-const DEFAULT_BROKER_URL = 'wss://ninelives.feira-de-jogos.dev.br/mqtt';
 // Mortes e coletas recém-ocorridas são reenviadas dentro dos próximos snapshots
 // (QoS 0 pode perder o pacote avulso). Tudo é idempotente no cliente.
 const REPLAY_SNAPSHOTS = 5;
@@ -47,12 +55,16 @@ const PICKUP_KINDS = new Set(['xp', 'medkit', 'gone']);
 // enquanto o Host ainda anuncia "fim", o estado velho não pode encerrar a run nova.
 const staleMatchEpochs = new Set();
 
+function now_() {
+  return Date.now();
+}
+
 function createPlayerId() {
   return `nl${Math.random().toString(36).slice(2, 12)}`;
 }
 
 export default class MultiplayerManager {
-  constructor(scene, player, roomId = null, isRoomHost = false) {
+  constructor(scene, player, roomId = null, isRoomHost = false, roomMeta = null) {
     this.scene = scene;
     this.player = player;
     this.remotePlayers = new Map();
@@ -92,8 +104,26 @@ export default class MultiplayerManager {
     this.levelUpChoiceRound = 0;
     this.levelUpChoiceIds = [];
 
+    // Sala / "pronto": o Host decide quando a partida começa (todos prontos e
+    // pelo menos MIN_PLAYERS_TO_START). Quem entra com a partida já rolando
+    // pula a espera. 'syncing' = ainda não ouviu o Host da sala.
+    this.roomMeta = {
+      priv: roomMeta?.priv === true,
+      pw: typeof roomMeta?.pw === 'string' ? roomMeta.pw : null
+    };
+    this.matchPhase = this.isRoomHost ? 'waiting' : 'syncing'; // 'syncing' | 'waiting' | 'playing'
+    this.localReady = false;
+    this.roster = null; // ids aceitos na sala, na ordem de entrada (anunciado pelo Host)
+    this.slotOrder = []; // só o Host mantém
+    this.rejected = false;
+    this.notInRosterSince = null;
+    this.lastRoomAdvertAt = 0;
+    this.roomAdvertBeat = 0;
+    this.createdAt = Date.now();
+
     const params = new URLSearchParams(window.location.search);
     const room = roomId || params.get('room');
+    this.roomCode = room || null;
     this.isMultiplayer = Boolean(room);
     const brokerUrl = params.get('mqttUrl') || (room ? DEFAULT_BROKER_URL : null);
     if (!brokerUrl) return;
@@ -103,8 +133,10 @@ export default class MultiplayerManager {
       this.hostPlayerId = this.playerId;
       this.hostTerm = 1;
       this.runEpoch = createPlayerId();
+      this.slotOrder = [this.playerId];
     }
     this.room = encodeURIComponent(room || 'test');
+    this.roomAdvertTopic = `${LOBBY_TOPIC_PREFIX}/${this.room}`;
     this.topicPrefix = `nine-lives/${this.room}/players`;
     this.positionTopic = `${this.topicPrefix}/${this.playerId}/position`;
     this.attackTopic = `${this.topicPrefix}/${this.playerId}/attack`;
@@ -154,6 +186,10 @@ export default class MultiplayerManager {
   update(_time, delta) {
     const now = Date.now();
     this._checkHostMigration(now);
+    this._updateRoster(now);
+    this._evaluateLobbyStart();
+    this._publishRoomAdvert(now);
+    this._checkRejected(now);
     if (this.isRoomHost && this.mqtt?.connected && now - this.lastEnemySnapshotAt >= ENEMY_SNAPSHOT_INTERVAL_MS) {
       this.lastEnemySnapshotAt = now;
       this._publishEnemySnapshot();
@@ -194,6 +230,10 @@ export default class MultiplayerManager {
         cameraViewHeight: this.scene.cameras.main.height / (this.scene.cameras.main.zoom || 1),
         level: this.player.runState.level,
         pauseRequested: this.pauseRequested,
+        ready: this.localReady,
+        pw: this.roomMeta.priv ? this.roomMeta.pw : undefined,
+        roomPhase: this.isRoomHost ? this.matchPhase : undefined,
+        roster: this.isRoomHost ? this.getRoster() : undefined,
         isHost: this.isRoomHost,
         hostTerm: this.isRoomHost ? this.hostTerm : undefined,
         runEpoch: this.isRoomHost ? this.runEpoch : undefined,
@@ -243,6 +283,135 @@ export default class MultiplayerManager {
     this._syncHostPause();
   }
 
+  // ---------- sala de espera / "pronto" / lista de salas ----------
+
+  // Só existe espera quando há uma sala de verdade (broker configurado).
+  hasReadyGate() {
+    return this.isMultiplayer && Boolean(this.mqtt);
+  }
+
+  setLocalReady(ready) {
+    this.localReady = ready === true;
+  }
+
+  getRoster() {
+    if (this.isRoomHost) return this.slotOrder.slice(0, MAX_ROOM_PLAYERS);
+    return this.roster ? this.roster.slice(0, MAX_ROOM_PLAYERS) : [];
+  }
+
+  // Foto da sala pra UI de espera (LobbyGateScene).
+  getLobbyState() {
+    const roster = this.getRoster();
+    const ids = roster.length > 0 ? roster : [this.playerId];
+    const players = ids.map((id) => ({
+      id,
+      you: id === this.playerId,
+      host: this.isRoomHost ? id === this.playerId : id === this.hostPlayerId,
+      ready: id === this.playerId ? this.localReady : this.remotePlayers.get(id)?.ready === true
+    }));
+    return {
+      connected: Boolean(this.mqtt?.connected),
+      phase: this.matchPhase,
+      hostSeen: this.isRoomHost || Boolean(this.hostPlayerId),
+      roomCode: this.roomCode,
+      priv: this.roomMeta.priv,
+      min: MIN_PLAYERS_TO_START,
+      max: MAX_ROOM_PLAYERS,
+      players,
+      rejected: this.rejected,
+      waitedMs: Date.now() - this.createdAt
+    };
+  }
+
+  // Host: quem pode entrar. Privada só com a senha certa; no máximo 4 vagas.
+  // Não-Host: ignora quem o Host não colocou no roster (vaga/senha).
+  _admitNewPlayer(playerId, state, acceptedHost) {
+    if (this.isRoomHost) {
+      if (this.roomMeta.priv && state.pw !== this.roomMeta.pw) return false;
+      if (this.slotOrder.includes(playerId)) return true;
+      if (this.slotOrder.length >= MAX_ROOM_PLAYERS) return false;
+      this.slotOrder.push(playerId);
+      return true;
+    }
+    if (acceptedHost) return true;
+    if (this.roster && !this.roster.includes(playerId)) return false;
+    return true;
+  }
+
+  // Host: quem sumiu libera a vaga.
+  _updateRoster(now) {
+    if (!this.isRoomHost) return;
+    this.slotOrder = this.slotOrder.filter((id) => {
+      if (id === this.playerId) return true;
+      const remote = this.remotePlayers.get(id);
+      return Boolean(remote) && now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS;
+    });
+  }
+
+  _evaluateLobbyStart() {
+    if (!this.isRoomHost || this.matchPhase !== 'waiting' || !this.mqtt?.connected) return;
+    const roster = this.getRoster();
+    if (roster.length < MIN_PLAYERS_TO_START) return;
+    const everyoneReady = roster.every((id) => id === this.playerId
+      ? this.localReady : this.remotePlayers.get(id)?.ready === true);
+    if (everyoneReady) this._startMatch();
+  }
+
+  _startMatch() {
+    if (this.matchPhase === 'playing') return;
+    this.matchPhase = 'playing'; // vai pra todos no próximo batimento (100 ms)
+    this.scene.beginMatch?.();
+  }
+
+  // Cliente: segue o Host. Fase 'playing' é permanente na sessão, e batimentos
+  // de uma partida já encerrada (ou de run velha) não podem liberar a espera.
+  _applyHostLobby(state) {
+    if (Array.isArray(state.roster)) {
+      this.roster = state.roster.filter((id) => typeof id === 'string').slice(0, MAX_ROOM_PLAYERS);
+    }
+    if (this.isRoomHost) return;
+    if (state.roomPhase !== 'waiting' && state.roomPhase !== 'playing') return;
+    if (state.matchState && state.matchState !== 'running') return;
+    if (typeof state.runEpoch === 'string' && staleMatchEpochs.has(state.runEpoch)) return;
+    if (this.matchPhase === 'playing') return;
+    if (state.roomPhase === 'playing') {
+      this.matchPhase = 'playing';
+      this.scene.beginMatch?.();
+    } else {
+      this.matchPhase = 'waiting';
+    }
+  }
+
+  // Host: batimento que faz a sala aparecer na lista "ENTRAR EM SALA".
+  _publishRoomAdvert(now) {
+    if (!this.isRoomHost || !this.mqtt?.connected || this.rejected) return;
+    if (now - this.lastRoomAdvertAt < ROOM_ADVERT_INTERVAL_MS) return;
+    this.lastRoomAdvertAt = now;
+    this.mqtt.publish(this.roomAdvertTopic, {
+      room: this.roomCode,
+      priv: this.roomMeta.priv,
+      pw: this.roomMeta.priv ? this.roomMeta.pw : undefined,
+      players: this.getRoster().length,
+      max: MAX_ROOM_PLAYERS,
+      phase: this.matchPhase,
+      beat: ++this.roomAdvertBeat
+    });
+  }
+
+  // Cliente: o Host nunca me colocou no roster (sala cheia ou senha errada).
+  _checkRejected(now) {
+    if (this.isRoomHost || this.rejected || !this.roster) return;
+    if (this.roster.includes(this.playerId)) {
+      this.notInRosterSince = null;
+      return;
+    }
+    if (this.notInRosterSince == null) this.notInRosterSince = now;
+    if (now - this.notInRosterSince >= REJECTED_AFTER_MS) {
+      this.rejected = true;
+      this.scene.onRoomRejected?.();
+    }
+  }
+
   _checkHostMigration(now) {
     if (!this.isMultiplayer || this.isRoomHost || !this.mqtt?.connected ||
       !this.hostPlayerId || this.matchState !== 'running') {
@@ -282,6 +451,13 @@ export default class MultiplayerManager {
     this.hostRunTimeReceivedAt = Date.now();
     this.isRoomHost = true;
     this.scene.isRoomHost = true;
+    // mantém a ordem de entrada anunciada pelo Host anterior (sem ele)
+    const activeIds = new Set([...this.remotePlayers.entries()]
+      .filter(([, remote]) => now_() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS)
+      .map(([id]) => id));
+    const previous = (this.roster || []).filter((id) => activeIds.has(id));
+    activeIds.forEach((id) => { if (!previous.includes(id)) previous.push(id); });
+    this.slotOrder = [this.playerId, ...previous.filter((id) => id !== this.playerId)].slice(0, MAX_ROOM_PLAYERS);
     this.lastEnemySnapshotSequence = Math.max(
       this.lastEnemySnapshotSequence,
       this.hostEnemySnapshotSequence
@@ -313,10 +489,14 @@ export default class MultiplayerManager {
       ...this.appliedPickupRemovals
     ].filter(Number.isInteger);
     this.scene.nextPickupId = Math.max(this.scene.nextPickupId || 1, ...pickupIds.map((id) => id + 1));
-    this.scene.spawnDirector?.assumeAuthority(
-      this.hostRunTimeMs,
-      this.hostSpawnDirectorState
-    );
+    // Host novo ainda na espera do "pronto": o relógio/os spawns só começam
+    // quando a partida começar (ver _startMatch).
+    if (this.matchPhase === 'playing') {
+      this.scene.spawnDirector?.assumeAuthority(
+        this.hostRunTimeMs,
+        this.hostSpawnDirectorState
+      );
+    }
     this.lastEnemySnapshotAt = 0;
     this.lastSentAt = 0;
     console.info(`[Multiplayer] Host migrado para ${this.playerId} (termo ${this.hostTerm}).`);
@@ -1263,6 +1443,7 @@ export default class MultiplayerManager {
   }
 
   togglePauseVote() {
+    if (this.scene.lobbyGateActive) return true; // na sala de espera não existe pausa
     if (!this.mqtt || this.scene.isGameOver || this.scene.hasWon ||
       this.scene.levelUpUI?.container.visible) return false;
     if (this.isRoomHost && this.visibilityPauseApplied) {
@@ -1276,6 +1457,7 @@ export default class MultiplayerManager {
   }
 
   pauseForHiddenHost() {
+    if (this.scene.lobbyGateActive) return;
     if (!this.isRoomHost || this.scene.isGameOver || this.scene.hasWon) return;
     this.visibilityPauseApplied = true;
     this.scene.pauseUI?.open();
@@ -1453,6 +1635,7 @@ export default class MultiplayerManager {
 
       let remote = this.remotePlayers.get(playerId);
       if (!remote) {
+        if (!this._admitNewPlayer(playerId, state, acceptedHost)) return;
         // skin fixa por jogador: branco = quem entrou na sala, preto = Host original
         const skinSet = getPlayerSpriteSet(state.weaponId, state.skin === 'white' ? 'white' : 'default');
         const spriteSet = { idle: skinSet.idleAnim, walk: skinSet.walkAnim };
@@ -1528,7 +1711,9 @@ export default class MultiplayerManager {
       remote.levelUpPendingCount = Number.isFinite(state.levelUpPendingCount)
         ? Math.max(0, Math.floor(state.levelUpPendingCount)) : 0;
       remote.pauseRequested = state.pauseRequested === true;
+      remote.ready = state.ready === true;
       remote.isHost = acceptedHost;
+      if (acceptedHost) this._applyHostLobby(state);
       remote.abilityVisuals = state.abilityVisuals;
       this._playRemoteFxEvents(remote, state.abilityVisuals?.fx);
       remote.lastSeenAt = Date.now();

@@ -149,6 +149,8 @@ export default class GameScene extends Phaser.Scene {
     this.weaponId = data?.weaponId || this.weaponId || null;
     this.multiplayerRoom = data?.multiplayerRoom || null;
     this.isRoomHost = Boolean(data?.isRoomHost);
+    this.roomMeta = data?.roomMeta || null; // {priv, pw} da sala (ver MainMenuScene)
+    this._leavingRoom = false;
 
     this._buildMap();
     this._buildRun();
@@ -164,6 +166,13 @@ export default class GameScene extends Phaser.Scene {
     this._buildCollisions();
     this._buildInput();
     this._scheduleAmbientSfx();
+
+    // Sala de espera (multiplayer): o mapa carrega, mas o jogo só começa quando
+    // todos apertarem PRONTO (ver MultiplayerManager + LobbyGateScene).
+    if (this.lobbyGateActive) {
+      this.scene.launch('LobbyGateScene', { gameScene: this });
+      this.events.once('shutdown', () => this.scene.stop('LobbyGateScene'));
+    }
 
     // EventBus é global e sobrevive ao scene.restart() (morte + R/toque) —
     this.events.once('shutdown', () => {
@@ -189,6 +198,7 @@ export default class GameScene extends Phaser.Scene {
     this.mistBorderFx?.update();
     this._updateRunTimer();
     this.multiplayer?.update(time, delta);
+    if (this.lobbyGateActive) return; // esperando todos ficarem prontos: mundo parado
 
     if (this.isGameOver) {
       this.worldEnd?.update(delta, this.hasWon || this.groupWon ? 'fade' : 'freeze');
@@ -300,6 +310,7 @@ export default class GameScene extends Phaser.Scene {
 
   // Emite o tempo de run decorrido (em segundos inteiros) só quando ele
   _updateRunTimer() {
+    if (this.lobbyGateActive) return; // relógio só corre depois do "pronto" de todos
     if (this.isGameOver) {
       // Host morto continua dono do relógio do grupo: se os outros sobreviverem
       // até o fim, a vitória do grupo ainda precisa ser declarada por ele.
@@ -357,6 +368,32 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // Todos prontos: a sala libera o mundo. Só o Host liga relógio + spawns;
+  // quem entra com a partida já rolando também passa por aqui (só destrava).
+  beginMatch() {
+    if (!this.lobbyGateActive) return;
+    this.lobbyGateActive = false;
+    if (this.multiplayer?.isRoomHost) {
+      this.spawnDirector.stop();
+      this.spawnDirector.start(true);
+    }
+  }
+
+  // O Host nunca me aceitou na sala (cheia ou senha errada).
+  onRoomRejected() {
+    this.leaveToMenu('ENTRADA RECUSADA: SALA CHEIA OU SENHA INCORRETA');
+  }
+
+  leaveToMenu(notice = null) {
+    if (this._leavingRoom) return;
+    this._leavingRoom = true;
+    const cam = this.cameras.main;
+    cam.fadeOut(350, 0, 0, 0);
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.scene.start('MainMenuScene', notice ? { notice } : undefined);
+    });
+  }
+
   // Vitória/derrota do GRUPO, definida pelo Host (ver MultiplayerManager).
   applyGroupMatchState(state) {
     if (state === 'won') {
@@ -393,7 +430,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.hasWon || this.groupWon) {
       this.scene.start('WeaponSelectScene', {
         multiplayerRoom: this.multiplayerRoom,
-        isRoomHost: this.isRoomHost
+        isRoomHost: this.isRoomHost,
+        roomMeta: this.roomMeta
       });
       return;
     }
@@ -401,7 +439,8 @@ export default class GameScene extends Phaser.Scene {
     this.scene.restart({
       weaponId: this.weaponId,
       multiplayerRoom: this.multiplayerRoom,
-      isRoomHost: this.isRoomHost
+      isRoomHost: this.isRoomHost,
+      roomMeta: this.roomMeta
     });
   }
 
@@ -480,8 +519,10 @@ export default class GameScene extends Phaser.Scene {
       this,
       this.player,
       this.multiplayerRoom,
-      this.isRoomHost
+      this.isRoomHost,
+      this.roomMeta
     );
+    this.lobbyGateActive = Boolean(this.multiplayer.hasReadyGate());
     this.events.once('shutdown', () => {
       this.multiplayer?.destroy();
       this.multiplayer = null;
@@ -510,9 +551,12 @@ export default class GameScene extends Phaser.Scene {
     // SpawnDirector cronometra a run e decide quando/quantos inimigos pedir;
     this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData, spawnCurvesData, sealerScheduleData, eliteScheduleData, bossScheduleData);
     this._lastRunTimeSeconds = -1;
-    this.spawnDirector.start(
-      !this.multiplayer?.isMultiplayer || this.multiplayer.isRoomHost || !this.multiplayer.mqtt
-    );
+    const isAuthority =
+      !this.multiplayer?.isMultiplayer || this.multiplayer.isRoomHost || !this.multiplayer.mqtt;
+    // Host na sala de espera: relógio e spawns só ligam em beginMatch()
+    if (!(this.lobbyGateActive && this.multiplayer?.isRoomHost)) {
+      this.spawnDirector.start(isAuthority);
+    }
     this.multiplayer?.attachRunClock(this.spawnDirector);
   }
 
