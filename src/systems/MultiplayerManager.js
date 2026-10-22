@@ -3,6 +3,7 @@ import { BASE_VISUAL_SCALE, getPlayerSpriteSet } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
 import { hasPunchFx, playPunchSmear, WHIFF_POINT } from '../fx/PunchFx.js';
+import TeammateMarkerFx from '../fx/TeammateMarkerFx.js';
 import DamageNumberManager from '../combat/DamageNumberManager.js';
 import DamageSystem from '../combat/DamageSystem.js';
 import EventBus from './EventBus.js';
@@ -268,6 +269,7 @@ export default class MultiplayerManager {
       this._drawRemoteStatus(remote);
       this._updateRemoteLevelUpFlash(remote, this.scene.time.now);
       this._updateRemoteAbilityEffects(remote, this.scene.time.now, delta);
+      this._updateRemoteMarker(id, remote);
     });
     this.remoteEnemies.forEach((enemy) => {
       if (!enemy.active || !Number.isFinite(enemy.targetX)) return;
@@ -1863,7 +1865,41 @@ export default class MultiplayerManager {
     }
   }
 
+  // Vaga fixa por jogador (0 = Host original, 1..3 = ordem de entrada). Fica em
+  // cache pra cor não trocar se o Host mudar no meio da partida.
+  _getPlayerSlot(id) {
+    if (!this.playerSlots) this.playerSlots = new Map();
+    const cached = this.playerSlots.get(id);
+    if (cached !== undefined) return cached;
+
+    const isHostId = id === this.hostPlayerId || (id === this.playerId && this.isRoomHost);
+    const rosterIndex = this.getRoster().indexOf(id);
+    const confirmed = isHostId || rosterIndex >= 0;
+    const taken = new Set(this.playerSlots.values());
+
+    let slot = isHostId ? 0 : rosterIndex;
+    if (slot < 0 || slot >= MAX_ROOM_PLAYERS || taken.has(slot)) {
+      slot = 1; // vaga 0 é reservada ao Host original
+      while (taken.has(slot) && slot < MAX_ROOM_PLAYERS - 1) slot += 1;
+    }
+    // só trava no cache quando o roster/Host já confirmou quem é quem
+    if (confirmed) this.playerSlots.set(id, slot);
+    return slot;
+  }
+
+  _updateRemoteMarker(id, remote) {
+    if (!remote.marker) remote.marker = new TeammateMarkerFx(this.scene, this._getPlayerSlot(id));
+    else remote.marker.setSlot(this._getPlayerSlot(id));
+    remote.marker.update(
+      remote.sprite.x,
+      remote.sprite.y,
+      remote.hp > 0 && !this.scene.lobbyGateActive,
+      this.scene.time.now
+    );
+  }
+
   _destroyRemote(remote) {
+    remote.marker?.destroy();
     remote.sprite.destroy();
     remote.healthBar.destroy();
     remote.levelLabel.destroy();
