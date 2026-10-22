@@ -93,6 +93,9 @@ export default class EnemySpawner {
     this.denseBattle = false;
 
     this.group = scene.physics.add.group({ runChildUpdate: false });
+    // Um colisor por camada, compartilhado por todos os inimigos presentes e futuros.
+    // Colisores individuais sobreviviam à destruição dos sprites e acumulavam na run.
+    this.mapManager.addCollider(this.group);
 
     // Freeze (cheat "freeze" do DevConsole, F9): true = inimigos param no
     this.frozen = false;
@@ -295,7 +298,6 @@ export default class EnemySpawner {
     enemy.networkReplica = networkReplica;
     this.nextNetworkId = Math.max(this.nextNetworkId, enemy.networkId + 1);
     this.group.add(enemy);
-    this.mapManager.addCollider(enemy);
     // Elite: som + vibrada de entrada, tocam no instante em que ele nasce
     if (def.elite) {
       this.scene.sound.play('sfx_elite_spawn', { volume: 0.6 });
