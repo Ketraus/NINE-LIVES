@@ -2,6 +2,7 @@ import MinotaurAudio from './MinotaurAudio.js';
 import MusicManager from './MusicManager.js';
 import VictoryAudio from './VictoryAudio.js';
 import credits from '../../data/credits.js';
+import { createPresenceFx } from '../fx/MinotaurEntranceFx.js';
 
 // Final da versão SNCT (data/gameVersion.js = 'snct'): a run acaba ANTES do
 // Minotauro nascer. Roda logo depois do tremor (fx/MinotaurTremorFx.js), na
@@ -15,6 +16,12 @@ import credits from '../../data/credits.js';
 //   7. CORTE      CORTE SECO: preto, todo o áudio morre no mesmo instante,
 //                 silêncio e a mensagem de encerramento (CreditsScene em
 //                 modo cartões, data/credits.js -> snctBetaEnding).
+//
+// VFX de cinema (fx/MinotaurEntranceFx.js -> createPresenceFx, shader
+// BossEntrance): a criatura continua OCULTA — a presença aparece só na
+// lente (respiração que suga/solta o mundo, letterbox, grade violeta) e o
+// rugido vira cascata de ondas de choque + glitch + push-in, cortada seca.
+// `hooks.epicenter` = onde o tremor rachou o chão (origem das ondas).
 
 const HUD_FADE_MS = 1200;
 const MUSIC_FADE_MS = 900;
@@ -52,8 +59,12 @@ export function playSnctEnding(scene, hooks = {}) {
     .setDepth(1000);
   scene.tweens.add({ targets: dark, fillAlpha: DARK_ALPHA_MAX, duration: DARK_RAMP_MS, ease: 'Sine.easeIn' });
 
+  // lente do cinema (grade/vinheta/letterbox já entram junto do escurecimento)
+  const presence = createPresenceFx(scene, hooks.epicenter);
+
   const breathe = (strength, cycleS) => {
     MinotaurAudio.breath(scene, strength, cycleS);
+    presence.breath(strength, cycleS);
     if (scene.cache.audio.exists('sfx_minotaur_breath')) {
       scene.sound.play('sfx_minotaur_breath', { volume: 0.7 * strength, rate: 0.7 });
     }
@@ -74,6 +85,7 @@ export function playSnctEnding(scene, hooks = {}) {
   after(SILENCE_AT_MS, () => {
     MinotaurAudio.stopRumble(250);
     cam.resetFX();
+    presence.silence();
   });
 
   // RUGIDO
@@ -84,6 +96,7 @@ export function playSnctEnding(scene, hooks = {}) {
     cam.flash(160, 255, 255, 255);
     cam.shake(1500, ROAR_SHAKE, true);
     MinotaurAudio.roar(scene, ROAR_S);
+    presence.roar(ROAR_S);
     scene.sound.play('sfx_minotaur_cleave_roar', { volume: 1, rate: 0.8 });
     scene.sound.play('sfx_cyberus_explosion', { volume: 0.9, rate: 0.38 });
     // clarões secos durante o rugido
@@ -92,6 +105,7 @@ export function playSnctEnding(scene, hooks = {}) {
 
   // CORTE SECO
   after(CUT_AT_MS, () => {
+    presence.cut();
     cam.resetFX();
     dark.setFillStyle(0x000000, 1);
     scene.hud?.cutToBlack();

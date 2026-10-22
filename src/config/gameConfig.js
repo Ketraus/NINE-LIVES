@@ -14,6 +14,7 @@ import FlickerPipeline from '../fx/FlickerPipeline.js';
 import BloomPipeline from '../fx/BloomPipeline.js';
 import ChromaticAberrationPipeline from '../fx/ChromaticAberrationPipeline.js';
 import StaticNoisePipeline from '../fx/StaticNoisePipeline.js';
+import BossEntrancePipeline from '../fx/BossEntrancePipeline.js';
 import { BASE_WIDTH, BASE_HEIGHT } from './layout.js';
 
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
@@ -49,7 +50,8 @@ export const gameConfig = {
     Bloom: BloomPipeline,
     ChromaticAberration: ChromaticAberrationPipeline,
     StaticNoise: StaticNoisePipeline,
-    WorldEnd: WorldEndPipeline
+    WorldEnd: WorldEndPipeline,
+    BossEntrance: BossEntrancePipeline
   },
   physics: {
     default: 'arcade',

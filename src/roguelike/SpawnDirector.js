@@ -1,6 +1,7 @@
 // Curva de dificuldade progressiva ao longo dos 10 minutos de run: em v…
 import MusicManager from '../systems/MusicManager.js';
 import { playBossTremor } from '../fx/MinotaurTremorFx.js';
+import { startBossEntranceBuildup } from '../fx/MinotaurEntranceFx.js';
 import { playSnctEnding } from '../systems/SnctEnding.js';
 import gameVersion from '../../data/gameVersion.js';
 
@@ -96,6 +97,8 @@ export default class SpawnDirector {
     this.timerEvent = null;
     try { this.bossTremor?.stop(100); } catch (e) { /* cena já destruída */ }
     this.bossTremor = null;
+    try { this.bossBuildupFx?.cancel(); } catch (e) { /* cena já destruída */ }
+    this.bossBuildupFx = null;
   }
 
   // Congela o relógio da run (chamado quando a tela de escolha de carta
@@ -356,10 +359,10 @@ export default class SpawnDirector {
             // Versão SNCT: a run acaba aqui, antes do Minotauro nascer
             // (presença -> rugido -> corte seco -> mensagem, systems/SnctEnding.js)
             if (gameVersion.version === 'snct') {
-              playSnctEnding(this.scene);
+              playSnctEnding(this.scene, { epicenter });
               return;
             }
-            this._startBossTensionBuildup(generation);
+            this._startBossTensionBuildup(generation, epicenter);
             this.scene.time.delayedCall(BOSS_SILENCE_MS, () => this._triggerBossEntrance(generation));
           }
         });
@@ -368,9 +371,13 @@ export default class SpawnDirector {
   }
 
   // Começo do silêncio de verdade (tela já vazia): escurece a tela
-  _startBossTensionBuildup(generation = this.authorityGeneration) {
+  _startBossTensionBuildup(generation = this.authorityGeneration, epicenter = null) {
     if (!this.authorityActive || generation !== this.authorityGeneration) return;
     const cam = this.scene.cameras.main;
+    // Cinemática (fx/MinotaurEntranceFx.js): o mundo é sugado pro epicentro,
+    // letterbox desce, lente treme a cada batimento e chega no spawn.
+    try { this.bossBuildupFx?.cancel(); } catch (e) { /* já destruído */ }
+    this.bossBuildupFx = startBossEntranceBuildup(this.scene, epicenter, BOSS_SILENCE_MS);
     this.bossOverlay = this.scene.add
       .rectangle(cam.width / 2, cam.height / 2, cam.width * 3, cam.height * 3, BOSS_OVERLAY_COLOR, 0)
       .setScrollFactor(0)
@@ -389,6 +396,7 @@ export default class SpawnDirector {
       this.scene.time.delayedCall(t, () => {
         if (!this.authorityActive || generation !== this.authorityGeneration) return;
         this.scene.cameras.main.shake(BOSS_HEARTBEAT_SHAKE_MS, BOSS_HEARTBEAT_INTENSITIES[i]);
+        this.bossBuildupFx?.heartbeat(i, BOSS_HEARTBEAT_TIMES_MS.length);
       });
     });
   }
@@ -400,6 +408,9 @@ export default class SpawnDirector {
     this.bossOverlay = null;
     this.bossTremor?.stop(200);
     this.bossTremor = null;
+    // o impacto (EnemySpawner._playBossEntranceFx) assume o shader dali
+    this.bossBuildupFx?.finish();
+    this.bossBuildupFx = null;
 
     const cam = this.scene.cameras.main;
     cam.flash(BOSS_FLASH_MS, 255, 255, 255);

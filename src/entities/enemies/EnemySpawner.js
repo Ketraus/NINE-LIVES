@@ -8,6 +8,7 @@ import Sealer from './Sealer.js';
 import Minotaur from './Minotaur.js';
 import SwarmSystem from './SwarmSystem.js';
 import DamageSystem from '../../combat/DamageSystem.js';
+import { playBossEntranceImpact } from '../../fx/MinotaurEntranceFx.js';
 
 // Escolhe a classe do inimigo pelo def (data/enemies.js). As habilidades especiais
 // seguem as mesmas flags de antes (boss/elite/sealer/explodes); os inimigos comuns
@@ -323,6 +324,15 @@ export default class EnemySpawner {
 
   // Pop de escala (nasce pequeno, estoura pro tamanho final) + anel de
   _playBossEntranceFx(enemy) {
+    // Entrada cinematográfica (shader de choque/zoom/aberração/glitch, coluna
+    // de luz, materialização — fx/MinotaurEntranceFx.js). Se algo falhar
+    // (ex.: sem WebGL no meio do caminho), cai no pop simples de antes.
+    try {
+      playBossEntranceImpact(this.scene, enemy);
+      return;
+    } catch (e) {
+      console.warn('[BossEntrance] fallback pro pop simples:', e);
+    }
     const targetScale = enemy.baseScale;
     enemy.setScale(targetScale * BOSS_ENTRANCE_SCALE_START_FACTOR);
     this.scene.tweens.add({
