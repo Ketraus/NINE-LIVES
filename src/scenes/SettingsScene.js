@@ -85,7 +85,7 @@ export default class SettingsScene extends Phaser.Scene {
     });
 
     const accessibilityX = Math.max(110, width * 0.16);
-    const accessibilityY = height - Math.round(133 * UI_SCALE);
+    const accessibilityY = height - Math.round(181 * UI_SCALE);
     this.add
       .text(accessibilityX, accessibilityY - Math.round(42 * UI_SCALE), 'ACESSIBILIDADE', {
         fontFamily: PIXEL_FONT,
@@ -104,10 +104,31 @@ export default class SettingsScene extends Phaser.Scene {
       SettingsManager.setLargeHud(value);
       EventBus.emit('accessibility-settings-changed');
     });
+    this._buildFullscreenButton(accessibilityX, accessibilityY + Math.round(144 * UI_SCALE));
 
     this._buildBackButton(width / 2, startY + spacing * 4 + Math.round(10 * UI_SCALE));
 
     this._setupRetroFx();
+  }
+
+  _buildFullscreenButton(x, y) {
+    const button = this._buildToggle(x, y, 'TELA CHEIA', this.scale.isFullscreen, () => {
+      if (this.scale.isFullscreen) this.scale.stopFullscreen();
+      else this.scale.startFullscreen();
+      refresh();
+    });
+    // O estado vem do navegador: ESC e pedidos recusados também atualizam o botão.
+    const refresh = () => button.setEnabledState(this.scale.isFullscreen);
+    const events = ['enterfullscreen', 'leavefullscreen', 'fullscreenfailed', 'fullscreenunsupported'];
+    events.forEach((event) => this.scale.on(event, refresh));
+    if (!this.scale.fullscreen.available) {
+      button.hitArea.disableInteractive();
+      button.stateText.setText('N/D');
+      button.setAlpha(0.5);
+    }
+    this.events.once('shutdown', () => {
+      events.forEach((event) => this.scale.off(event, refresh));
+    });
   }
 
   _buildToggle(x, y, label, initialValue, onChange) {
@@ -146,6 +167,12 @@ export default class SettingsScene extends Phaser.Scene {
     });
 
     container.add([panel, labelText, stateText, hitArea]);
+    container.hitArea = hitArea;
+    container.stateText = stateText;
+    container.setEnabledState = (value) => {
+      enabled = Boolean(value);
+      render();
+    };
     render();
     return container;
   }
