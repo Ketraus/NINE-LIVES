@@ -19,6 +19,10 @@ export default class CreditsScene extends Phaser.Scene {
     super('CreditsScene');
   }
 
+  init(data) {
+    this._customCards = data?.cards?.length ? data.cards : null; // ex.: final beta da SNCT (SnctEnding)
+  }
+
   create() {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#000000');
@@ -26,7 +30,7 @@ export default class CreditsScene extends Phaser.Scene {
     this._leaving = false;
     this._holdMs = 0;
     this._elapsedMs = 0;
-    this._cardsMode = gameVersion.version !== 'feira' && credits.snctEpilogue?.length > 0;
+    this._cardsMode = Boolean(this._customCards) || (gameVersion.version !== 'feira' && credits.snctEpilogue?.length > 0);
 
     if (this._cardsMode) {
       this._buildCards();
@@ -76,7 +80,7 @@ export default class CreditsScene extends Phaser.Scene {
   // Encerramento da SNCT: um cartão por vez, sobre preto (credits.snctEpilogue).
   _buildCards() {
     const { width, height } = this.scale;
-    const cards = credits.snctEpilogue;
+    const cards = this._customCards || credits.snctEpilogue;
     let index = 0;
     const next = () => {
       if (this._leaving) return;
@@ -97,7 +101,7 @@ export default class CreditsScene extends Phaser.Scene {
       }
       card.lines.forEach((line) => {
         const t = this.add
-          .text(0, y, line, { fontFamily: PIXEL_FONT, fontSize: '12px', color: '#dfe3ea', align: 'center' })
+          .text(0, y, line, { fontFamily: PIXEL_FONT, fontSize: '12px', color: '#dfe3ea', align: 'center', wordWrap: { width: width * 0.86 } })
           .setOrigin(0.5, 0)
           .setLetterSpacing(2);
         container.add(t);

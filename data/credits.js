@@ -16,6 +16,12 @@ export default {
   // Encerramento da versão SNCT (data/gameVersion.js): cartões sobre preto,
   // um de cada vez (fade in -> fica -> fade out). Cada cartão: `title`
   // (opcional, maior) e `lines`. Depois do último volta pro menu.
+  // Mensagem do final da versão beta da SNCT (run que acaba antes do
+  // Minotauro, ver systems/SnctEnding.js): um cartão só, as duas linhas juntas.
+  snctBetaEnding: [
+    { lines: ['Obrigado por jogar a versão beta da SNCT.', 'A versão completa estará disponível na Feira de Jogos.'] }
+  ],
+
   snctEpilogue: [
     { title: 'NINE LIVES', lines: ['Você presenciou apenas o começo.'] },
     { lines: ['Esta é uma versão experimental.', 'Descubra o que desperta nas profundezas', 'na Feira de Jogos.'] },

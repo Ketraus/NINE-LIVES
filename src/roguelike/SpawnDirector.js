@@ -1,5 +1,8 @@
 // Curva de dificuldade progressiva ao longo dos 10 minutos de run: em v…
 import MusicManager from '../systems/MusicManager.js';
+import { playBossTremor } from '../fx/MinotaurTremorFx.js';
+import { playSnctEnding } from '../systems/SnctEnding.js';
+import gameVersion from '../../data/gameVersion.js';
 
 // Dono do "quando", "quantos" e "de que tipo" da sobrevivência por temp…
 // Fallback de segurança, só usado se GameScene não passar spawnCurves p…
@@ -30,6 +33,13 @@ const BOSS_FLASH_SHAKE_INTENSITY = 0.016;
 const BOSS_HITSTOP_MS = 130;
 // Respiro depois que a sequencia de morte do Minotauro termina.
 const BOSS_DEFEAT_DELAY_MS = 3000;
+// Ruptura (cena 1): o combate para do nada — inimigos fogem na hora, com um
+// hitstop curtinho, e a música começa a sumir (até o fim do silêncio).
+const BOSS_RUPTURE_HITSTOP_MS = 110;
+const BOSS_MUSIC_FADE_MS = 12000;
+// Tremor (cenas 2 a 4, fx/MinotaurTremorFx.js): estrondo, rachaduras violetas
+// e segundo impacto, tudo ao redor do ponto onde o Minotauro vai nascer.
+// Só depois dele começa o escurecimento (silêncio) da entrada.
 
 export default class SpawnDirector {
   // {t, weights} com o peso de cada tipo de inimigo ao longo do tempo de
@@ -84,6 +94,8 @@ export default class SpawnDirector {
     this.authorityGeneration += 1;
     this.timerEvent?.remove();
     this.timerEvent = null;
+    try { this.bossTremor?.stop(100); } catch (e) { /* cena já destruída */ }
+    this.bossTremor = null;
   }
 
   // Congela o relógio da run (chamado quando a tela de escolha de carta
@@ -179,6 +191,22 @@ export default class SpawnDirector {
     this.bossTriggered = true;
     this.bossHasSpawned = true;
     this._bossMusicRestoreDone = true;
+    this.bossRecoveryUntilMs = 0;
+  }
+
+  // Cheat (DevConsole "mino"): marca como já disparados só os eventos
+  // (Sealer/Elite) que já teriam acontecido até targetMs, e deixa o Boss
+  // PENDENTE pra disparar no horário normal do bossSchedule.
+  skipEventsBefore(targetMs) {
+    (this.sealerSchedule || []).forEach((t, i) => {
+      if (t <= targetMs) this.sealerTriggered.add(i);
+    });
+    (this.eliteSchedule || []).forEach((entry, i) => {
+      if (entry.t <= targetMs) this.eliteTriggered.add(i);
+    });
+    this.bossTriggered = false;
+    this.bossHasSpawned = false;
+    this._bossMusicRestoreDone = false;
     this.bossRecoveryUntilMs = 0;
   }
 
@@ -279,9 +307,22 @@ export default class SpawnDirector {
     if (!this.bossSchedule || this.bossTriggered) return;
     if (this.getElapsedMs() >= this.bossSchedule.t) {
       this.bossTriggered = true;
-      this.enemySpawner.fleeAll();
-      this._waitForEmptyScreenThenBuildup();
+      this._startBossRupture();
     }
+  }
+
+  // Cena 1 — ruptura: tudo que está vivo foge em pânico e a música começa a
+  // se apagar. O hitstop curto faz o corte parecer "errado", não uma pausa.
+  _startBossRupture() {
+    const generation = this.authorityGeneration;
+    this.enemySpawner.fleeAll();
+    MusicManager.duckForBoss(this.scene, BOSS_MUSIC_FADE_MS);
+    this.scene.physics.world.pause();
+    this.scene.time.delayedCall(BOSS_RUPTURE_HITSTOP_MS, () => {
+      this.scene.physics.world.resume();
+      if (!this.authorityActive || generation !== this.authorityGeneration) return;
+      this._waitForEmptyScreenThenBuildup();
+    });
   }
 
   // true desde o instante do gatilho do Boss até ele nascer E morrer —
@@ -307,8 +348,21 @@ export default class SpawnDirector {
         }
         if (this.enemySpawner.hasAnyAlive()) return;
         poll.remove();
-        this._startBossTensionBuildup(generation);
-        this.scene.time.delayedCall(BOSS_SILENCE_MS, () => this._triggerBossEntrance(generation));
+        // Cenas 2-4: o epicentro é onde o Minotauro vai nascer
+        const epicenter = this.enemySpawner.prepareBossSpawnPosition();
+        this.bossTremor = playBossTremor(this.scene, epicenter, {
+          onDone: () => {
+            if (!this.authorityActive || generation !== this.authorityGeneration) return;
+            // Versão SNCT: a run acaba aqui, antes do Minotauro nascer
+            // (presença -> rugido -> corte seco -> mensagem, systems/SnctEnding.js)
+            if (gameVersion.version === 'snct') {
+              playSnctEnding(this.scene);
+              return;
+            }
+            this._startBossTensionBuildup(generation);
+            this.scene.time.delayedCall(BOSS_SILENCE_MS, () => this._triggerBossEntrance(generation));
+          }
+        });
       }
     });
   }
@@ -344,6 +398,8 @@ export default class SpawnDirector {
     if (!this.authorityActive || generation !== this.authorityGeneration) return;
     this.bossOverlay?.destroy();
     this.bossOverlay = null;
+    this.bossTremor?.stop(200);
+    this.bossTremor = null;
 
     const cam = this.scene.cameras.main;
     cam.flash(BOSS_FLASH_MS, 255, 255, 255);

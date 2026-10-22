@@ -482,6 +482,7 @@ export default class GameScene extends Phaser.Scene {
     this.victoryFinale = new VictoryFinale(this); // câmera abandona o jogador -> "MAS NÃO A GUERRA." -> créditos
     this.victoryTremorLevel = 0; // 0..1, lido pelos inimigos pra tremerem de medo
     this.victorySequenceStarted = false; // sequência de vitória (solo) já disparada
+    this.snctEndingStarted = false; // final beta da SNCT (SnctEnding.js) já disparado
     this.playerAttacksDisabled = false; // true na sequência: jogador/armas/habilidades não atacam
     this.enemiesDisarmed = false; // true na sequência: inimigos não causam dano (ver DamageSystem)
     this.groupWon = false; // vitória do grupo anunciada pelo Host (quem já tinha morrido também a recebe)

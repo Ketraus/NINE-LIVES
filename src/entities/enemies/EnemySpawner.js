@@ -190,7 +190,7 @@ export default class EnemySpawner {
     const def = weights ? this._pickWeighted(weights) : this._pickUniform(nowMs);
     if (!def) return null;
     const pos = def.sealer ? this._findSealerSpawnPosition(def)
-      : def.boss ? this._findBossSpawnPosition()
+      : def.boss ? this._takeBossSpawnPosition()
       : this._findSpawnPosition(baseAngle);
     return this._createAt(def, pos);
   }
@@ -379,6 +379,27 @@ export default class EnemySpawner {
     }
 
     return this._findSpawnPosition();
+  }
+
+  // Cinemática do Minotauro: o tremor (fx/MinotaurTremorFx.js) precisa saber
+  // ANTES onde ele vai nascer pra rachar o chão ali. Reserva a posição; no
+  // spawn real ela só vale se ainda estiver dentro da câmera e livre —
+  // senão (jogador andou muito) recalcula na hora.
+  prepareBossSpawnPosition() {
+    this._reservedBossPos = this._findBossSpawnPosition();
+    return this._reservedBossPos;
+  }
+
+  _takeBossSpawnPosition() {
+    const reserved = this._reservedBossPos;
+    this._reservedBossPos = null;
+    if (reserved) {
+      const view = this._currentCameraView();
+      const m = 40;
+      const inside = reserved.x > view.x + m && reserved.x < view.right - m && reserved.y > view.y + m && reserved.y < view.bottom - m;
+      if (inside && !this._isBlockedByWall(reserved.x, reserved.y, BOSS_SPAWN_CLEARANCE)) return reserved;
+    }
+    return this._findBossSpawnPosition();
   }
 
   // Posição de spawn exclusiva do Boss: NA FRENTE do jogador (direção em que ele anda)

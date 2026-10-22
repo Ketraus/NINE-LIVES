@@ -103,6 +103,7 @@ export default class DevConsole {
         this._log('autospawn — liga/desliga as levas automáticas (spawn manual continua funcionando)');
         this._log('settime <segundos> — ajusta o tempo decorrido da run (afeta dificuldade e vitória aos 10:00)');
         this._log('fim [segundos] — simula o fim: limpa a arena, só horda base (sem Minotauro/eventos) e pula pro tempo (padrão 595 = 9:55)');
+        this._log('mino [segundos] — pula pro pré-Minotauro (padrão 350 = 5:50): limpa a arena, marca Sealer/Elite anteriores como já ocorridos, spawna horda base e deixa o Minotauro nascer às 6:00');
         break;
 
       case 'list': {
@@ -257,6 +258,28 @@ export default class DevConsole {
         scene.enemySpawner.spawnByDefId('cyber_hound', 6);
         scene.enemySpawner.spawnByDefId('cyber_brute', 3);
         this._log(`Fim simulado: tempo em ${sec}s, 23 inimigos base, sem Minotauro/Elite/Sealer. Vitória em ${Math.max(0, 600 - sec).toFixed(0)}s.`);
+        break;
+      }
+
+      case 'mino': {
+        const scene = this.scene;
+        if (scene.victorySequenceStarted) {
+          this._log('A sequência de vitória já começou — reinicie a run (R) pra testar de novo.');
+          break;
+        }
+        const sec = args[0] === undefined ? 350 : Number(args[0]);
+        if (!Number.isFinite(sec) || sec < 0) {
+          this._log('Uso: mino [segundos] (padrão 350 = 5:50)');
+          break;
+        }
+        scene.enemySpawner.killAll();
+        scene.spawnDirector.skipEventsBefore(sec * 1000); // Sealer/Elite passados = já ocorridos; Boss continua pendente
+        scene._magnetHasAppeared = false; // o ímã garantido do boss continua valendo
+        scene.spawnDirector.setElapsedMs(sec * 1000);
+        scene.enemySpawner.spawnByDefId('grunt', 14);
+        scene.enemySpawner.spawnByDefId('cyber_hound', 6);
+        scene.enemySpawner.spawnByDefId('cyber_brute', 3);
+        this._log(`Pré-Minotauro: tempo em ${sec}s, 23 inimigos base, Sealer/Elite anteriores pulados. Minotauro em ${Math.max(0, 360 - sec).toFixed(0)}s.`);
         break;
       }
 
