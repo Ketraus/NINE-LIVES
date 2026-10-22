@@ -94,7 +94,32 @@ const WHITE_SPRITE_SETS = {
   }
 };
 
+// Skin do gato laranja (3º jogador do multiplayer): Laser Gun (default) e
+// Katana. Paws (fists) ainda não tem versão laranja — cai no gato preto.
+const ORANGE_SPRITE_SETS = {
+  katana: {
+    idleKey: 'player_orange_katana_idle',
+    walkKey: 'player_orange_katana_walk',
+    idleAnim: 'player-orange-katana-idle',
+    walkAnim: 'player-orange-katana-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  },
+  default: {
+    idleKey: 'player_orange_idle',
+    walkKey: 'player_orange_walk',
+    idleAnim: 'player-orange-idle',
+    walkAnim: 'player-orange-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  }
+};
+
 export function getPlayerSpriteSet(weaponId, skin = 'default') {
+  if (skin === 'orange') {
+    if (ORANGE_SPRITE_SETS[weaponId]) return ORANGE_SPRITE_SETS[weaponId];
+    if (!SPRITE_SETS[weaponId]) return ORANGE_SPRITE_SETS.default;
+  }
   if (skin === 'white') {
     if (WHITE_SPRITE_SETS[weaponId]) return WHITE_SPRITE_SETS[weaponId];
     if (!SPRITE_SETS[weaponId]) return WHITE_SPRITE_SETS.default;
@@ -108,6 +133,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, spriteSet.idleKey);
     this.runState = runState;
     this._spriteSet = spriteSet;
+    this.skin = skin;
 
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -166,6 +192,16 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // mesmos eventos que já pausam o SpawnDirector (ver GameScene) — o
     EventBus.on('levelup-opened', () => this.shieldSystem?.pause(this.scene.time.now));
     EventBus.on('levelup-closed', () => this.shieldSystem?.resume(this.scene.time.now));
+  }
+
+  // Troca a skin depois do Player já existir (multiplayer: a vaga só é
+  // confirmada quando o Host anuncia o roster, com o Player já criado).
+  setSkin(skin) {
+    if (this.skin === skin) return;
+    this.skin = skin;
+    this._spriteSet = getPlayerSpriteSet(this.runState.weaponId, skin);
+    this.play(this._spriteSet.idleAnim);
+    this._currentAnim = this._spriteSet.idleAnim;
   }
 
   _unlockShield(def) {

@@ -185,9 +185,29 @@ export default class MultiplayerManager {
     this.mqtt.on('error', this.onError);
   }
 
+  // Skin pela vaga fixa: 0 = Host original (preto), 1 = branco, 2 = laranja
+  // (Player 3). A 4ª vaga ainda não tem skin própria e usa o gato preto.
+  _skinForSlot(slot) {
+    if (slot === 1) return 'white';
+    if (slot === 2) return 'orange';
+    return 'default';
+  }
+
+  // Só troca depois que o roster (ou o papel de Host) confirma a minha vaga;
+  // antes disso o joiner continua com o branco de antes.
+  _syncLocalSkin() {
+    if (!this.player?.setSkin) return;
+    if (!this.isRoomHost && !this.getRoster().includes(this.playerId)) return;
+    const skin = this._skinForSlot(this._getPlayerSlot(this.playerId));
+    if (this.scene.skin === skin) return;
+    this.scene.skin = skin;
+    this.player.setSkin(skin);
+  }
+
   update(_time, delta) {
     const now = Date.now();
     this._refreshRoomProof();
+    this._syncLocalSkin();
     this._checkHostMigration(now);
     this._updateRoster(now);
     this._evaluateLobbyStart();
@@ -211,7 +231,7 @@ export default class MultiplayerManager {
         moving: !this.scene.isPaused && !this.scene.isGameOver &&
           this.player.body.velocity.lengthSq() > 0,
         weaponId: this.player.runState.weaponId,
-        skin: this.scene.skin === 'white' ? 'white' : undefined,
+        skin: this.scene.skin === 'white' || this.scene.skin === 'orange' ? this.scene.skin : undefined,
         hp: this.player.healthSystem.current,
         maxHp: this.player.healthSystem.maxHp,
         vx: this.player.body.velocity.x,
@@ -1742,8 +1762,9 @@ export default class MultiplayerManager {
       let remote = this.remotePlayers.get(playerId);
       if (!remote) {
         if (!this._admitNewPlayer(playerId, state, acceptedHost)) return;
-        // skin fixa por jogador: branco = quem entrou na sala, preto = Host original
-        const skinSet = getPlayerSpriteSet(state.weaponId, state.skin === 'white' ? 'white' : 'default');
+        // skin fixa por vaga: preto = Host original, branco = 2º, laranja = 3º
+        const remoteSkin = state.skin === 'white' || state.skin === 'orange' ? state.skin : 'default';
+        const skinSet = getPlayerSpriteSet(state.weaponId, remoteSkin);
         const spriteSet = { idle: skinSet.idleAnim, walk: skinSet.walkAnim };
         const sprite = this.scene.add.sprite(state.x, state.y, skinSet.idleKey)
           .setScale(BASE_VISUAL_SCALE)
@@ -1759,6 +1780,7 @@ export default class MultiplayerManager {
         remote = {
           sprite,
           spriteSet,
+          skin: remoteSkin,
           targetX: state.x,
           targetY: state.y,
           hp,
@@ -1824,6 +1846,13 @@ export default class MultiplayerManager {
       this._playRemoteFxEvents(remote, state.abilityVisuals?.fx);
       remote.lastSeenAt = Date.now();
       remote.sprite.setFlipX(Boolean(state.flipX));
+      // a skin do jogador remoto pode mudar quando o roster confirma a vaga dele
+      const incomingSkin = state.skin === 'white' || state.skin === 'orange' ? state.skin : 'default';
+      if (incomingSkin !== remote.skin) {
+        remote.skin = incomingSkin;
+        const newSet = getPlayerSpriteSet(state.weaponId, incomingSkin);
+        remote.spriteSet = { idle: newSet.idleAnim, walk: newSet.walkAnim };
+      }
       const animation = state.moving ? remote.spriteSet.walk : remote.spriteSet.idle;
       if (remote.sprite.anims.currentAnim?.key !== animation) remote.sprite.play(animation);
       this._syncRemoteAbilityVisuals(remote, remote.abilityVisuals);

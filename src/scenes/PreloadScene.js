@@ -83,6 +83,24 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Skin do gato LARANJA (3º jogador do multiplayer): Laser Gun (base) e
+    // Katana. Paws não tem versão laranja ainda (cai no gato preto de punhos).
+    this.load.spritesheet('player_orange_idle', 'assets/sprites/player_orange_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_orange_walk', 'assets/sprites/player_orange_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_orange_katana_idle', 'assets/sprites/player_orange_katana_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_orange_katana_walk', 'assets/sprites/player_orange_katana_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('enemy', 'assets/sprites/enemy.png');
     // Grunt: primeiro inimigo comum com sprite próprio (mesmo padrão do
     // Minotauro) — idle é imagem única, walk é spritesheet de verdade.
@@ -461,6 +479,32 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'player-white-paws-walk',
       frames: this.anims.generateFrameNumbers('player_white_paws_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+
+    // Gato laranja (3º jogador) — mesmos frameRates do gato base
+    this.anims.create({
+      key: 'player-orange-idle',
+      frames: this.anims.generateFrameNumbers('player_orange_idle', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-orange-walk',
+      frames: this.anims.generateFrameNumbers('player_orange_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-orange-katana-idle',
+      frames: this.anims.generateFrameNumbers('player_orange_katana_idle', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-orange-katana-walk',
+      frames: this.anims.generateFrameNumbers('player_orange_katana_walk', { start: 0, end: 5 }),
       frameRate: 12,
       repeat: -1
     });
