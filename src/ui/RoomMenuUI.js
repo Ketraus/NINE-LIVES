@@ -433,10 +433,6 @@ export default class RoomMenuUI {
     if (value == null) return;
 
     const hash = hashRoomPassword(entry.room, value.trim());
-    if (hash !== entry.pw) {
-      this._setBrowseMessage('SENHA INCORRETA');
-      return;
-    }
     this.scene._start(entry.room, false, { priv: true, pw: hash });
   }
 }

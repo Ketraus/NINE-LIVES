@@ -18,7 +18,7 @@ const orbs = [8, 13, 21].map((value, id) => ({
 }));
 const scene = {
   multiplayer: {
-    playerId: 'host', getRoster: () => recipients.slice(),
+    playerId: 'host', getAlivePlayerIds: () => recipients.slice(),
     broadcastPickupRemoval: (...record) => records.push(record)
   },
   xpOrbGroup: { getChildren: () => orbs },

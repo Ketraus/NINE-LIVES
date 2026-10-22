@@ -97,7 +97,6 @@ export default class RoomDirectory {
       this.rooms.set(topicRoom, {
         room: topicRoom,
         priv: message.priv === true,
-        pw: typeof message.pw === 'string' ? message.pw.slice(0, 24) : null,
         players,
         max,
         phase: message.phase === 'playing' ? 'playing' : 'waiting',

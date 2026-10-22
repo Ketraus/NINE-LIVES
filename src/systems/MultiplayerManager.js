@@ -1,4 +1,5 @@
 import MqttClient from './MqttClient.js';
+import { createRoomProof } from './RoomAuth.js';
 import { BASE_VISUAL_SCALE, getPlayerSpriteSet } from '../entities/Player.js';
 import { ensureBulletTexture } from '../weapons/RangedWeapon.js';
 import { hasSlashFx, playSlashFx } from '../fx/SlashFx.js';
@@ -99,6 +100,7 @@ export default class MultiplayerManager {
     this.pauseApplied = false;
     this.levelUpQueue = [];
     this.levelUpActive = false;
+    this.spectatorLevelUpPaused = false;
     this.levelUpRound = 0;
     this.levelUpPhase = 'idle';
     this.levelUpChoices = [];
@@ -153,7 +155,7 @@ export default class MultiplayerManager {
     try {
       this.mqtt = new MqttClient(brokerUrl, {
         clientId: this.playerId,
-        clean: true,
+        clean: false,
         connectTimeout: 5000,
         reconnectPeriod: 1000
       });
@@ -166,13 +168,12 @@ export default class MultiplayerManager {
       Promise.all([
         this.mqtt.subscribe(`${this.topicPrefix}/+/position`),
         this.mqtt.subscribe(`${this.topicPrefix}/+/attack`),
-        this.mqtt.subscribe(`${this.topicPrefix}/+/damage`),
-        this.mqtt.subscribe(`${this.enemyHitPrefix}/+`),
-        this.mqtt.subscribe(`${this.pickupClaimPrefix}/+`),
+        this.mqtt.subscribe(`${this.enemyHitPrefix}/+`, 1),
+        this.mqtt.subscribe(`${this.pickupClaimPrefix}/+`, 1),
         this.mqtt.subscribe(this.enemyStateTopic),
-        this.mqtt.subscribe(this.enemyDeathTopic),
-        this.mqtt.subscribe(this.playerDamageTopic),
-        this.mqtt.subscribe(this.pickupRemovedTopic)
+        this.mqtt.subscribe(this.enemyDeathTopic, 1),
+        this.mqtt.subscribe(this.playerDamageTopic, 1),
+        this.mqtt.subscribe(this.pickupRemovedTopic, 1)
       ]).catch((error) => {
         console.error('[Multiplayer] Falha ao assinar tópico:', error);
       });
@@ -186,6 +187,7 @@ export default class MultiplayerManager {
 
   update(_time, delta) {
     const now = Date.now();
+    this._refreshRoomProof();
     this._checkHostMigration(now);
     this._updateRoster(now);
     this._evaluateLobbyStart();
@@ -232,7 +234,9 @@ export default class MultiplayerManager {
         level: this.player.runState.level,
         pauseRequested: this.pauseRequested,
         ready: this.localReady,
-        pw: this.roomMeta.priv ? this.roomMeta.pw : undefined,
+        roomProof: this.roomMeta.priv ? this.roomProof : undefined,
+        authEpoch: this.roomMeta.priv ? this.runEpoch : undefined,
+        authTerm: this.roomMeta.priv ? this.hostTerm : undefined,
         roomPhase: this.isRoomHost ? this.matchPhase : undefined,
         roster: this.isRoomHost ? this.getRoster() : undefined,
         isHost: this.isRoomHost,
@@ -241,6 +245,7 @@ export default class MultiplayerManager {
         enemySnapshotSeq: this.isRoomHost ? this.lastEnemySnapshotSequence : undefined,
         runTimeMs: this.isRoomHost ? (this.scene.spawnDirector?.getElapsedMs() ?? 0) : undefined,
         runPaused: this.isRoomHost && this.scene.isPaused,
+        manualPaused: this.isRoomHost && (this.pauseApplied || this.visibilityPauseApplied === true),
         matchState: this.isRoomHost ? this.matchState : undefined,
         spawnDirectorState: this.isRoomHost
           ? this.scene.spawnDirector?.getAuthorityState?.() ?? null
@@ -283,6 +288,20 @@ export default class MultiplayerManager {
     this._syncPauseVote();
     this._syncLevelUp();
     this._syncHostPause();
+  }
+
+  _refreshRoomProof() {
+    if (!this.roomMeta.priv || !this.runEpoch) return;
+    const context = JSON.stringify([this.runEpoch, this.hostTerm, this.isRoomHost]);
+    if (context === this.roomProofContext) return;
+    this.roomProofContext = context;
+    this.roomProof = undefined;
+    createRoomProof(this.roomMeta.pw, this.roomCode, this.playerId, this.runEpoch, this.hostTerm, this.isRoomHost)
+      .then((proof) => { if (this.roomProofContext === context) this.roomProof = proof; })
+      .catch((error) => {
+        console.error('[Multiplayer] Falha ao autenticar sala privada:', error.message);
+        this.scene.leaveToMenu?.('SALA PRIVADA REQUER HTTPS OU LOCALHOST');
+      });
   }
 
   // ---------- sala de espera / "pronto" / lista de salas ----------
@@ -329,7 +348,6 @@ export default class MultiplayerManager {
   // Não-Host: ignora quem o Host não colocou no roster (vaga/senha).
   _admitNewPlayer(playerId, state, acceptedHost) {
     if (this.isRoomHost) {
-      if (this.roomMeta.priv && state.pw !== this.roomMeta.pw) return false;
       if (this.slotOrder.includes(playerId)) return true;
       if (this.slotOrder.length >= MAX_ROOM_PLAYERS) return false;
       this.slotOrder.push(playerId);
@@ -392,7 +410,6 @@ export default class MultiplayerManager {
     this.mqtt.publish(this.roomAdvertTopic, {
       room: this.roomCode,
       priv: this.roomMeta.priv,
-      pw: this.roomMeta.priv ? this.roomMeta.pw : undefined,
       players: this.getRoster().length,
       max: MAX_ROOM_PLAYERS,
       phase: this.matchPhase,
@@ -476,6 +493,7 @@ export default class MultiplayerManager {
         ...enemyIds.map((id) => id + 1)
       );
     }
+    this.remoteEnemies.clear(); // agora são inimigos locais, sem interpolação de snapshots antigos
     if (this.pendingEnemyDamage.size > 0) {
       const pendingHits = [...this.pendingEnemyDamage.entries()].map(([networkId, entry]) => [
         networkId,
@@ -508,7 +526,13 @@ export default class MultiplayerManager {
     if (!this.isRoomHost) return;
     this.isRoomHost = false;
     this.scene.isRoomHost = false;
+    this.hostPauseApplied = this.scene.pauseUI?.isOpen === true;
+    this.pauseApplied = false;
+    this.visibilityPauseApplied = false;
     this.scene.spawnDirector?.stop();
+    // Os snapshots do novo host vão reconstruir a população autoritativa.
+    this.scene.enemySpawner?.group.getChildren().slice().forEach((enemy) => enemy._leave());
+    this.remoteEnemies.clear();
     this.scene.multiplayer?.attachRunClock(this.scene.spawnDirector);
   }
 
@@ -541,6 +565,7 @@ export default class MultiplayerManager {
       this.hostRunTimeMs = Math.max(0, state.runTimeMs);
       this.hostRunTimeReceivedAt = Date.now();
       this.hostRunPaused = state.runPaused === true;
+      this.hostManualPaused = state.manualPaused === true;
     }
     if (state.spawnDirectorState && typeof state.spawnDirectorState === 'object') {
       this.hostSpawnDirectorState = state.spawnDirectorState;
@@ -651,6 +676,7 @@ export default class MultiplayerManager {
   _syncLevelUp() {
     if (!this.isMultiplayer || !this.mqtt || this.scene.hasWon ||
       (this.scene.isGameOver && !this.isRoomHost)) return;
+    if (this.pauseApplied && this.levelUpPhase === 'idle') return;
     if (!this.isRoomHost) {
       if (this.levelUpPhase === 'selecting') {
         if (this.levelUpQueue.length > 0) {
@@ -703,15 +729,35 @@ export default class MultiplayerManager {
         activeRemotes.every(([, remote]) => remote.levelUpPendingCount === 0);
       if (everyoneFinished) {
         this.levelUpPhase = 'idle';
+        this._syncSpectatorLevelUpPause();
         if (!this.scene.isGameOver) this.scene.levelUpUI?.finishMultiplayerRound();
         return;
       }
 
+      this._syncSpectatorLevelUpPause();
       if (!this.scene.isGameOver && this.levelUpQueue.length > 0) this._showNextLevelUp();
       else if (!this.scene.isGameOver && !this.levelUpActive &&
         !this.scene.multiplayerWaitingForLevelUp) {
         this.scene.levelUpUI?.showWaiting();
       }
+    }
+  }
+
+  // O host morto ainda simula o mundo, mas não abre a tela de cartas.
+  // A pausa da rodada precisa existir mesmo sem essa interface local.
+  _syncSpectatorLevelUpPause() {
+    if (!this.isRoomHost || !this.scene.isGameOver) return;
+    const selecting = this.levelUpPhase === 'selecting';
+    if (selecting === this.spectatorLevelUpPaused) return;
+    this.spectatorLevelUpPaused = selecting;
+    if (selecting) {
+      this.scene.physics.pause();
+      this.scene.time.timeScale = 0;
+      EventBus.emit('levelup-opened');
+    } else {
+      this.scene.physics.resume();
+      this.scene.time.timeScale = 1;
+      EventBus.emit('levelup-closed');
     }
   }
 
@@ -740,15 +786,20 @@ export default class MultiplayerManager {
     this.mqtt.publish(this.enemyHitTopic, {
       id: this.playerId,
       seq: ++this.lastEnemyHitSequence,
+      hostId: this.hostPlayerId,
+      hostTerm: this.hostTerm,
+      epoch: this.runEpoch,
       hits
-    });
+    }, 1);
   }
 
   _onEnemyHits(playerId, message) {
     if (!this.isRoomHost || message.id !== playerId || !Number.isInteger(message.seq) ||
       !Array.isArray(message.hits)) return;
     const remote = this.remotePlayers.get(playerId);
-    if (!remote || message.seq <= (remote.lastEnemyHitSequence || 0)) return;
+    if (!remote?.combatant?.active || message.epoch !== this.runEpoch ||
+      message.hostId !== this.playerId || message.hostTerm !== this.hostTerm ||
+      message.seq <= (remote.lastEnemyHitSequence || 0)) return;
     remote.lastEnemyHitSequence = message.seq;
 
     this._applyEnemyHitRecords(playerId, message.hits);
@@ -799,9 +850,10 @@ export default class MultiplayerManager {
       seq: ++this.lastPlayerDamageSequence,
       hostId: this.playerId,
       hostTerm: this.hostTerm,
+      epoch: this.runEpoch,
       amount: Math.min(MAX_DAMAGE_PER_MESSAGE, amount),
       shieldCurrent: Number.isFinite(shieldCurrent) ? Math.max(0, shieldCurrent) : undefined
-    });
+    }, 1);
   }
 
   // `death` já traz o resultado completo decidido pelo Host (XP + drops com id).
@@ -819,17 +871,18 @@ export default class MultiplayerManager {
       seq: ++this.lastEnemyDeathSequence,
     };
     this.recentDeaths.push({ at: Date.now(), sends: 0, packet });
-    this.mqtt.publish(this.enemyDeathTopic, packet);
+    this.mqtt.publish(this.enemyDeathTopic, packet, 1);
   }
 
   _takeReplay(list) {
     const now = Date.now();
     const alive = list.filter((entry) => entry.sends < REPLAY_SNAPSHOTS && now - entry.at <= REPLAY_MAX_AGE_MS);
-    alive.splice(0, Math.max(0, alive.length - REPLAY_MAX_ENTRIES));
-    alive.forEach((entry) => { entry.sends += 1; });
+    const batch = alive.slice(0, REPLAY_MAX_ENTRIES);
+    batch.forEach((entry) => { entry.sends += 1; });
     list.length = 0;
-    list.push(...alive);
-    return alive;
+    // Revezar os lotes preserva a fila inteira durante coletas grandes.
+    list.push(...alive.slice(batch.length), ...batch);
+    return batch;
   }
 
   _applyEnemyDeath(death) {
@@ -849,12 +902,28 @@ export default class MultiplayerManager {
   // Host confirmar (e a mensagem de confirmação é a mesma que remove pra todos).
   claimPickup(pickupId) {
     if (this.isRoomHost || !this.mqtt?.connected || !Number.isInteger(pickupId)) return false;
-    this.mqtt.publish(this.pickupClaimTopic, { id: this.playerId, pickupId });
+    this.mqtt.publish(this.pickupClaimTopic, {
+      id: this.playerId, pickupId, epoch: this.runEpoch,
+      hostId: this.hostPlayerId, hostTerm: this.hostTerm
+    }, 1);
     return true;
   }
 
   _onPickupClaim(playerId, message) {
-    if (!this.isRoomHost || message?.id !== playerId || !Number.isInteger(message.pickupId)) return;
+    if (!this.isRoomHost || message?.id !== playerId || !Number.isInteger(message.pickupId) ||
+      message.epoch !== this.runEpoch || message.hostId !== this.playerId ||
+      message.hostTerm !== this.hostTerm || !this.getAlivePlayerIds().includes(playerId)) return;
+    const pickup = this.scene.pickupsById.get(message.pickupId);
+    if (pickup?.active) {
+      const remote = this.remotePlayers.get(playerId);
+      // A atração curta é visual em cada cliente. Aceitar a posição original
+      // ou a atual tolera esse deslocamento e até 100 ms de atraso de posição.
+      const distance = Math.min(
+        Math.hypot(remote.targetX - pickup.x, remote.targetY - pickup.y),
+        Math.hypot(remote.targetX - pickup.getData('pickupSpawnX'), remote.targetY - pickup.getData('pickupSpawnY'))
+      );
+      if (!Number.isFinite(distance) || distance > 200) return;
+    }
     if (!this.scene.hostCollectPickup(message.pickupId, playerId)) {
       // já foi coletado (ou nunca existiu): manda o cliente limpar o fantasma, sem recompensa
       this._publishPickupRemovals([[message.pickupId, null, 'gone', 0]]);
@@ -876,7 +945,7 @@ export default class MultiplayerManager {
       hostTerm: this.hostTerm,
       epoch: this.runEpoch,
       removed: records
-    });
+    }, 1);
   }
 
   _applyPickupRemovals(records) {
@@ -1061,6 +1130,15 @@ export default class MultiplayerManager {
     this.scene.clearNetworkPickups?.();
     this.remoteEnemies.forEach((enemy) => enemy._leave());
     this.remoteEnemies.clear();
+  }
+
+  getAlivePlayerIds() {
+    const now = Date.now();
+    return this.getRoster().filter((id) => {
+      if (id === this.playerId) return !this.player.isDead && this.player.healthSystem.current > 0;
+      const remote = this.remotePlayers.get(id);
+      return remote?.hp > 0 && now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS;
+    });
   }
 
   getEnemyTargets() {
@@ -1492,43 +1570,42 @@ export default class MultiplayerManager {
   }
 
   _syncPauseVote() {
-    const now = Date.now();
-    // jogador morto não vota: antes a pausa ficava eternamente "aguardando"
-    const activeRemotes = [...this.remotePlayers.values()].filter(
-      (remote) => now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS && remote.hp > 0
-    );
-    const hasRemotePlayers = activeRemotes.length > 0;
-    const allVoted = hasRemotePlayers && this.pauseRequested &&
-      activeRemotes.every((remote) => remote.pauseRequested);
-
-    if (!hasRemotePlayers && this.pauseRequested) {
-      if (!this.pauseApplied) {
-        this.scene.pauseUI?.open();
-        this.pauseApplied = this.scene.pauseUI?.isOpen === true;
+    if (!this.isMultiplayer || !this.mqtt || this.matchState !== 'running') return;
+    // Apenas o host decide quando o mundo para. Clientes aguardam confirmação.
+    if (this.isRoomHost && this.levelUpPhase !== 'selecting') {
+      const voters = this.getAlivePlayerIds();
+      const allVoted = voters.length > 0 && voters.every((id) => id === this.playerId
+        ? this.pauseRequested : this.remotePlayers.get(id)?.pauseRequested === true);
+      if (allVoted !== this.pauseApplied) {
+        if (this.player.isDead) {
+          this.pauseApplied = allVoted;
+          if (allVoted) this.scene.physics.pause();
+          else this.scene.physics.resume();
+          this.scene.time.timeScale = allVoted ? 0 : 1;
+          EventBus.emit(allVoted ? 'pause-opened' : 'pause-closed');
+        } else if (allVoted) {
+          this.scene.pauseUI?.open();
+          this.pauseApplied = this.scene.pauseUI?.isOpen === true;
+        } else {
+          this.pauseApplied = false;
+          this.scene.pauseUI?.close();
+        }
       }
-    } else if (allVoted && !this.pauseApplied) {
-      this.scene.pauseUI?.open();
-      this.pauseApplied = this.scene.pauseUI?.isOpen === true;
-    } else if (!allVoted && this.pauseApplied) {
-      this.pauseApplied = false;
-      this.pauseRequested = false;
-      this.scene.pauseUI?.close();
     }
-
-    this.scene.pauseUI?.setWaitingForPlayer(
-      hasRemotePlayers && this.pauseRequested && !this.pauseApplied
-    );
+    this.scene.pauseUI?.setWaitingForPlayer(this.pauseRequested && !this.pauseApplied);
   }
 
   _syncHostPause() {
     if (this.isRoomHost || !this.scene.pauseUI) return;
-    if (this.hostRunPaused && !this.hostPauseApplied) {
+    // Pausa manual e seleção de cartas têm interfaces e ciclos separados.
+    if (this.hostManualPaused && !this.hostPauseApplied) {
       this.scene.pauseUI.open();
       this.hostPauseApplied = this.scene.pauseUI.isOpen === true;
-    } else if (!this.hostRunPaused && this.hostPauseApplied) {
+    } else if (!this.hostManualPaused && this.hostPauseApplied) {
       this.hostPauseApplied = false;
       this.scene.pauseUI.close();
     }
+    this.pauseApplied = this.hostPauseApplied === true;
   }
 
   _drawRemoteStatus(remote) {
@@ -1552,7 +1629,7 @@ export default class MultiplayerManager {
     remote.displayedMaxHp = maxHp;
   }
 
-  _onMessage(topic, payload) {
+  async _onMessage(topic, payload) {
     if (this.isRoomHost && topic.startsWith(`${this.pickupClaimPrefix}/`)) {
       const playerId = topic.slice(`${this.pickupClaimPrefix}/`.length);
       try {
@@ -1625,7 +1702,7 @@ export default class MultiplayerManager {
       const text = typeof payload === 'string' ? payload : new TextDecoder().decode(payload);
       const state = JSON.parse(text);
       if (messageType === 'damage' && playerId === this.playerId && !this.isRoomHost) {
-        if (!this._isCurrentAuthorityMessage(state) ||
+        if (!this._isCurrentAuthorityMessage(state) || state.epoch !== this.runEpoch ||
           !Number.isInteger(state.seq) || state.seq <= this.lastReceivedPlayerDamageSequence ||
           !Number.isFinite(state.amount)) return;
         this.lastReceivedPlayerDamageSequence = state.seq;
@@ -1642,6 +1719,21 @@ export default class MultiplayerManager {
       }
       if (messageType !== 'position' || state.id !== playerId ||
         !Number.isFinite(state.x) || !Number.isFinite(state.y)) return;
+      if (this.roomMeta.priv) {
+        const epoch = state.isHost === true ? state.runEpoch : this.runEpoch;
+        const term = state.isHost === true ? state.hostTerm : this.hostTerm;
+        if (!epoch || !Number.isInteger(term) || state.authEpoch !== epoch || state.authTerm !== term ||
+          typeof state.roomProof !== 'string') return;
+        const expected = await createRoomProof(this.roomMeta.pw, this.roomCode, playerId, epoch, term, state.isHost === true);
+        if (state.roomProof !== expected) {
+          if (state.isHost === true && !this.isRoomHost && !this.hostPlayerId && !this.rejected) {
+            this.rejected = true;
+            this.scene.onRoomRejected?.();
+          }
+          return;
+        }
+        if (!state.isHost && (epoch !== this.runEpoch || term !== this.hostTerm)) return;
+      }
       const acceptedHost = state.isHost === true && this._acceptHostAnnouncement(playerId, state);
       const maxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : 100;
       const hp = Number.isFinite(state.hp) ? Phaser.Math.Clamp(state.hp, 0, maxHp) : maxHp;

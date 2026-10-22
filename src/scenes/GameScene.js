@@ -202,7 +202,7 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.isGameOver) {
       this.worldEnd?.update(delta, this.hasWon || this.groupWon ? 'fade' : 'freeze');
-      if (this.multiplayer?.isMultiplayer && this.multiplayer.isRoomHost) {
+      if (!this.isPaused && this.multiplayer?.isMultiplayer && this.multiplayer.isRoomHost) {
         this.enemySpawner.updateAll(this.time.now);
       }
       return;
@@ -422,7 +422,7 @@ export default class GameScene extends Phaser.Scene {
   // Multiplayer: morri, mas a partida do grupo ainda está rolando.
   isWaitingForGroup() {
     const multiplayer = this.multiplayer;
-    return Boolean(multiplayer?.isMultiplayer && multiplayer.mqtt?.connected &&
+    return Boolean(multiplayer?.isMultiplayer && multiplayer.mqtt &&
       multiplayer.matchState === 'running');
   }
 
@@ -430,7 +430,7 @@ export default class GameScene extends Phaser.Scene {
     // Multiplayer: a partida só acaba quando o Host declara vitória/derrota do
     // grupo. Quem morreu antes espera aqui (o pedido fica na fila).
     const multiplayer = this.multiplayer;
-    if (multiplayer?.isMultiplayer && multiplayer.mqtt?.connected && multiplayer.matchState === 'running') {
+    if (multiplayer?.isMultiplayer && multiplayer.mqtt && multiplayer.matchState === 'running') {
       this._pendingGroupRestart = true;
       return;
     }
@@ -774,7 +774,8 @@ export default class GameScene extends Phaser.Scene {
   // ---------- coleta de orbs/medkits/ímã ----------
 
   _registerPickup(id, sprite, kind, value) {
-    sprite.setData({ pickupId: id, pickupKind: kind, pickupValue: value });
+    sprite.setData({ pickupId: id, pickupKind: kind, pickupValue: value,
+      pickupSpawnX: sprite.x, pickupSpawnY: sprite.y });
     this.pickupsById.set(id, sprite);
     sprite.once('destroy', () => {
       if (this.pickupsById.get(id) === sprite) this.pickupsById.delete(id);
@@ -819,8 +820,8 @@ export default class GameScene extends Phaser.Scene {
   // O host consome cada gema uma vez e fixa os destinatários no registro
   // reenviado. XP fracionário preserva a divisão igual sem perder sobras.
   _collectSharedMagnetXp() {
-    const recipients = this.multiplayer.getRoster();
-    if (!recipients.length) recipients.push(this.multiplayer.playerId);
+    const recipients = this.multiplayer.getAlivePlayerIds();
+    if (!recipients.length) return;
     const orbs = this.xpOrbGroup.getChildren().filter((orb) => orb.active);
     for (const orb of orbs) {
       const id = orb.getData('pickupId');

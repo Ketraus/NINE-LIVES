@@ -22,17 +22,17 @@ export default class MqttClient {
     }
   }
 
-  subscribe(topic) {
+  subscribe(topic, qos = 0) {
     return new Promise((resolve, reject) => {
-      this.mqtt.subscribe(topic, { qos: 0 }, (error, granted) => {
+      this.mqtt.subscribe(topic, { qos }, (error, granted) => {
         if (error) reject(error);
         else resolve(granted);
       });
     });
   }
 
-  publish(topic, message) {
-    this.mqtt.publish(topic, JSON.stringify(message), { qos: 0, retain: false });
+  publish(topic, message, qos = 0) {
+    this.mqtt.publish(topic, JSON.stringify(message), { qos, retain: false });
   }
 
   end() {
