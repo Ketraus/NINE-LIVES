@@ -95,8 +95,16 @@ const WHITE_SPRITE_SETS = {
 };
 
 // Skin do gato laranja (3º jogador do multiplayer): Laser Gun (default) e
-// Katana. Paws (fists) ainda não tem versão laranja — cai no gato preto.
+// Katana e Paws — as 3 classes têm versão laranja.
 const ORANGE_SPRITE_SETS = {
+  fists: {
+    idleKey: 'player_orange_paws_idle',
+    walkKey: 'player_orange_paws_walk',
+    idleAnim: 'player-orange-paws-idle',
+    walkAnim: 'player-orange-paws-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  },
   katana: {
     idleKey: 'player_orange_katana_idle',
     walkKey: 'player_orange_katana_walk',
