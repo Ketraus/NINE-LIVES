@@ -711,36 +711,39 @@ export default class GameScene extends Phaser.Scene {
     this._spawnDeathFx(x, y, color);
   }
 
-  // Só o Host/solo chama. O ímã fica desativado no multiplayer por
-  // enquanto; quando formos sincronizá-lo, entra no mesmo pacote de drops.
+  // Só o Host/solo sorteia; todos recebem os mesmos drops.
   _rollDrops(death) {
-    const drops = { orbId: this.nextPickupId++, medkit: null, magnet: null };
+    const drops = { orbId: this.nextPickupId++, medkits: [], magnet: null };
+    const playerCount = this.multiplayer?.isMultiplayer
+      ? Math.max(1, this.multiplayer.getRoster().length) : 1;
     if (death.enemyId === 'elite' ||
-      (death.enemyId === 'cyber_brute' && Math.random() < MEDKIT_BRUTE_DROP_CHANCE)) {
+      (death.enemyId === 'cyber_brute' && Math.random() < Math.min(1, MEDKIT_BRUTE_DROP_CHANCE * playerCount))) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
       const offset = Phaser.Math.Between(MEDKIT_DROP_OFFSET_MIN, MEDKIT_DROP_OFFSET_MAX);
-      drops.medkit = [
+      const count = death.enemyId === 'elite' ? playerCount : 1;
+      for (let i = 0; i < count; i++) {
+        const dropAngle = angle + i * Math.PI * 2 / count;
+        drops.medkits.push([
+          this.nextPickupId++,
+          Math.round(death.x + Math.cos(dropAngle) * offset),
+          Math.round(death.y + Math.sin(dropAngle) * offset)
+        ]);
+      }
+    }
+
+    const chance = MAGNET_DROP_CHANCES[death.enemyId] || 0;
+    const eligible = chance > 0;
+    const force = eligible && this._forceNextMagnetDrop && !this._magnetHasAppeared;
+    if (eligible && (force || Math.random() < chance)) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const offset = Phaser.Math.Between(MAGNET_DROP_OFFSET_MIN, MAGNET_DROP_OFFSET_MAX);
+      drops.magnet = [
         this.nextPickupId++,
         Math.round(death.x + Math.cos(angle) * offset),
         Math.round(death.y + Math.sin(angle) * offset)
       ];
-    }
-
-    if (!this.multiplayer?.isMultiplayer) {
-      const chance = MAGNET_DROP_CHANCES[death.enemyId] || 0;
-      const eligible = chance > 0;
-      const force = eligible && this._forceNextMagnetDrop && !this._magnetHasAppeared;
-      if (eligible && (force || Math.random() < chance)) {
-        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-        const offset = Phaser.Math.Between(MAGNET_DROP_OFFSET_MIN, MAGNET_DROP_OFFSET_MAX);
-        drops.magnet = [
-          this.nextPickupId++,
-          Math.round(death.x + Math.cos(angle) * offset),
-          Math.round(death.y + Math.sin(angle) * offset)
-        ];
-        this._magnetHasAppeared = true;
-        this._forceNextMagnetDrop = false;
-      }
+      this._magnetHasAppeared = true;
+      this._forceNextMagnetDrop = false;
     }
 
     return drops;
@@ -754,10 +757,12 @@ export default class GameScene extends Phaser.Scene {
     if (Number.isInteger(drops?.orbId) && this._canSpawnPickup(drops.orbId)) {
       this._spawnXpOrb(x, y, xpReward, drops.orbId);
     }
-    const medkit = drops?.medkit;
-    if (Array.isArray(medkit) && Number.isInteger(medkit[0]) && Number.isFinite(medkit[1]) &&
-      Number.isFinite(medkit[2]) && this._canSpawnPickup(medkit[0])) {
-      this._spawnMedkit(medkit[1], medkit[2], medkit[0]);
+    const medkits = Array.isArray(drops?.medkits) ? drops.medkits : [drops?.medkit];
+    for (const medkit of medkits) {
+      if (Array.isArray(medkit) && Number.isInteger(medkit[0]) && Number.isFinite(medkit[1]) &&
+        Number.isFinite(medkit[2]) && this._canSpawnPickup(medkit[0])) {
+        this._spawnMedkit(medkit[1], medkit[2], medkit[0]);
+      }
     }
     const magnet = drops?.magnet;
     if (Array.isArray(magnet) && Number.isInteger(magnet[0]) && Number.isFinite(magnet[1]) &&
@@ -802,9 +807,29 @@ export default class GameScene extends Phaser.Scene {
     const kind = sprite.getData('pickupKind');
     const value = sprite.getData('pickupValue');
     sprite.destroy();
-    if (byPlayerId === this.multiplayer?.playerId) this.grantPickupReward(kind, value);
+    if (kind === 'magnet') {
+      this._collectSharedMagnetXp();
+    } else if (byPlayerId === this.multiplayer?.playerId) {
+      this.grantPickupReward(kind, value);
+    }
     this.multiplayer?.broadcastPickupRemoval(pickupId, byPlayerId, kind, value);
     return true;
+  }
+
+  // O host consome cada gema uma vez e fixa os destinatários no registro
+  // reenviado. XP fracionário preserva a divisão igual sem perder sobras.
+  _collectSharedMagnetXp() {
+    const recipients = this.multiplayer.getRoster();
+    if (!recipients.length) recipients.push(this.multiplayer.playerId);
+    const orbs = this.xpOrbGroup.getChildren().filter((orb) => orb.active);
+    for (const orb of orbs) {
+      const id = orb.getData('pickupId');
+      const share = orb.getData('pickupValue') / recipients.length;
+      orb.destroy();
+      if (recipients.includes(this.multiplayer.playerId)) this.grantPickupReward('xp', share);
+      this.multiplayer.broadcastPickupRemoval(id, recipients, 'xp', share);
+    }
+    this._playMagnetCollectFx(orbs.length);
   }
 
   grantPickupReward(kind, value) {

@@ -51,7 +51,7 @@ const REMOTE_FX_QUALITY = 0.6;
 const REMOTE_FX_MAX_PER_PACKET = 6;
 const REMOTE_FX_SHAKE_RANGE = 450;
 const REMOTE_FX_SHAKE_FACTOR = 0.4;
-const PICKUP_KINDS = new Set(['xp', 'medkit', 'gone']);
+const PICKUP_KINDS = new Set(['xp', 'medkit', 'magnet', 'gone']);
 // Partidas (runEpoch do Host) que este cliente já viu terminar: se ele reinicia
 // enquanto o Host ainda anuncia "fim", o estado velho não pode encerrar a run nova.
 const staleMatchEpochs = new Set();
@@ -893,7 +893,13 @@ export default class MultiplayerManager {
       if (this.appliedPickupRemovals.has(pickupId)) return;
       this.appliedPickupRemovals.add(pickupId);
       this.scene.removeNetworkPickup?.(pickupId);
-      if (byPlayerId === this.playerId && Number.isFinite(value)) {
+      if (kind === 'magnet') {
+        this.scene._playMagnetCollectFx?.(0);
+        return;
+      }
+      const rewarded = byPlayerId === this.playerId ||
+        (kind === 'xp' && Array.isArray(byPlayerId) && byPlayerId.includes(this.playerId));
+      if (rewarded && Number.isFinite(value)) {
         this.scene.grantPickupReward?.(kind, value);
       }
     });
