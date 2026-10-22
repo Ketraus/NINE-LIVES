@@ -48,6 +48,10 @@ const recentExplosions = [];
 let liveMissiles = 0;
 const resetRegistered = new WeakSet();
 
+function useMobileFx(scene) {
+  return scene.sys.game.device.input.touch;
+}
+
 function explosionBudget(scene) {
   const now = scene.time.now;
   while (recentExplosions.length && now - recentExplosions[0] > BUDGET_WINDOW_MS) recentExplosions.shift();
@@ -162,6 +166,7 @@ export function hasEliteMissileFx(scene) {
 // (x/y/setPosition/destroy), mas move corpo, chama, sombra e rastro juntos.
 // A rotação acompanha a trajetória (pega a direção do último movimento).
 export function createEliteMissileProjectile(scene, x, y, groundTarget = null) {
+  const mobile = useMobileFx(scene);
   const body = scene.add.image(x, y, MISSILE_KEY).setDepth(DEPTH_MISSILE).setScale(1.5);
   const flame = scene.add
     .image(x, y, 'hit_fx')
@@ -225,7 +230,7 @@ export function createEliteMissileProjectile(scene, x, y, groundTarget = null) {
       }
 
       const now = scene.time.now;
-      if (now - this._lastTrailMs >= (liveMissiles > 3 ? 56 : 24)) {
+      if (now - this._lastTrailMs >= (mobile ? (liveMissiles > 3 ? 110 : 80) : (liveMissiles > 3 ? 56 : 24))) {
         this._lastTrailMs = now;
         spawnTrailPuff(scene, nx + Math.cos(back) * 8, ny + Math.sin(back) * 8);
       }
@@ -282,7 +287,7 @@ export function playEliteMissileLaunch(scene, x, y) {
     ease: 'Cubic.easeOut',
     onComplete: () => flash.destroy()
   });
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < (useMobileFx(scene) ? 3 : 9); i++) {
     const a = Phaser.Math.FloatBetween(-Math.PI * 0.95, -Math.PI * 0.05); // jato pra cima
     const d = Phaser.Math.Between(18, 46);
     const puff = scene.add
@@ -308,8 +313,10 @@ export function playEliteMissileLaunch(scene, x, y) {
 
 // intensity: 1 = completa; menor = menos partículas (vários mísseis ao mesmo tempo)
 export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
+  const mobile = useMobileFx(scene);
   intensity = Math.min(intensity, explosionBudget(scene));
-  const n = (count) => Math.max(2, Math.round(count * intensity));
+  // Mantém o sprite principal e o raio de dano; reduz só as camadas secundárias.
+  const n = (count) => Math.max(2, Math.round(count * intensity * (mobile ? 0.35 : 1)));
 
   const flare = (scale, alpha, ms, tint) => {
     const img = scene.add
@@ -344,8 +351,8 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
       scene.tweens.add({
         targets: scorch,
         alpha: 0,
-        delay: 2600,
-        duration: 2400,
+        delay: mobile ? 700 : 2600,
+        duration: mobile ? 1100 : 2400,
         ease: 'Sine.easeIn',
         onComplete: () => scorch.destroy()
       });
@@ -367,7 +374,7 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
 
   // 2) clarões: branco seco + laranja largo
   flare((radius * 2.4) / 20, 1, 130, WHITE);
-  if (intensity >= 0.6) flare((radius * 4) / 20, 0.6, 260, ORANGE);
+  if (!mobile && intensity >= 0.6) flare((radius * 4) / 20, 0.6, 260, ORANGE);
 
   // 3) corpo da explosão: sprite animado + cópia aditiva maior (brilho)
   const baseScale = (radius * SPRITE_DIAMETER_PER_RADIUS) / FRAME;
@@ -376,7 +383,7 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
     .setDepth(DEPTH_BOOM)
     .setScale(baseScale * 0.6)
     .setAngle(Phaser.Math.Between(0, 3) * 90);
-  const halo = scene.add
+  const halo = mobile ? null : scene.add
     .sprite(x, y - radius * 0.1, KEY, 0)
     .setDepth(DEPTH_BOOM - 1)
     .setScale(baseScale * 0.9)
@@ -385,23 +392,33 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
     .setBlendMode(Phaser.BlendModes.ADD)
     .setAngle(body.angle);
   body.play(ANIM);
-  halo.play(ANIM);
+  halo?.play(ANIM);
   // cresce rápido no começo e desacelera (a bola de fogo "estoura" e assenta)
   scene.tweens.add({ targets: body, scale: baseScale * 1.25, duration: 260, ease: 'Cubic.easeOut' });
-  scene.tweens.add({ targets: halo, scale: baseScale * 1.7, duration: 300, ease: 'Cubic.easeOut' });
+  if (halo) scene.tweens.add({ targets: halo, scale: baseScale * 1.7, duration: 300, ease: 'Cubic.easeOut' });
   body.once('animationcomplete', () => {
     scene.tweens.add({
-      targets: [body, halo],
+      targets: halo ? [body, halo] : [body],
       alpha: 0,
       duration: 160,
       onComplete: () => {
         body.destroy();
-        halo.destroy();
+        halo?.destroy();
       }
     });
   });
 
   // 4) anéis de choque achatados no chão + marca do raio de dano (vermelho, curta)
+  if (mobile) {
+    // Uma elipse pronta, animada por escala: sem reconstruir Graphics a cada frame.
+    const ring = scene.add.ellipse(x, y, radius * 2.5, radius * 2.5 * 0.82)
+      .setStrokeStyle(3, YELLOW).setDepth(DEPTH_BOOM).setScale(0.12)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+      targets: ring, scale: 1, alpha: 0, duration: 340, ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy()
+    });
+  } else {
   const rings = [
     { delay: 0, to: 1.25, w: 5, color: YELLOW, ms: 340 },
     { delay: 60, to: 1.0, w: 2.5, color: ORANGE, ms: 340 }
@@ -427,6 +444,7 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
     },
     onComplete: () => ringGfx.destroy()
   });
+  }
   // raio fixo: desenha uma vez e só apaga o alfa (sem redesenhar por frame)
   const dmg = scene.add.graphics().setDepth(DEPTH_BOOM - 2).setAlpha(0.9);
   dmg.lineStyle(3, RED, 1);
