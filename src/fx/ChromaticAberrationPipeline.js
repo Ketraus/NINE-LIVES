@@ -55,6 +55,7 @@ export default class ChromaticAberrationPipeline extends Phaser.Renderer.WebGL.P
 
   setMaxShift(v) {
     this.maxShift = v;
+    this.active = v !== 0;
     return this;
   }
 }

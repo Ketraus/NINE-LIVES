@@ -45,6 +45,7 @@ export default class CrtWavePipeline extends Phaser.Renderer.WebGL.Pipelines.Pos
 
   setAmplitude(v) {
     this.amplitude = v;
+    this.active = v !== 0;
     return this;
   }
 

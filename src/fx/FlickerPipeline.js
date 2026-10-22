@@ -68,6 +68,7 @@ export default class FlickerPipeline extends Phaser.Renderer.WebGL.Pipelines.Pos
 
   setAmount(v) {
     this.amount = v;
+    this.active = v !== 0;
     return this;
   }
 }

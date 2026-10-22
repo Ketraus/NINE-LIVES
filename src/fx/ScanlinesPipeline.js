@@ -50,6 +50,7 @@ export default class ScanlinesPipeline extends Phaser.Renderer.WebGL.Pipelines.P
 
   setDarkAmount(v) {
     this.darkAmount = v;
+    this.active = v !== 0;
     return this;
   }
 }

@@ -54,6 +54,7 @@ export default class StaticNoisePipeline extends Phaser.Renderer.WebGL.Pipelines
     super({ game, fragShader });
 
     this.intensity = 0; // desligado por padrão — só liga em vida crítica/morte
+    this.active = false;
   }
 
   onPreRender() {
@@ -63,6 +64,7 @@ export default class StaticNoisePipeline extends Phaser.Renderer.WebGL.Pipelines
 
   setIntensity(v) {
     this.intensity = v;
+    this.active = v !== 0;
     return this;
   }
 }

@@ -520,8 +520,9 @@ export default class HUD {
   // limpa, só a HUD liga isso, então fica tudo num lugar só. Bloom e
   // GhostTrail (os dois pesados — GhostTrail usa render targets próprios)
   // ficam com active=false até a tela de morte, pra não pagar esse custo
-  // nos ~10 minutos de gameplay; os outros são passe único e baratos o
-  // bastante pra ficar sempre ligados (a 0, então imperceptíveis).
+  // nos ~10 minutos de gameplay. Os demais também ficam inativos quando
+  // zerados: seus setters reativam o pipeline durante os efeitos e o
+  // desativam ao terminar o fade, evitando passes de tela sem efeito visual.
   // Precisa de WebGL; em Canvas o jogo roda igual, só sem esses efeitos
   // extras (mesma guarda usada no menu/pausa).
   _setupCameraFx() {
