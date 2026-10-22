@@ -23,8 +23,8 @@ export default {
   ],
 
   snctEpilogue: [
-    { title: 'NINE LIVES', lines: ['Você presenciou apenas o começo.'] },
+    { title: 'NINE LIVES', lines: ['Você presenciou apenas uma versão beta.'] },
     { lines: ['Esta é uma versão experimental.', 'Descubra o que desperta nas profundezas', 'na Feira de Jogos.'] },
-    { lines: ['Obrigado por participar.'] }
+    { lines: ['Obrigado por jogar.'] }
   ]
 };
