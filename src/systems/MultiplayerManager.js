@@ -96,6 +96,7 @@ export default class MultiplayerManager {
     this.hostRunTimeReceivedAt = 0;
     this.hostRunPaused = false;
     this.hostSpawnDirectorState = null;
+    this.seenCinematics = new Set(); // cenas do Host (ruptura/final) que este cliente já tocou
     this.pauseRequested = false;
     this.pauseApplied = false;
     this.levelUpQueue = [];
@@ -270,6 +271,7 @@ export default class MultiplayerManager {
         spawnDirectorState: this.isRoomHost
           ? this.scene.spawnDirector?.getAuthorityState?.() ?? null
           : undefined,
+        cinematic: this.isRoomHost ? this._getHostCinematic() : undefined,
         levelUpPendingCount: this._getLocalLevelUpCount(),
         levelUpRound: this.isRoomHost ? this.levelUpRound : undefined,
         levelUpPhase: this.isRoomHost ? this.levelUpPhase : undefined,
@@ -590,6 +592,7 @@ export default class MultiplayerManager {
     if (state.spawnDirectorState && typeof state.spawnDirectorState === 'object') {
       this.hostSpawnDirectorState = state.spawnDirectorState;
     }
+    this._applyHostCinematic(state.cinematic);
     const hostLevelUpRound = Number.isFinite(state.levelUpRound) ? state.levelUpRound : 0;
     if (hostLevelUpRound !== this.levelUpRound) {
       this.levelUpChoiceIds = [];
@@ -600,6 +603,30 @@ export default class MultiplayerManager {
     this.levelUpChoices = Array.isArray(state.levelUpChoices)
       ? state.levelUpChoices.filter((choice) => typeof choice?.upgradeId === 'string') : [];
     return true;
+  }
+
+  // ---------- cenas sincronizadas (ruptura do Boss, final da SNCT) ----------
+
+  // Host: a última cena anunciada vai em todo heartbeat (como as mensagens são
+  // reenviadas a cada 100ms, ninguém perde); some depois de 30s.
+  _getHostCinematic() {
+    const cue = this.scene.networkCinematic;
+    if (!cue) return null;
+    const ageMs = Date.now() - cue.at;
+    if (ageMs > 30000) return null;
+    return { id: cue.id, kind: cue.kind, epicenter: cue.epicenter, ageMs };
+  }
+
+  // Cliente: toca cada cena uma única vez (cenas velhas, de antes de entrar, são ignoradas)
+  _applyHostCinematic(cue) {
+    if (this.isRoomHost || !cue || typeof cue !== 'object') return;
+    if (typeof cue.id !== 'string' || cue.id.length > 40 || this.seenCinematics.has(cue.id)) return;
+    if (cue.kind !== 'boss-rupture' && cue.kind !== 'snct-finale') return;
+    this.seenCinematics.add(cue.id);
+    if (!Number.isFinite(cue.ageMs) || cue.ageMs > 20000) return;
+    const e = cue.epicenter;
+    const epicenter = e && Number.isFinite(e.x) && Number.isFinite(e.y) ? { x: e.x, y: e.y } : null;
+    this.scene.playNetworkCinematic?.({ kind: cue.kind, epicenter });
   }
 
   _isCurrentAuthorityMessage(message) {

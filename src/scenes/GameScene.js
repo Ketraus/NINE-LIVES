@@ -395,6 +395,11 @@ export default class GameScene extends Phaser.Scene {
   }
 
   // Vitória/derrota do GRUPO, definida pelo Host (ver MultiplayerManager).
+  // Multiplayer (cliente): o Host anunciou uma cena (ruptura do Boss / final da SNCT)
+  playNetworkCinematic(cue) {
+    this.spawnDirector?.playNetworkCinematic(cue);
+  }
+
   applyGroupMatchState(state) {
     if (state === 'won') {
       this.groupWon = true;
@@ -483,6 +488,7 @@ export default class GameScene extends Phaser.Scene {
     this.victoryTremorLevel = 0; // 0..1, lido pelos inimigos pra tremerem de medo
     this.victorySequenceStarted = false; // sequência de vitória (solo) já disparada
     this.snctEndingStarted = false; // final beta da SNCT (SnctEnding.js) já disparado
+    this.networkCinematic = null; // multiplayer: cena anunciada pelo Host no heartbeat (SpawnDirector._announceCinematic)
     this.playerAttacksDisabled = false; // true na sequência: jogador/armas/habilidades não atacam
     this.enemiesDisarmed = false; // true na sequência: inimigos não causam dano (ver DamageSystem)
     this.groupWon = false; // vitória do grupo anunciada pelo Host (quem já tinha morrido também a recebe)

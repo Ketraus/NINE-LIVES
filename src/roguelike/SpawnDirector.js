@@ -318,6 +318,7 @@ export default class SpawnDirector {
   // se apagar. O hitstop curto faz o corte parecer "errado", não uma pausa.
   _startBossRupture() {
     const generation = this.authorityGeneration;
+    this._announceCinematic('boss-rupture'); // multiplayer: os clientes também apagam a música
     this.enemySpawner.fleeAll();
     MusicManager.duckForBoss(this.scene, BOSS_MUSIC_FADE_MS);
     this.scene.physics.world.pause();
@@ -326,6 +327,56 @@ export default class SpawnDirector {
       if (!this.authorityActive || generation !== this.authorityGeneration) return;
       this._waitForEmptyScreenThenBuildup();
     });
+  }
+
+  // ---- multiplayer: cenas do Boss/final sincronizadas -------------------
+  // O Host anuncia a cena (scene.networkCinematic vai no heartbeat, ver
+  // MultiplayerManager._getHostCinematic); cada cliente toca a MESMA cena
+  // localmente assim que ouve (playNetworkCinematic). Só visual/áudio.
+
+  _isNetworked() {
+    const mp = this.scene.multiplayer;
+    return Boolean(mp?.isMultiplayer && mp.mqtt);
+  }
+
+  _announceCinematic(kind, epicenter = null) {
+    if (!this._isNetworked() || !this.scene.multiplayer.isRoomHost) return;
+    this.scene.networkCinematic = {
+      id: `${Date.now().toString(36)}-${kind}`,
+      kind,
+      at: Date.now(),
+      epicenter: epicenter ? { x: Math.round(epicenter.x), y: Math.round(epicenter.y) } : null
+    };
+  }
+
+  // O epicentro do Host pode estar fora da tela de quem está longe dele: aí a
+  // cena acontece no centro da câmera de cada um (rachaduras, lente, ondas).
+  _localEpicenter(epicenter) {
+    const cam = this.scene.cameras.main;
+    const v = cam.worldView;
+    if (epicenter && Number.isFinite(epicenter.x) && Number.isFinite(epicenter.y) &&
+      epicenter.x > v.x + 60 && epicenter.x < v.right - 60 &&
+      epicenter.y > v.y + 50 && epicenter.y < v.bottom - 50) {
+      return { x: epicenter.x, y: epicenter.y };
+    }
+    return { x: cam.midPoint.x, y: cam.midPoint.y - 20 };
+  }
+
+  // Cliente: toca a cena que o Host anunciou (cada id só uma vez)
+  playNetworkCinematic(cue) {
+    if (!cue || this.authorityActive) return; // o Host já toca a própria
+    if (cue.kind === 'boss-rupture') {
+      MusicManager.duckForBoss(this.scene, BOSS_MUSIC_FADE_MS);
+      return;
+    }
+    if (cue.kind === 'snct-finale') {
+      if (this.scene.snctEndingStarted || this.bossTremor) return;
+      MusicManager.duckForBoss(this.scene, BOSS_MUSIC_FADE_MS); // caso o aviso da ruptura tenha se perdido
+      const epicenter = this._localEpicenter(cue.epicenter);
+      this.bossTremor = playBossTremor(this.scene, epicenter, {
+        onDone: () => playSnctEnding(this.scene, { epicenter, networked: true })
+      });
+    }
   }
 
   // true desde o instante do gatilho do Boss até ele nascer E morrer —
@@ -351,15 +402,19 @@ export default class SpawnDirector {
         }
         if (this.enemySpawner.hasAnyAlive()) return;
         poll.remove();
+        if (this.bossTremor || this.scene.snctEndingStarted) return; // troca de Host no meio da cena: não repete
         // Cenas 2-4: o epicentro é onde o Minotauro vai nascer
-        const epicenter = this.enemySpawner.prepareBossSpawnPosition();
+        const rawEpicenter = this.enemySpawner.prepareBossSpawnPosition();
+        const epicenter = this._localEpicenter(rawEpicenter);
+        // Versão SNCT: avisa os clientes pra rodarem o MESMO tremor + final, juntos do Host
+        if (gameVersion.version === 'snct') this._announceCinematic('snct-finale', rawEpicenter);
         this.bossTremor = playBossTremor(this.scene, epicenter, {
           onDone: () => {
             if (!this.authorityActive || generation !== this.authorityGeneration) return;
             // Versão SNCT: a run acaba aqui, antes do Minotauro nascer
             // (presença -> rugido -> corte seco -> mensagem, systems/SnctEnding.js)
             if (gameVersion.version === 'snct') {
-              playSnctEnding(this.scene, { epicenter });
+              playSnctEnding(this.scene, { epicenter, networked: this._isNetworked() });
               return;
             }
             this._startBossTensionBuildup(generation, epicenter);

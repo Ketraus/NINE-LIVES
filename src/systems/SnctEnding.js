@@ -43,7 +43,8 @@ export function playSnctEnding(scene, hooks = {}) {
   if (scene.snctEndingStarted) return;
   scene.snctEndingStarted = true;
 
-  const aborted = () => !scene.sys?.isActive() || scene.isGameOver;
+  // multiplayer (hooks.networked): o final é do GRUPO — quem já morreu também assiste
+  const aborted = () => !scene.sys?.isActive() || (scene.isGameOver && !hooks.networked);
   const after = (ms, fn) => scene.time.delayedCall(ms, () => { if (!aborted()) fn(); });
   const cam = scene.cameras.main;
 
