@@ -110,6 +110,31 @@ export default class PreloadScene extends Phaser.Scene {
       frameWidth: 64,
       frameHeight: 64
     });
+    // Skin do gato MARROM (4º jogador do multiplayer): Laser Gun, Katana e Paws
+    this.load.spritesheet('player_brown_idle', 'assets/sprites/player_brown_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_brown_walk', 'assets/sprites/player_brown_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_brown_katana_idle', 'assets/sprites/player_brown_katana_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_brown_katana_walk', 'assets/sprites/player_brown_katana_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_brown_paws_idle', 'assets/sprites/player_brown_paws_idle.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    this.load.spritesheet('player_brown_paws_walk', 'assets/sprites/player_brown_paws_walk.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
     this.load.image('enemy', 'assets/sprites/enemy.png');
     // Grunt: primeiro inimigo comum com sprite próprio (mesmo padrão do
     // Minotauro) — idle é imagem única, walk é spritesheet de verdade.
@@ -526,6 +551,44 @@ export default class PreloadScene extends Phaser.Scene {
     this.anims.create({
       key: 'player-orange-katana-walk',
       frames: this.anims.generateFrameNumbers('player_orange_katana_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+
+    // Gato marrom (4º jogador) — mesmos frameRates do gato base
+    this.anims.create({
+      key: 'player-brown-idle',
+      frames: this.anims.generateFrameNumbers('player_brown_idle', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-brown-walk',
+      frames: this.anims.generateFrameNumbers('player_brown_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-brown-katana-idle',
+      frames: this.anims.generateFrameNumbers('player_brown_katana_idle', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-brown-katana-walk',
+      frames: this.anims.generateFrameNumbers('player_brown_katana_walk', { start: 0, end: 5 }),
+      frameRate: 12,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-brown-paws-idle',
+      frames: this.anims.generateFrameNumbers('player_brown_paws_idle', { start: 0, end: 5 }),
+      frameRate: 6,
+      repeat: -1
+    });
+    this.anims.create({
+      key: 'player-brown-paws-walk',
+      frames: this.anims.generateFrameNumbers('player_brown_paws_walk', { start: 0, end: 5 }),
       frameRate: 12,
       repeat: -1
     });

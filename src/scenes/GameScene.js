@@ -118,7 +118,7 @@ const HUD_FADE_IN_MS = 180;
 const HUD_VICTORY_FADE_OUT_MS = 700; // aos 10:00 o HUD some suave (termina antes da pancada, ver VICTORY_IMPACT_DELAY_MS)
 const LEVEL_UP_INVULNERABILITY_MS = 2000;
 const GAMEPLAY_NEAREST_TEXTURE_KEYS = [
-  'player_idle', 'player_walk', 'player_white_idle', 'player_white_walk', 'player_white_katana_idle', 'player_white_katana_walk', 'player_white_paws_idle', 'player_white_paws_walk', 'player_orange_idle', 'player_orange_walk', 'player_orange_katana_idle', 'player_orange_katana_walk', 'player_orange_paws_walk', 'player_orange_paws_idle', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
+  'player_idle', 'player_walk', 'player_white_idle', 'player_white_walk', 'player_white_katana_idle', 'player_white_katana_walk', 'player_white_paws_idle', 'player_white_paws_walk', 'player_brown_idle', 'player_brown_walk', 'player_brown_katana_idle', 'player_brown_katana_walk', 'player_brown_paws_idle', 'player_brown_paws_walk', 'player_orange_idle', 'player_orange_walk', 'player_orange_katana_idle', 'player_orange_katana_walk', 'player_orange_paws_walk', 'player_orange_paws_idle', 'player_katana_idle', 'player_katana_walk', 'player_paws_walk', 'player_paws_idle',
   'enemy', 'grunt_idle', 'grunt_walk', 'cyber_hound_idle', 'cyber_hound_walk', 'cyber_brute_idle', 'cyber_brute_walk',
   'exploder_idle', 'exploder_walk', 'cyber_elite_idle', 'cyber_elite_walk', 'cyber_sealer_idle', 'cyber_sealer_walk',
   'minotaur_idle', 'minotaur_walk', 'minotaur_idle_noaxe', 'minotaur_walk_noaxe', 'minotaur_idle_rage',

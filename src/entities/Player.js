@@ -123,7 +123,40 @@ const ORANGE_SPRITE_SETS = {
   }
 };
 
+// Skin do gato marrom (4º jogador do multiplayer): Laser Gun (default),
+// Katana e Paws — as 3 classes têm versão marrom.
+const BROWN_SPRITE_SETS = {
+  fists: {
+    idleKey: 'player_brown_paws_idle',
+    walkKey: 'player_brown_paws_walk',
+    idleAnim: 'player-brown-paws-idle',
+    walkAnim: 'player-brown-paws-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  },
+  katana: {
+    idleKey: 'player_brown_katana_idle',
+    walkKey: 'player_brown_katana_walk',
+    idleAnim: 'player-brown-katana-idle',
+    walkAnim: 'player-brown-katana-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  },
+  default: {
+    idleKey: 'player_brown_idle',
+    walkKey: 'player_brown_walk',
+    idleAnim: 'player-brown-idle',
+    walkAnim: 'player-brown-walk',
+    shadowOffsetLeft: -12,
+    shadowOffsetRight: -14
+  }
+};
+
 export function getPlayerSpriteSet(weaponId, skin = 'default') {
+  if (skin === 'brown') {
+    if (BROWN_SPRITE_SETS[weaponId]) return BROWN_SPRITE_SETS[weaponId];
+    if (!SPRITE_SETS[weaponId]) return BROWN_SPRITE_SETS.default;
+  }
   if (skin === 'orange') {
     if (ORANGE_SPRITE_SETS[weaponId]) return ORANGE_SPRITE_SETS[weaponId];
     if (!SPRITE_SETS[weaponId]) return ORANGE_SPRITE_SETS.default;

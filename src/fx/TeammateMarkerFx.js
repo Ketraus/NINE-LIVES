@@ -6,12 +6,12 @@ const BORDER = 2;
 const EDGE_MARGIN_PX = 22;
 const DEPTH = 189;
 
-// vaga 0 = Host original (preto), 1 = branco, 2 = laranja, 3 = metade preto/metade branco
+// vaga 0 = Host original (preto), 1 = branco, 2 = laranja, 3 = marrom
 const SLOT_STYLES = [
   { fill: 0x000000, outline: 0xffffff },
   { fill: 0xffffff, outline: 0x020713 },
   { fill: 0xff8a1f, outline: 0x020713 },
-  { split: [0x000000, 0xffffff], outline: 0x8a96a3 }
+  { fill: 0x8b5a3c, outline: 0x020713 }
 ];
 
 export default class TeammateMarkerFx {
