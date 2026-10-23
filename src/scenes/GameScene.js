@@ -566,7 +566,7 @@ export default class GameScene extends Phaser.Scene {
     this.spawnDirector = new SpawnDirector(this, this.enemySpawner, spawnPhasesData, spawnCurvesData, sealerScheduleData, eliteScheduleData, bossScheduleData);
     this._lastRunTimeSeconds = -1;
     const isAuthority =
-      !this.multiplayer?.isMultiplayer || this.multiplayer.isRoomHost || !this.multiplayer.mqtt;
+      !this.multiplayer?.isMultiplayer || (this.multiplayer.isRoomHost && !this.multiplayer.startupError);
     // Host na sala de espera: relógio e spawns só ligam em beginMatch()
     if (!(this.lobbyGateActive && this.multiplayer?.isRoomHost)) {
       this.spawnDirector.start(isAuthority);

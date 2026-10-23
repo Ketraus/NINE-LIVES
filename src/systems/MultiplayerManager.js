@@ -164,6 +164,7 @@ export default class MultiplayerManager {
       });
     } catch (error) {
       console.error('[Multiplayer]', error.message);
+      this.startupError = true;
       return;
     }
 
@@ -208,6 +209,10 @@ export default class MultiplayerManager {
   }
 
   update(_time, delta) {
+    if (this.startupError) {
+      this.scene.leaveToMenu?.('MULTIPLAYER INDISPONÍVEL: NÃO FOI POSSÍVEL INICIAR A CONEXÃO');
+      return;
+    }
     const now = Date.now();
     this._refreshRoomProof();
     this._syncLocalSkin();
@@ -333,7 +338,7 @@ export default class MultiplayerManager {
 
   // Só existe espera quando há uma sala de verdade (broker configurado).
   hasReadyGate() {
-    return this.isMultiplayer && Boolean(this.mqtt);
+    return this.isMultiplayer && Boolean(this.mqtt || this.startupError);
   }
 
   setLocalReady(ready) {
