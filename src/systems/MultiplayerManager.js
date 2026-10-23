@@ -99,6 +99,8 @@ export default class MultiplayerManager {
     this.seenCinematics = new Set(); // cenas do Host (ruptura/final) que este cliente já tocou
     this.pauseRequested = false;
     this.pauseApplied = false;
+    this.pauseVoteGen = 0; // Host: geração da votação; voto de outra geração é ignorado
+    this.hostPauseVoteGen = 0; // Cliente: última geração anunciada pelo Host
     this.levelUpQueue = [];
     this.levelUpActive = false;
     this.spectatorLevelUpPaused = false;
@@ -254,6 +256,7 @@ export default class MultiplayerManager {
         cameraViewHeight: this.scene.cameras.main.height / (this.scene.cameras.main.zoom || 1),
         level: this.player.runState.level,
         pauseRequested: this.pauseRequested,
+        pauseVoteGen: this.isRoomHost ? this.pauseVoteGen : this.hostPauseVoteGen,
         ready: this.localReady,
         roomProof: this.roomMeta.priv ? this.roomProof : undefined,
         authEpoch: this.roomMeta.priv ? this.runEpoch : undefined,
@@ -492,6 +495,8 @@ export default class MultiplayerManager {
     this.hostRunTimeReceivedAt = Date.now();
     this.isRoomHost = true;
     this.scene.isRoomHost = true;
+    this.pauseVoteGen = this.hostPauseVoteGen;
+    this._endPauseVotes();
     // mantém a ordem de entrada anunciada pelo Host anterior (sem ele)
     const activeIds = new Set([...this.remotePlayers.entries()]
       .filter(([, remote]) => now_() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS)
@@ -588,6 +593,10 @@ export default class MultiplayerManager {
       this.hostRunTimeReceivedAt = Date.now();
       this.hostRunPaused = state.runPaused === true;
       this.hostManualPaused = state.manualPaused === true;
+    }
+    if (Number.isInteger(state.pauseVoteGen) && state.pauseVoteGen !== this.hostPauseVoteGen) {
+      this.hostPauseVoteGen = state.pauseVoteGen;
+      this.pauseRequested = false; // a pausa anterior acabou: voto antigo não vale mais
     }
     if (state.spawnDirectorState && typeof state.spawnDirectorState === 'object') {
       this.hostSpawnDirectorState = state.spawnDirectorState;
@@ -1169,6 +1178,8 @@ export default class MultiplayerManager {
   _syncRunEpoch(epoch) {
     if (typeof epoch !== 'string' || epoch.length > 32 || epoch === this.runEpoch) return;
     this.runEpoch = epoch;
+    this.pauseRequested = false;
+    this.pauseApplied = false;
     this.lastEnemySnapshotSequence = 0;
     this.hostEnemySnapshotSequence = 0;
     this.lastReceivedPlayerDamageSequence = 0;
@@ -1483,28 +1494,40 @@ export default class MultiplayerManager {
     const spawner = this.scene.enemySpawner;
     if (!spawner) return;
     const defs = spawner.enemyDefs;
+    const defIndexById = new Map(defs.map((def, index) => [def.id, index]));
+    const gameNow = this.scene.time.now;
     const enemies = spawner.group.getChildren()
       .filter((enemy) => enemy.active && Number.isInteger(enemy.networkId))
       .sort((a, b) => Number(Boolean(b.def.boss)) - Number(Boolean(a.def.boss)) ||
         Number(Boolean(b.def.elite)) - Number(Boolean(a.def.elite)) ||
         Number(Boolean(b.def.sealer)) - Number(Boolean(a.def.sealer)))
       .slice(0, MAX_SYNCED_ENEMIES)
-      .map((enemy) => [
-        enemy.networkId,
-        defs.findIndex((def) => def.id === enemy.def.id),
-        Math.round(enemy.x),
-        Math.round(enemy.y),
-        Math.round(enemy.healthSystem.current * 10),
-        enemy.flipX ? 1 : 0,
-        enemy.body?.velocity.lengthSq() > 0 ? 1 : 0,
-        enemy.def.sealer ? enemy.arenaCenter?.x ?? null : null,
-        enemy.def.sealer ? enemy.arenaCenter?.y ?? null : null,
-        enemy.def.sealer ? enemy.arenaRadius ?? null : null,
-        enemy.def.sealer ? enemy.arenaProgress ?? null : null,
-        enemy.def.sealer ? enemy.arenaTargetPlayerId ?? null : null,
-        enemy.getNetworkVisualState?.(this.scene.time.now) ?? null,
-        enemy.getNetworkStatusFlags?.(this.scene.time.now) ?? 0
-      ]);
+      .map((enemy) => {
+        const entry = [
+          enemy.networkId,
+          defIndexById.get(enemy.def.id) ?? -1,
+          Math.round(enemy.x),
+          Math.round(enemy.y),
+          Math.round(enemy.healthSystem.current * 10),
+          enemy.flipX ? 1 : 0,
+          enemy.body?.velocity.lengthSq() > 0 ? 1 : 0
+        ];
+        const visual = enemy.getNetworkVisualState?.(gameNow) ?? null;
+        const flags = enemy.getNetworkStatusFlags?.(gameNow) ?? 0;
+        // inimigos comuns mandam só os 7 campos básicos (pacote ~40% menor)
+        if (enemy.def.sealer || visual || flags) {
+          entry.push(
+            enemy.def.sealer ? enemy.arenaCenter?.x ?? null : null,
+            enemy.def.sealer ? enemy.arenaCenter?.y ?? null : null,
+            enemy.def.sealer ? enemy.arenaRadius ?? null : null,
+            enemy.def.sealer ? enemy.arenaProgress ?? null : null,
+            enemy.def.sealer ? enemy.arenaTargetPlayerId ?? null : null,
+            visual,
+            flags
+          );
+        }
+        return entry;
+      });
     this.mqtt.publish(this.enemyStateTopic, {
       seq: ++this.lastEnemySnapshotSequence,
       hostId: this.playerId,
@@ -1616,14 +1639,32 @@ export default class MultiplayerManager {
     return this.hostRunTimeMs + (this.hostRunPaused ? 0 : age);
   }
 
+  _remotePauseVote(id) {
+    const remote = this.remotePlayers.get(id);
+    return remote?.pauseRequested === true && remote.pauseVoteGen === this.pauseVoteGen;
+  }
+
+  // Encerra a rodada de votos: ninguém fica com voto "preso" para a próxima pausa.
+  _endPauseVotes() {
+    this.pauseVoteGen += 1;
+    this.pauseRequested = false;
+    this.remotePlayers.forEach((remote) => { remote.pauseRequested = false; });
+  }
+
   _syncPauseVote() {
     if (!this.isMultiplayer || !this.mqtt || this.matchState !== 'running') return;
     // Apenas o host decide quando o mundo para. Clientes aguardam confirmação.
     if (this.isRoomHost && this.levelUpPhase !== 'selecting') {
+      // pausa fechada por fora (menu, level up...): libera os votos
+      if (this.pauseApplied && !this.player.isDead && this.scene.pauseUI?.isOpen === false) {
+        this.pauseApplied = false;
+        this._endPauseVotes();
+      }
       const voters = this.getAlivePlayerIds();
       const allVoted = voters.length > 0 && voters.every((id) => id === this.playerId
-        ? this.pauseRequested : this.remotePlayers.get(id)?.pauseRequested === true);
+        ? this.pauseRequested : this._remotePauseVote(id));
       if (allVoted !== this.pauseApplied) {
+        const wasApplied = this.pauseApplied;
         if (this.player.isDead) {
           this.pauseApplied = allVoted;
           if (allVoted) this.scene.physics.pause();
@@ -1637,6 +1678,7 @@ export default class MultiplayerManager {
           this.pauseApplied = false;
           this.scene.pauseUI?.close();
         }
+        if (wasApplied && !this.pauseApplied) this._endPauseVotes();
       }
     }
     this.scene.pauseUI?.setWaitingForPlayer(this.pauseRequested && !this.pauseApplied);
@@ -1650,6 +1692,7 @@ export default class MultiplayerManager {
       this.hostPauseApplied = this.scene.pauseUI.isOpen === true;
     } else if (!this.hostManualPaused && this.hostPauseApplied) {
       this.hostPauseApplied = false;
+      this.pauseRequested = false;
       this.scene.pauseUI.close();
     }
     this.pauseApplied = this.hostPauseApplied === true;
@@ -1866,6 +1909,7 @@ export default class MultiplayerManager {
       remote.levelUpPendingCount = Number.isFinite(state.levelUpPendingCount)
         ? Math.max(0, Math.floor(state.levelUpPendingCount)) : 0;
       remote.pauseRequested = state.pauseRequested === true;
+      remote.pauseVoteGen = Number.isInteger(state.pauseVoteGen) ? state.pauseVoteGen : -1;
       remote.ready = state.ready === true;
       remote.isHost = acceptedHost;
       if (acceptedHost) this._applyHostLobby(state);
