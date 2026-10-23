@@ -727,7 +727,7 @@ export function playBossEntranceImpact(scene, enemy) {
 
 const FIGHT_GRADE = {
   phase1: { a: 0.2, vig: 0.28, color: [0.62, 0.36, 1], edge: [0.9, 0.7, 1] }, // roxo suave
-  phase2: { a: 0.42, vig: 0.52, color: [0.1, 0.82, 1], edge: [0.6, 0.95, 1] } // ciano intenso (fúria)
+  phase2: { a: 0.27, vig: 0.36, color: [0.1, 0.82, 1], edge: [0.6, 0.95, 1] } // ciano intenso (fúria)
 };
 const FIGHT_FADE_IN_MS = 1600;
 const FIGHT_PHASE_SWAP_MS = 700;
@@ -751,10 +751,10 @@ export function startBossFightGrade(scene, enemy) {
   const apply = () => {
     const { phase1: p1, phase2: p2 } = FIGHT_GRADE;
     const reducedFlashes = SettingsManager.getReducedFlashes();
-    const breath = reducedFlashes ? 1 : 1 + 0.1 * st.k * Math.sin(scene.time.now / 380); // fúria pulsa devagar
+    const breath = reducedFlashes ? 1 : 1 + 0.06 * st.k * Math.sin(scene.time.now / 380); // fúria pulsa devagar
     const spike = reducedFlashes ? 0 : st.spike;
-    amb.a = (lerp(p1.a, p2.a, st.k) * breath + spike * 0.35) * st.master;
-    amb.vig = (lerp(p1.vig, p2.vig, st.k) * breath + spike * 0.2) * st.master;
+    amb.a = (lerp(p1.a, p2.a, st.k) * breath + spike * 0.18) * st.master;
+    amb.vig = (lerp(p1.vig, p2.vig, st.k) * breath + spike * 0.1) * st.master;
     for (let i = 0; i < 3; i += 1) {
       amb.color[i] = lerp(p1.color[i], p2.color[i], st.k);
       amb.edge[i] = lerp(p1.edge[i], p2.edge[i], st.k);
