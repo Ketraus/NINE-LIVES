@@ -9,6 +9,8 @@ import SettingsManager from '../systems/SettingsManager.js';
 //   invert/flash     inversão e clarão de cor
 //   grade/vignette   viragem violeta e bordas escuras
 //   bars             letterbox de cinema
+//   amb (pipe.amb)   filtro AMBIENTE da luta contra o boss: viragem de cor suave +
+//                    vinheta colorida, independente de fx (ver startBossFightGrade)
 // Com tudo em zero o shader devolve a imagem original (isIdle()).
 
 const MAX_RINGS = 4;
@@ -42,6 +44,10 @@ uniform vec2 uRes;
 uniform vec3 uFlashColor;
 uniform vec3 uGradeColor;
 uniform vec3 uEdgeColor;
+uniform float uAmbA;
+uniform float uAmbVig;
+uniform vec3 uAmbColor;
+uniform vec3 uAmbEdge;
 uniform vec4 uRing0;
 uniform vec4 uRing1;
 uniform vec4 uRing2;
@@ -142,6 +148,13 @@ void main() {
   float vig = smoothstep(0.22, 0.95, vr) * uVignette;
   col = mix(col, col * 0.18 + uEdgeColor * 0.10 * vig, vig);
 
+  // filtro ambiente da luta: viragem suave + vinheta colorida
+  float ambLum = dot(col, vec3(0.299, 0.587, 0.114));
+  vec3 ambGraded = uAmbColor * (0.28 + ambLum * 1.15) + col * 0.18;
+  col = mix(col, ambGraded, uAmbA);
+  float ambV = smoothstep(0.25, 1.0, vr) * uAmbVig;
+  col = mix(col, col * 0.4 + uAmbEdge * 0.16 * ambV, ambV);
+
   // brilho na crista das ondas e clarão
   col += uFlashColor * rk * 0.34;
   col = mix(col, uFlashColor, uFlashA);
@@ -185,6 +198,8 @@ export default class BossEntrancePipeline extends Phaser.Renderer.WebGL.Pipeline
   constructor(game) {
     super({ game, fragShader });
     this.fx = defaultFx();
+    // filtro ambiente da luta contra o boss (não é zerado pelo hardReset do fx)
+    this.amb = { a: 0, vig: 0, color: [0.62, 0.36, 1], edge: [0.9, 0.7, 1] };
     // quantas cinemáticas estão usando este pipeline agora (ver acquirePipe)
     this.pins = 0;
     this.impactActive = false;
@@ -193,6 +208,7 @@ export default class BossEntrancePipeline extends Phaser.Renderer.WebGL.Pipeline
   // true quando o shader não muda nada na imagem (aí o pipeline pode ser removido)
   isIdle() {
     const f = this.fx;
+    if (this.amb.a > EPS || this.amb.vig > EPS) return false;
     if (Math.abs(f.zoom - 1) > EPS) return false;
     if (Math.abs(f.pinch) > EPS || f.blur > EPS || Math.abs(f.aberr) > EPS) return false;
     if (Math.abs(f.splitX) > EPS || Math.abs(f.splitY) > EPS) return false;
@@ -241,6 +257,11 @@ export default class BossEntrancePipeline extends Phaser.Renderer.WebGL.Pipeline
     this.set3f('uFlashColor', f.flashColor[0], f.flashColor[1], f.flashColor[2]);
     this.set3f('uGradeColor', f.gradeColor[0], f.gradeColor[1], f.gradeColor[2]);
     this.set3f('uEdgeColor', f.edgeColor[0], f.edgeColor[1], f.edgeColor[2]);
+    const amb = this.amb;
+    this.set1f('uAmbA', amb.a);
+    this.set1f('uAmbVig', amb.vig);
+    this.set3f('uAmbColor', amb.color[0], amb.color[1], amb.color[2]);
+    this.set3f('uAmbEdge', amb.edge[0], amb.edge[1], amb.edge[2]);
 
     // as 4 ondas mais novas; centro de cada uma convertido pra UV da tela
     const rings = f.rings.slice(-MAX_RINGS);

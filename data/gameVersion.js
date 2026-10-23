@@ -6,5 +6,5 @@
 //              GUERRA." com impacto -> preto -> créditos.
 // "PARABÉNS, VOCÊ VENCEU O JOGO." aparece nas duas versões.
 export default {
-  version: 'snct'
+  version: 'feira'
 };

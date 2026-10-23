@@ -397,6 +397,7 @@ export default class SpawnDirector {
         if (!this.authorityActive || generation !== this.authorityGeneration) return;
         this.scene.cameras.main.shake(BOSS_HEARTBEAT_SHAKE_MS, BOSS_HEARTBEAT_INTENSITIES[i]);
         this.bossBuildupFx?.heartbeat(i, BOSS_HEARTBEAT_TIMES_MS.length);
+        this.bossTremor?.pulse?.(i, BOSS_HEARTBEAT_TIMES_MS.length); // a luz das rachaduras bate junto
       });
     });
   }
@@ -406,6 +407,7 @@ export default class SpawnDirector {
     if (!this.authorityActive || generation !== this.authorityGeneration) return;
     this.bossOverlay?.destroy();
     this.bossOverlay = null;
+    this.bossTremor?.climax?.(); // a luz roxa estoura toda antes de sumir no clarão
     this.bossTremor?.stop(200);
     this.bossTremor = null;
     // o impacto (EnemySpawner._playBossEntranceFx) assume o shader dali

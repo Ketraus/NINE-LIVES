@@ -1,4 +1,5 @@
 import MinotaurAudio from '../systems/MinotaurAudio.js';
+import SettingsManager from '../systems/SettingsManager.js';
 import { defaultFx } from './BossEntrancePipeline.js';
 
 // Entrada cinematográfica do Minotauro. Três peças, todas só visual/áudio:
@@ -8,9 +9,12 @@ import { defaultFx } from './BossEntrancePipeline.js';
 //       desce, o mundo é sugado pro epicentro e a lente treme a cada batimento.
 //   playBossEntranceImpact(scene, enemy)
 //       o nascimento (EnemySpawner._playBossEntranceFx): clarão + glitch +
-//       ondas de choque, coluna de luz, raízes de energia no chão e o
-//       Minotauro se materializando. Lança erro se não houver WebGL (o
+//       ondas de choque, coluna de luz, feixes de luz nas pontas das
+//       raízes de energia, flare anamórfico e o Minotauro se materializando. Lança erro se não houver WebGL (o
 //       chamador cai no pop simples).
+//   startBossFightGrade(scene, enemy)
+//       filtro da luta inteira (chamado ao fim do nascimento): viragem roxa
+//       suave na fase 1; na fúria vira ciano e mais intenso; some na morte.
 //   createPresenceFx(scene, epicentro)
 //       versão SNCT (systems/SnctEnding.js): a criatura NÃO aparece; só a
 //       lente reage — respiração, silêncio, rugido em cascata, corte seco.
@@ -509,14 +513,16 @@ export function playBossEntranceImpact(scene, enemy) {
 
   // ---- raízes de energia (crescem do epicentro)
   const roots = [];
-  const mainRoots = 9;
+  const mainRoots = 12;
   for (let i = 0; i < mainRoots; i += 1) {
     const angle = (Math.PI * 2 * i) / mainRoots + rand(-0.3, 0.3);
     const length = Phaser.Math.Between(130, 290);
     const speed = Phaser.Math.Between(380, 520);
     const delay = Phaser.Math.Between(60, 220);
     const pts = buildPath(ex, feetY, angle, length);
-    roots.push(makeRoot(pts, delay, speed));
+    const mainRoot = makeRoot(pts, delay, speed);
+    mainRoot.main = true;
+    roots.push(mainRoot);
     [0.35, 0.65].forEach((frac) => {
       if (Math.random() < 0.35) return;
       const from = pts[Math.min(pts.length - 1, Math.floor(pts.length * frac))];
@@ -547,7 +553,7 @@ export function playBossEntranceImpact(scene, enemy) {
   cine.tween({ targets: rootsG, alpha: 0, duration: 1000, delay: 2600, ease: 'Sine.easeIn' });
 
   // ---- faíscas violeta subindo
-  const sparkLoop = cine.loop(70, () => {
+  const sparkLoop = cine.loop(46, () => {
     if (scene.time.now - t0 > 2500) {
       sparkLoop.remove(false);
       return;
@@ -573,6 +579,75 @@ export function playBossEntranceImpact(scene, enemy) {
       onComplete: () => dot.destroy()
     });
   });
+
+  // ---- feixes de luz: rasgam o chão nas pontas das raízes e em volta do boss
+  const addBeam = (x, y, h, w, life, alpha = 0.9, delay = 0) => {
+    cine.later(delay, () => {
+      const img = scene.add.image(x, y, TEX.pillar)
+        .setOrigin(0.5, 1)
+        .setDepth(DEPTH.pillar - 0.1)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(Phaser.Utils.Array.GetRandom(VIOLETS))
+        .setRotation(rand(-0.1, 0.1))
+        .setAlpha(0)
+        .setScale(w / 64, 0.02);
+      objs.push(img);
+      cine.tween({ targets: img, scaleY: h / 256, alpha, duration: 110, ease: 'Cubic.easeOut' });
+      cine.tween({
+        targets: img,
+        alpha: 0,
+        scaleX: (w / 64) * 0.3,
+        duration: life,
+        delay: 140,
+        ease: 'Quad.easeIn',
+        onComplete: () => { if (img.active) img.destroy(); }
+      });
+    });
+  };
+  // coroa de feixes em volta do Minotauro, na hora do golpe
+  for (let i = 0; i < 7; i += 1) {
+    const a = (Math.PI * 2 * i) / 7 + rand(-0.25, 0.25);
+    const r = frameH * rand(0.45, 0.8);
+    addBeam(ex + Math.cos(a) * r, feetY + Math.sin(a) * r * GROUND_SQUASH,
+      rand(frameH * 0.9, frameH * 2), rand(26, 46), Phaser.Math.Between(650, 1000), 0.85, Phaser.Math.Between(0, 200));
+  }
+  // cada raiz principal, quando chega na ponta, solta um feixe maior
+  roots.filter((root) => root.main).forEach((root) => {
+    const tip = root.pts[root.pts.length - 1];
+    addBeam(tip.x, tip.y, rand(frameH * 1.2, frameH * 2.6), rand(30, 54), Phaser.Math.Between(800, 1300), 0.9,
+      root.delay + root.duration);
+  });
+
+  // ---- ondas de choque no chão (elipses de luz que abrem) + flare anamórfico
+  const groundRing = (delay, to, ms, width, color, a0 = 0.9) => {
+    cine.later(delay, () => {
+      const g = scene.add.graphics().setDepth(DEPTH.roots).setBlendMode(Phaser.BlendModes.ADD);
+      objs.push(g);
+      const st = { r: frameH * 0.3, a: a0 };
+      cine.tween({
+        targets: st, r: to, a: 0, duration: ms, ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          if (!g.active) return;
+          g.clear();
+          g.lineStyle(width * (0.3 + 0.7 * (st.a / a0)), color, st.a);
+          g.strokeEllipse(ex, feetY, st.r * 2, st.r * 2 * GROUND_SQUASH);
+        },
+        onComplete: () => { if (g.active) g.destroy(); }
+      });
+    });
+  };
+  groundRing(0, 560, 1000, 7, 0xf1e4ff);
+  groundRing(200, 420, 1100, 4, 0xb06bff, 0.75);
+  groundRing(480, 640, 1400, 3, 0x9b4dff, 0.55);
+
+  const streak = scene.add.image(ex, focusY, TEX.glow)
+    .setDepth(DEPTH.spark)
+    .setBlendMode(Phaser.BlendModes.ADD)
+    .setTint(0xe0c4ff)
+    .setAlpha(0.95)
+    .setScale((view.width * 1.2) / 128, 0.07);
+  objs.push(streak);
+  cine.tween({ targets: streak, alpha: 0, scaleY: 0.015, duration: 520, delay: 40, ease: 'Cubic.easeOut' });
 
   // ---- o Minotauro se materializa
   enemy.setScale(baseScale * 0.25);
@@ -634,6 +709,8 @@ export function playBossEntranceImpact(scene, enemy) {
   };
 
   cine.later(IMPACT_RELEASE_AT_MS, () => {
+    // o filtro roxo da luta entra junto da lente voltando ao normal (sem corte)
+    if (enemy.active) startBossFightGrade(scene, enemy);
     cine.tween({
       targets: pipe.fx,
       zoom: 1, aberr: 0, gradeA: 0, vignette: 0, bars: 0,
@@ -644,6 +721,92 @@ export function playBossEntranceImpact(scene, enemy) {
   cine.later(IMPACT_END_MS, finish);
 
   return { cancel: finish };
+}
+
+// ---------------------------------------------------------------- 4) filtro da luta
+
+const FIGHT_GRADE = {
+  phase1: { a: 0.2, vig: 0.28, color: [0.62, 0.36, 1], edge: [0.9, 0.7, 1] }, // roxo suave
+  phase2: { a: 0.42, vig: 0.52, color: [0.1, 0.82, 1], edge: [0.6, 0.95, 1] } // ciano intenso (fúria)
+};
+const FIGHT_FADE_IN_MS = 1600;
+const FIGHT_PHASE_SWAP_MS = 700;
+const FIGHT_FADE_OUT_MS = 1400;
+const FIGHT_DEATH_FADE_MS = 2400;
+
+export function startBossFightGrade(scene, enemy) {
+  if (!hasWebGl(scene)) return null;
+  scene._bossFightGrade?.stop(0);
+  const pipe = acquirePipe(scene);
+  if (!pipe) return null;
+
+  const amb = pipe.amb;
+  const st = { master: 0, k: enemy.isEnraged ? 1 : 0, spike: 0 };
+  let enraged = Boolean(enemy.isEnraged);
+  let ending = false;
+  let done = false;
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  const apply = () => {
+    const { phase1: p1, phase2: p2 } = FIGHT_GRADE;
+    const reducedFlashes = SettingsManager.getReducedFlashes();
+    const breath = reducedFlashes ? 1 : 1 + 0.1 * st.k * Math.sin(scene.time.now / 380); // fúria pulsa devagar
+    const spike = reducedFlashes ? 0 : st.spike;
+    amb.a = (lerp(p1.a, p2.a, st.k) * breath + spike * 0.35) * st.master;
+    amb.vig = (lerp(p1.vig, p2.vig, st.k) * breath + spike * 0.2) * st.master;
+    for (let i = 0; i < 3; i += 1) {
+      amb.color[i] = lerp(p1.color[i], p2.color[i], st.k);
+      amb.edge[i] = lerp(p1.edge[i], p2.edge[i], st.k);
+    }
+  };
+
+  const finalize = () => {
+    if (done) return;
+    done = true;
+    scene.events.off(Phaser.Scenes.Events.UPDATE, onUpdate);
+    scene.events.off(Phaser.Scenes.Events.SHUTDOWN, onShutdown);
+    scene.tweens.killTweensOf(st);
+    amb.a = 0;
+    amb.vig = 0;
+    if (scene._bossFightGrade === handle) scene._bossFightGrade = null;
+    releasePipe(scene, pipe);
+  };
+
+  const end = (ms) => {
+    if (ending || done) return;
+    ending = true;
+    scene.tweens.killTweensOf(st);
+    if (ms <= 0) { finalize(); return; }
+    scene.tweens.add({ targets: st, master: 0, duration: ms, ease: 'Sine.easeInOut', onComplete: finalize });
+  };
+
+  function onUpdate() {
+    if (done) return;
+    if (!ending && (!enemy.active || enemy._deathSequenceStarted)) {
+      end(enemy.active ? FIGHT_DEATH_FADE_MS : FIGHT_FADE_OUT_MS);
+    }
+    if (!ending && !enraged && enemy.isEnraged) {
+      enraged = true; // fase 2: vira ciano, mais forte, com um golpe de luz na virada
+      scene.tweens.add({ targets: st, k: 1, duration: FIGHT_PHASE_SWAP_MS, ease: 'Sine.easeInOut' });
+      st.spike = 1;
+      scene.tweens.add({ targets: st, spike: 0, duration: 1000, ease: 'Quad.easeOut' });
+    }
+    apply();
+  }
+  function onShutdown() {
+    done = true;
+    scene.events.off(Phaser.Scenes.Events.UPDATE, onUpdate);
+    scene.events.off(Phaser.Scenes.Events.SHUTDOWN, onShutdown);
+    if (scene._bossFightGrade === handle) scene._bossFightGrade = null;
+  }
+
+  const handle = { stop: end };
+  scene._bossFightGrade = handle;
+  scene.events.on(Phaser.Scenes.Events.UPDATE, onUpdate);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, onShutdown);
+  scene.tweens.add({ targets: st, master: 1, duration: FIGHT_FADE_IN_MS, ease: 'Sine.easeInOut' });
+  return handle;
 }
 
 // ---------------------------------------------------------------- 3) presença (SNCT)
@@ -740,4 +903,4 @@ export function createPresenceFx(scene, epicenter) {
   };
 }
 
-export default { startBossEntranceBuildup, playBossEntranceImpact, createPresenceFx };
+export default { startBossEntranceBuildup, playBossEntranceImpact, startBossFightGrade, createPresenceFx };
