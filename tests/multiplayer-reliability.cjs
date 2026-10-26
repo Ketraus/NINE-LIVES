@@ -11,7 +11,7 @@ function method(source, name, globals = {}) {
   return vm.runInNewContext(`({${source.slice(start, end)}})`, globals)[name];
 }
 const now = Date.now();
-const alive = method(network, 'getAlivePlayerIds', { PLAYER_TIMEOUT_MS: 5000 });
+const alive = method(network, 'getAlivePlayerIds', { PLAYER_TIMEOUT_MS: 8000 });
 const remote = { hp: 80, lastSeenAt: now, pauseRequested: true, targetX: 10, targetY: 10 };
 let paused = false;
 const events = [];
@@ -19,7 +19,7 @@ const host = {
   isMultiplayer: true, mqtt: {}, matchState: 'running', isRoomHost: true,
   playerId: 'host', player: { isDead: true, healthSystem: { current: 0 } },
   getRoster: () => ['host', 'guest', 'dead', 'stale'], getAlivePlayerIds: alive,
-  remotePlayers: new Map([['guest', remote], ['dead', { hp: 0, lastSeenAt: now }], ['stale', { hp: 80, lastSeenAt: now - 6000 }]]),
+  remotePlayers: new Map([['guest', remote], ['dead', { hp: 0, lastSeenAt: now }], ['stale', { hp: 80, lastSeenAt: now - 9000 }]]),
   pauseApplied: false, pauseRequested: false, levelUpPhase: 'idle',
   scene: {
     isGameOver: true, time: { timeScale: 1 },

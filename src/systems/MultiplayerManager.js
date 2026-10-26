@@ -38,7 +38,7 @@ const ENEMY_HIT_INTERVAL_MS = 100;
 const MAX_SYNCED_ENEMIES = 150;
 const MAX_DAMAGE_PER_MESSAGE = 5000;
 const ATTACK_MIN_INTERVAL_MS = 60;
-const PLAYER_TIMEOUT_MS = 5000;
+const PLAYER_TIMEOUT_MS = 8000; // tolera travadas/aba em segundo plano sem trocar de Host
 const HOST_ELECTION_GRACE_MS = 1000;
 // Mortes e coletas recém-ocorridas são reenviadas dentro dos próximos snapshots
 // (QoS 0 pode perder o pacote avulso). Tudo é idempotente no cliente.
@@ -123,6 +123,7 @@ export default class MultiplayerManager {
     this.slotOrder = []; // só o Host mantém
     this.rejected = false;
     this.notInRosterSince = null;
+    this.wasAdmitted = isRoomHost === true; // já aceito (ou Host): nunca é "sala cheia"
     this.lastRoomAdvertAt = 0;
     this.roomAdvertBeat = 0;
     this.createdAt = Date.now();
@@ -451,7 +452,10 @@ export default class MultiplayerManager {
   // Cliente: o Host nunca me colocou no roster (sala cheia ou senha errada).
   _checkRejected(now) {
     if (this.isRoomHost || this.rejected || !this.roster) return;
-    if (this.roster.includes(this.playerId)) {
+    if (this.roster.includes(this.playerId)) this.wasAdmitted = true;
+    // Ex-Host (ou quem já estava na sala) que caiu e voltou: o novo Host o
+    // readmite ao receber a posição; não é sala cheia nem senha errada.
+    if (this.wasAdmitted) {
       this.notInRosterSince = null;
       return;
     }
@@ -557,6 +561,7 @@ export default class MultiplayerManager {
 
   _demoteFromHost() {
     if (!this.isRoomHost) return;
+    this.wasAdmitted = true;
     this.isRoomHost = false;
     this.scene.isRoomHost = false;
     this.hostPauseApplied = this.scene.pauseUI?.isOpen === true;
