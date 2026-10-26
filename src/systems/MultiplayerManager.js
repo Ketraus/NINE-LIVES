@@ -35,6 +35,11 @@ const REJECTED_AFTER_MS = 3000;
 const POSITION_INTERVAL_MS = 100;
 const ENEMY_SNAPSHOT_INTERVAL_MS = 200;
 const ENEMY_HIT_INTERVAL_MS = 100;
+// Animação das réplicas segue o movimento que o jogador VÊ (não só o 'moving'
+// do instante do snapshot): anda enquanto o Host diz que anda OU enquanto a
+// réplica ainda está alcançando o alvo, e só volta ao idle após esta folga.
+const ENEMY_ANIM_HOLD_MS = 260;
+const ENEMY_CATCHUP_PX_SQ = 9;
 const MAX_SYNCED_ENEMIES = 150;
 const MAX_DAMAGE_PER_MESSAGE = 5000;
 const ATTACK_MIN_INTERVAL_MS = 60;
@@ -340,10 +345,21 @@ export default class MultiplayerManager {
     this.remoteEnemies.forEach((enemy) => {
       if (!enemy.active || !Number.isFinite(enemy.targetX)) return;
       const blend = Math.min(1, delta / ENEMY_SNAPSHOT_INTERVAL_MS);
+      const dx = enemy.targetX - enemy.x;
+      const dy = enemy.targetY - enemy.y;
       enemy.setPosition(
         Phaser.Math.Linear(enemy.x, enemy.targetX, blend),
         Phaser.Math.Linear(enemy.y, enemy.targetY, blend)
       );
+      const nowMs = this.scene.time.now;
+      if (dx * dx + dy * dy > ENEMY_CATCHUP_PX_SQ) {
+        enemy._netMovingUntil = Math.max(enemy._netMovingUntil || 0, nowMs + ENEMY_ANIM_HOLD_MS);
+      }
+      const shouldWalk = nowMs < (enemy._netMovingUntil || 0);
+      if (enemy._wantsToMove !== shouldWalk) {
+        enemy._wantsToMove = shouldWalk;
+        enemy.updateAnimState();
+      }
     });
     this._evaluateMatchEnd();
     this._syncPauseVote();
@@ -1632,7 +1648,10 @@ export default class MultiplayerManager {
       enemy.healthSystem.current = Phaser.Math.Clamp(hpTenths / 10, 0, enemy.healthSystem.maxHp);
       enemy.healthSystem.dead = false;
       enemy.setFlipX(flipX === 1);
-      enemy._wantsToMove = moving === 1;
+      if (moving === 1) {
+        enemy._netMovingUntil = this.scene.time.now + ENEMY_ANIM_HOLD_MS;
+      }
+      enemy._wantsToMove = this.scene.time.now < (enemy._netMovingUntil || 0);
       enemy.updateAnimState();
       if (enemy.def.sealer) {
         enemy.syncArenaVisual?.(
