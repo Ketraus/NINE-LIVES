@@ -35,7 +35,7 @@ export default class MqttClient {
     this.mqtt.publish(topic, JSON.stringify(message), { qos, retain: false });
   }
 
-  end() {
-    this.mqtt.end(true);
+  end(force = true) {
+    this.mqtt.end(force);
   }
 }

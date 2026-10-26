@@ -40,6 +40,12 @@ const MAX_DAMAGE_PER_MESSAGE = 5000;
 const ATTACK_MIN_INTERVAL_MS = 60;
 const PLAYER_TIMEOUT_MS = 8000; // tolera travadas/aba em segundo plano sem trocar de Host
 const HOST_ELECTION_GRACE_MS = 1000;
+// Queda involuntária (rede/travada): a vaga fica reservada por este tempo; só
+// depois disso (inatividade prolongada) o jogador perde o lugar. Saída
+// voluntária (menu/fechar aba) libera a vaga na hora.
+const RECONNECT_GRACE_MS = 60000;
+// Quem já esteve na sala e continua fora do roster por tanto tempo é recusado.
+const REJECTED_REJOIN_MS = 15000;
 // Mortes e coletas recém-ocorridas são reenviadas dentro dos próximos snapshots
 // (QoS 0 pode perder o pacote avulso). Tudo é idempotente no cliente.
 const REPLAY_SNAPSHOTS = 5;
@@ -123,7 +129,10 @@ export default class MultiplayerManager {
     this.slotOrder = []; // só o Host mantém
     this.rejected = false;
     this.notInRosterSince = null;
-    this.wasAdmitted = isRoomHost === true; // já aceito (ou Host): nunca é "sala cheia"
+    this.wasAdmitted = isRoomHost === true; // já aceito (ou Host)
+    this.reservedSlots = new Map(); // id -> até quando a vaga fica guardada (Host)
+    this.leftIds = new Set(); // quem saiu de propósito (não ganha reserva)
+    this.leftAnnounced = false;
     this.lastRoomAdvertAt = 0;
     this.roomAdvertBeat = 0;
     this.createdAt = Date.now();
@@ -188,6 +197,26 @@ export default class MultiplayerManager {
     this.mqtt.on('connect', this.onConnect);
     this.mqtt.on('message', this.onMessage);
     this.mqtt.on('error', this.onError);
+    this.onPageHide = () => this._announceLeave();
+    window.addEventListener('pagehide', this.onPageHide);
+  }
+
+  // Saída voluntária: aviso final no tópico de posição (já assinado por todos).
+  _announceLeave() {
+    if (this.leftAnnounced || !this.mqtt?.connected || !this.playerId) return;
+    this.leftAnnounced = true;
+    this.mqtt.publish(this.positionTopic, { id: this.playerId, left: true });
+  }
+
+  _onPlayerLeft(playerId) {
+    this.leftIds.add(playerId);
+    this.reservedSlots.delete(playerId);
+    const remote = this.remotePlayers.get(playerId);
+    if (remote) {
+      this._destroyRemote(remote);
+      this.remotePlayers.delete(playerId);
+    }
+    if (this.isRoomHost) this.slotOrder = this.slotOrder.filter((id) => id !== playerId);
   }
 
   // Skin pela vaga fixa: 0 = Host original (preto), 1 = branco, 2 = laranja (Player 3),
@@ -381,7 +410,13 @@ export default class MultiplayerManager {
   _admitNewPlayer(playerId, state, acceptedHost) {
     if (this.isRoomHost) {
       if (this.slotOrder.includes(playerId)) return true;
-      if (this.slotOrder.length >= MAX_ROOM_PLAYERS) return false;
+      if (this.slotOrder.length >= MAX_ROOM_PLAYERS) {
+        // só toma vaga de quem está caído (reservada); nunca de quem está online
+        const evict = this.slotOrder.find((id) => this.reservedSlots.has(id));
+        if (!evict) return false;
+        this.slotOrder = this.slotOrder.filter((id) => id !== evict);
+        this.reservedSlots.delete(evict);
+      }
       this.slotOrder.push(playerId);
       return true;
     }
@@ -396,7 +431,18 @@ export default class MultiplayerManager {
     this.slotOrder = this.slotOrder.filter((id) => {
       if (id === this.playerId) return true;
       const remote = this.remotePlayers.get(id);
-      return Boolean(remote) && now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS;
+      if (remote && now - remote.lastSeenAt <= PLAYER_TIMEOUT_MS) {
+        this.reservedSlots.delete(id); // voltou
+        return true;
+      }
+      if (this.leftIds.has(id) || this.matchPhase !== 'playing') return false;
+      // queda involuntária durante a partida: guarda a vaga até o limite
+      if (!this.reservedSlots.has(id)) this.reservedSlots.set(id, now + RECONNECT_GRACE_MS);
+      if (now > this.reservedSlots.get(id)) {
+        this.reservedSlots.delete(id);
+        return false;
+      }
+      return true;
     });
   }
 
@@ -452,15 +498,16 @@ export default class MultiplayerManager {
   // Cliente: o Host nunca me colocou no roster (sala cheia ou senha errada).
   _checkRejected(now) {
     if (this.isRoomHost || this.rejected || !this.roster) return;
-    if (this.roster.includes(this.playerId)) this.wasAdmitted = true;
-    // Ex-Host (ou quem já estava na sala) que caiu e voltou: o novo Host o
-    // readmite ao receber a posição; não é sala cheia nem senha errada.
-    if (this.wasAdmitted) {
+    if (this.roster.includes(this.playerId)) {
+      this.wasAdmitted = true;
       this.notInRosterSince = null;
       return;
     }
     if (this.notInRosterSince == null) this.notInRosterSince = now;
-    if (now - this.notInRosterSince >= REJECTED_AFTER_MS) {
+    // Ex-Host/ex-membro que caiu e voltou: o Host atual o readmite ao receber a
+    // posição; só desiste depois de bem mais tempo (vaga realmente perdida).
+    const limit = this.wasAdmitted ? REJECTED_REJOIN_MS : REJECTED_AFTER_MS;
+    if (now - this.notInRosterSince >= limit) {
       this.rejected = true;
       this.scene.onRoomRejected?.();
     }
@@ -511,8 +558,14 @@ export default class MultiplayerManager {
     const activeIds = new Set([...this.remotePlayers.entries()]
       .filter(([, remote]) => now_() - remote.lastSeenAt <= PLAYER_TIMEOUT_MS)
       .map(([id]) => id));
-    const previous = (this.roster || []).filter((id) => activeIds.has(id));
+    const nowMs = now_();
+    const previous = (this.roster || []).filter((id) => id !== this.playerId &&
+      (activeIds.has(id) || !this.leftIds.has(id)));
     activeIds.forEach((id) => { if (!previous.includes(id)) previous.push(id); });
+    // Host anterior (e outros caídos) mantêm a vaga reservada, sem expulsar
+    previous.forEach((id) => {
+      if (!activeIds.has(id)) this.reservedSlots.set(id, nowMs + RECONNECT_GRACE_MS);
+    });
     this.slotOrder = [this.playerId, ...previous.filter((id) => id !== this.playerId)].slice(0, MAX_ROOM_PLAYERS);
     this.lastEnemySnapshotSequence = Math.max(
       this.lastEnemySnapshotSequence,
@@ -1814,6 +1867,10 @@ export default class MultiplayerManager {
         return;
       }
       if (playerId === this.playerId) return;
+      if (messageType === 'position' && state.left === true && state.id === playerId) {
+        this._onPlayerLeft(playerId);
+        return;
+      }
       if (messageType === 'attack') {
         this._onAttack(playerId, state);
         return;
@@ -2120,6 +2177,8 @@ export default class MultiplayerManager {
   }
 
   destroy() {
+    this._announceLeave();
+    if (this.onPageHide) window.removeEventListener('pagehide', this.onPageHide);
     if (this.matchState !== 'running' && typeof this.runEpoch === 'string') {
       staleMatchEpochs.add(this.runEpoch);
     }
@@ -2127,7 +2186,7 @@ export default class MultiplayerManager {
       this.mqtt.off('connect', this.onConnect);
       this.mqtt.off('message', this.onMessage);
       this.mqtt.off('error', this.onError);
-      this.mqtt.end();
+      this.mqtt.end(false); // não-forçado: deixa o aviso de saída sair antes de fechar
     }
     this.remotePlayers.forEach((remote) => this._destroyRemote(remote));
     this.remotePlayers.clear();
