@@ -1,4 +1,24 @@
 import EventBus from './EventBus.js';
+import promptText from '../ui/TextPrompt.js';
+
+// Trava casual contra curioso (F9 pede senha). Guardamos só o hash, não o texto.
+// Não é segurança de verdade: o código do jogo roda no navegador do jogador.
+const DEV_PASSWORD_HASH = 'efllywlgjk';
+let devUnlocked = false; // vale pela sessão da página (sobrevive a reinícios de cena)
+
+function hashDevPassword(password) {
+  const text = `nl-dev:${password}`;
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
 
 // Console de debug/hack: F9 abre uma caixa de texto (elemento HTML de
 export default class DevConsole {
@@ -22,10 +42,45 @@ export default class DevConsole {
   _onKeydown(e) {
     if (e.key === 'F9') {
       e.preventDefault();
-      this.isOpen ? this.close() : this.open();
+      if (this.isOpen) this.close();
+      else this._requestOpen();
     } else if (e.key === 'Escape' && this.isOpen) {
       this.close();
     }
+  }
+
+  // F9: pede a senha na primeira vez; depois de destravado abre direto.
+  async _requestOpen() {
+    if (this._asking || this.isOpen) return;
+    if (this.scene.levelUpUI?.container?.visible) return;
+    if (devUnlocked) {
+      this.open();
+      return;
+    }
+    this._asking = true;
+    const keyboard = this.scene.input?.keyboard;
+    const wasEnabled = keyboard?.enabled;
+    if (keyboard) {
+      keyboard.resetKeys?.();
+      keyboard.enabled = false; // o que digitar na senha não pode mover o gato
+    }
+    let value = null;
+    try {
+      value = await promptText({
+        title: 'HACK CONSOLE',
+        hint: 'ACESSO RESTRITO. DIGITE A SENHA.',
+        password: true,
+        maxLength: 32,
+        confirmLabel: 'ENTRAR'
+      });
+    } finally {
+      this._asking = false;
+      if (keyboard && wasEnabled !== false && !this.isOpen) keyboard.enabled = true;
+    }
+    if (value == null || this.destroyed) return;
+    if (hashDevPassword(value.trim()) !== DEV_PASSWORD_HASH) return;
+    devUnlocked = true;
+    this.open();
   }
 
   open() {
@@ -63,6 +118,7 @@ export default class DevConsole {
   }
 
   destroy() {
+    this.destroyed = true;
     window.removeEventListener('keydown', this._onKeydown);
     this.input.removeEventListener('keydown', this._onInputKeydown);
     if (this.isOpen) this.close();
