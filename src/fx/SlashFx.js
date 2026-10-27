@@ -1,3 +1,5 @@
+import { reserveFx } from './FxBudget.js';
+
 // Corte animado em pixel art (katana, Dança de Cortes e Cyberus).
 // Cada folha tem 9 frames (3x3) de 64x47 px: o corte nasce no alto, abre
 // num crescente grande apontando pra DIREITA (+x) e se desfaz em fiapos.
@@ -133,7 +135,7 @@ export function playSlashFx(scene, { x, y, angle, range, variant, durationMs = 2
 
   // faíscas saindo da ponta do corte (no auge da animação)
   scene.time.delayedCall(durationMs * 0.22, () => {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0, n = reserveFx(scene, 6); i < n; i++) {
       const a = angle + Phaser.Math.DegToRad(Phaser.Math.Between(-38, 38));
       const r = range * 0.92;
       const px = x + Math.cos(a) * r;
@@ -199,7 +201,7 @@ export function spawnSlashHitFx(scene, x, y, angle) {
     onComplete: () => streak.destroy()
   });
 
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0, n = reserveFx(scene, 6); i < n; i++) {
     const a = angle + Phaser.Math.DegToRad(Phaser.Math.Between(-50, 50));
     const dist = Phaser.Math.Between(16, 38);
     const shard = scene.add

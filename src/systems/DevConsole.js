@@ -1,5 +1,6 @@
 import EventBus from './EventBus.js';
 import promptText from '../ui/TextPrompt.js';
+import { fxBudgetStats } from '../fx/FxBudget.js';
 
 // Trava casual contra curioso (F9 pede senha). Guardamos só o hash, não o texto.
 // Não é segurança de verdade: o código do jogo roda no navegador do jogador.
@@ -119,6 +120,7 @@ export default class DevConsole {
 
   destroy() {
     this.destroyed = true;
+    this._stopPerf();
     window.removeEventListener('keydown', this._onKeydown);
     this.input.removeEventListener('keydown', this._onInputKeydown);
     if (this.isOpen) this.close();
@@ -143,6 +145,7 @@ export default class DevConsole {
 
     switch (cmd.toLowerCase()) {
       case 'help':
+        this._log('perf start | stop — mede os últimos 1800 frames de combate; feche o console durante a captura.');
         this._log('give <cartaId> [quantidade] — dá N cópias de uma carta (padrão: 1)');
         this._log('remove <cartaId> [quantidade] — remove N cópias de uma carta (padrão: 1)');
         this._log('resetcards — limpa todas as cartas/upgrades da run atual');
@@ -161,6 +164,37 @@ export default class DevConsole {
         this._log('fim [segundos] — simula o fim: limpa a arena, só horda base (sem Minotauro/eventos) e pula pro tempo (padrão 595 = 9:55)');
         this._log('mino [segundos] — pula pro pré-Minotauro (padrão 350 = 5:50): limpa a arena, marca Sealer/Elite anteriores como já ocorridos, spawna horda base e deixa o Minotauro nascer às 6:00');
         break;
+
+      case 'perf': {
+        if (args[0] === 'start') {
+          this._stopPerf();
+          this._perf = { samples: new Float64Array(1800), count: 0, previous: 0,
+            skipped: fxBudgetStats(this.scene).skipped };
+          this._perfTick = () => {
+            const capture = this._perf;
+            if (this.isOpen || document.hidden || this.scene.time.timeScale === 0) {
+              capture.previous = 0;
+              return;
+            }
+            const now = performance.now();
+            if (capture.previous) capture.samples[capture.count++ % capture.samples.length] = now - capture.previous;
+            capture.previous = now;
+          };
+          this.scene.events.on('preupdate', this._perfTick);
+          this._log('Captura iniciada. Feche o console, jogue e use perf stop.');
+        } else if (args[0] === 'stop' && this._perf) {
+          const capture = this._perf;
+          this._stopPerf();
+          const samples = Array.from(capture.samples.subarray(0, Math.min(capture.count, capture.samples.length)));
+          if (!samples.length) { this._log('Nenhum frame de combate capturado.'); break; }
+          samples.sort((a, b) => a - b);
+          const avg = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+          const p95 = samples[Math.ceil(samples.length * 0.95) - 1];
+          this._log(`${samples.length} frames: média ${avg.toFixed(1)} ms (~${(1000 / avg).toFixed(0)} FPS), p95 ${p95.toFixed(1)} ms, pior ${samples[samples.length - 1].toFixed(1)} ms; ${samples.filter((value) => value > 33.3).length} acima de 33,3 ms.`);
+          this._log(`Detalhes secundários poupados pelo orçamento desde o início: ${fxBudgetStats(this.scene).skipped - capture.skipped}.`);
+        } else this._log('Uso: perf start | stop');
+        break;
+      }
 
       case 'list': {
         const lines = this.runManager.cheatListCards();
@@ -342,6 +376,12 @@ export default class DevConsole {
       default:
         this._log(`Comando desconhecido: "${cmd}". Digite "help".`);
     }
+  }
+
+  _stopPerf() {
+    if (this._perfTick) this.scene.events.off('preupdate', this._perfTick);
+    this._perfTick = null;
+    this._perf = null;
   }
 
   _log(text) {

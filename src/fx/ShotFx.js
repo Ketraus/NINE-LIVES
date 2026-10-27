@@ -1,3 +1,6 @@
+import { reserveFx } from './FxBudget.js';
+import { shotTrailPool } from './ShotTrailPool.js';
+
 // "Suco" dos tiros (pistola, GatoDrone, CatForce): clarão no cano, estica
 // ao sair, rastro de brilho enquanto voa e faíscas no impacto. Tudo é só
 // visual — não mexe em dano, velocidade nem hitbox das balas.
@@ -6,7 +9,6 @@
 
 const LAUNCH_STRETCH_MS = 90;
 const TRAIL_INTERVAL_MS = 26;
-const TRAIL_LIFE_MS = 150;
 
 // Clarão curto no cano + 3 faíscas pra frente e estica o sprite da bala
 // ao sair (comprida/fina → tamanho normal). `muzzle: false` pula o clarão.
@@ -42,7 +44,7 @@ export function launchShotFx(scene, bullet, { x, y, angle, color, muzzle = true,
     onComplete: () => flash.destroy()
   });
 
-  for (let i = 0, n = Math.round(3 * intensity); i < n; i++) {
+  for (let i = 0, n = reserveFx(scene, Math.round(3 * intensity)); i < n; i++) {
     const a = angle + Phaser.Math.FloatBetween(-0.45 * intensity, 0.45 * intensity);
     const dist = Phaser.Math.Between(10, 22) * intensity;
     const spark = scene.add
@@ -64,47 +66,24 @@ export function launchShotFx(scene, bullet, { x, y, angle, color, muzzle = true,
   }
 }
 
-// Rastro: a cada ~26ms deixa um "fantasma" da bala (mesma textura) e um
+// Rastro: a cada ~26ms (50ms no touch) deixa um fantasma da bala e um
 // brilho redondo que somem rápido — a bala parece arrastar luz.
 export function attachShotTrail(scene, bullet, color, { intervalMs = TRAIL_INTERVAL_MS, intensity = 1 } = {}) {
+  const pool = shotTrailPool(scene);
+  const delay = Math.max(intervalMs, scene.sys.game.device.input.touch ? 50 : intervalMs);
+  let lastEmission = -Infinity;
   const ev = scene.time.addEvent({
-    delay: intervalMs,
+    delay,
     loop: true,
     callback: () => {
-      if (!bullet.active) {
-        ev.remove(false);
-        return;
-      }
-      const ghost = scene.add
-        .image(bullet.x, bullet.y, bullet.texture.key)
-        .setDepth(14)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setScale(bullet.scaleX, bullet.scaleY)
-        .setRotation(bullet.rotation)
-        .setAlpha(Math.min(0.6, 0.35 * intensity));
-      const halo = scene.add
-        .image(bullet.x, bullet.y, 'hit_fx')
-        .setDepth(13)
-        .setBlendMode(Phaser.BlendModes.ADD)
-        .setTint(color)
-        .setScale(0.32 * intensity)
-        .setAlpha(Math.min(0.5, 0.28 * intensity));
-      scene.tweens.add({
-        targets: ghost,
-        alpha: 0,
-        scaleY: ghost.scaleY * 0.3,
-        duration: TRAIL_LIFE_MS * Math.min(1.6, intensity),
-        onComplete: () => ghost.destroy()
-      });
-      scene.tweens.add({
-        targets: halo,
-        alpha: 0,
-        scale: 0.12,
-        duration: TRAIL_LIFE_MS * Math.min(1.6, intensity),
-        onComplete: () => halo.destroy()
-      });
+      if (!bullet.active) { ev.remove(false); return; }
+      // Timer pode recuperar vários ticks após um frame lento: emita só uma vez.
+      if (scene.time.now === lastEmission) return;
+      lastEmission = scene.time.now;
+      pool.emit(bullet, color, intensity);
     }
   });
+  bullet.once('destroy', () => ev.remove(false));
 }
 
 // Impacto: clarão branco + anel + faíscas que voltam pro lado de onde o
@@ -143,7 +122,7 @@ export function spawnShotHitFx(scene, x, y, color, angle, intensity = 1) {
   });
 
   const back = angle + Math.PI;
-  for (let i = 0, n = Math.round(5 * intensity); i < n; i++) {
+  for (let i = 0, n = reserveFx(scene, Math.round(5 * intensity)); i < n; i++) {
     const a = back + Phaser.Math.FloatBetween(-0.9, 0.9);
     const dist = Phaser.Math.Between(12, 30) * intensity;
     const shard = scene.add

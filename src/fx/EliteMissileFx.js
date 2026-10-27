@@ -1,3 +1,5 @@
+import { reserveFx } from './FxBudget.js';
+
 // FX do ataque de mísseis do Elite: míssil de verdade em voo (corpo, chama,
 // rastro de fumaça, sombra no chão) + explosão enorme quando bate no chão.
 // Tudo aqui é só visual — dano, sons e tremida de câmera ficam no Elite.js.
@@ -316,7 +318,7 @@ export function playEliteMissileExplosion(scene, x, y, radius, intensity = 1) {
   const mobile = useMobileFx(scene);
   intensity = Math.min(intensity, explosionBudget(scene));
   // Mantém o sprite principal e o raio de dano; reduz só as camadas secundárias.
-  const n = (count) => Math.max(2, Math.round(count * intensity * (mobile ? 0.35 : 1)));
+  const n = (count) => reserveFx(scene, Math.max(2, Math.round(count * intensity * (mobile ? 0.35 : 1))));
 
   const flare = (scale, alpha, ms, tint) => {
     const img = scene.add
