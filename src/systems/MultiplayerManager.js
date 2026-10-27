@@ -342,6 +342,10 @@ export default class MultiplayerManager {
       this._updateRemoteAbilityEffects(remote, this.scene.time.now, delta);
       this._updateRemoteMarker(id, remote);
     });
+    // Cliente: réplicas seguem só os snapshots do Host; colisão local entre elas
+    // empurraria os corpos e brigaria com a interpolação.
+    const enemyCollider = this.scene.enemySpawner?.enemyCollisionCollider;
+    if (enemyCollider && !this.isRoomHost) enemyCollider.active = false;
     this.remoteEnemies.forEach((enemy) => {
       if (!enemy.active || !Number.isFinite(enemy.targetX)) return;
       const blend = Math.min(1, delta / ENEMY_SNAPSHOT_INTERVAL_MS);
@@ -1590,7 +1594,9 @@ export default class MultiplayerManager {
           Math.round(enemy.y),
           Math.round(enemy.healthSystem.current * 10),
           enemy.flipX ? 1 : 0,
-          enemy.body?.velocity.lengthSq() > 0 ? 1 : 0
+          // intenção de andar (a mesma que anima o Host): a velocity física zera quando
+          // dois inimigos se tocam e fazia o cliente parar a animação
+          (enemy._wantsToMove || enemy.body?.velocity.lengthSq() > 0) ? 1 : 0
         ];
         const visual = enemy.getNetworkVisualState?.(gameNow) ?? null;
         const flags = enemy.getNetworkStatusFlags?.(gameNow) ?? 0;
