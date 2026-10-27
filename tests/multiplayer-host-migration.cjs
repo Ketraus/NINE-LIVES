@@ -114,30 +114,43 @@ function scenario() {
   assert.equal(B.getRoster().includes(ids.A), true);
   for (let t = 0; t < 61000; t += 100) { seen(B, ids.C); seen(C, ids.B); tick(B); tick(C); }
   assert.equal(B.getRoster().includes(ids.A), false, 'após 60s sem sinal a vaga é liberada');
-  // sala enche com D e E
-  [ids.D, ids.E].forEach((id) => { seen(B, id); assert.equal(B._admitNewPlayer(id, {}, false), true); });
-  assert.equal(B.getRoster().length, 4);
-  // A volta tarde: sala cheia -> recusado só depois do prazo de readmissão
+  // partida em andamento: quem perdeu a vaga não volta como jogador novo
   assert.equal(B._admitNewPlayer(ids.A, {}, false), false);
   A.isRoomHost = false; A.hostPlayerId = ids.B; A.hostTerm = 2; A.roster = B.getRoster();
   for (let t = 0; t < 14000; t += 100) { seen(A, ids.B); tick(A); }
   assert.equal(A.rejected, false, 'ainda dentro do prazo de 15s');
   for (let t = 0; t < 2000; t += 100) { seen(A, ids.B); tick(A); }
-  assert.equal(A.rejected, true, 'sala cheia de verdade: recusa');
+  assert.equal(A.rejected, true, 'vaga perdida e partida em andamento: recusa');
   assert.equal(A.sceneRejected, true);
-  console.log('OK: após inatividade prolongada a vaga é perdida; sala cheia recusa o retorno tardio');
+  console.log('OK: após inatividade prolongada a vaga é perdida; partida em andamento recusa o retorno tardio');
 }
 
-// 5) Sala cheia com jogador caído: novo jogador pode tomar a vaga reservada
+// 5) Partida em andamento: ninguém novo entra, nem com vaga livre ou reservada
 {
   const roster = [ids.A, ids.B, ids.C, ids.D];
   const B = makeNode(ids.B, true, roster);
-  run([B], 9000); // A, C, D somem durante a partida -> reservados
+  run([B], 9000); // A, C, D somem durante a partida -> vagas reservadas
   seen(B, ids.C); seen(B, ids.D);
   run([B], 100);
   assert.equal(B.reservedSlots.has(ids.A), true);
-  assert.equal(B._admitNewPlayer(ids.E, {}, false), true, 'toma a vaga de quem está caído');
-  assert.equal(B.getRoster().includes(ids.A), false);
-  assert.equal(B.getRoster().includes(ids.E), true);
-  console.log('OK: vaga reservada só é cedida quando a sala está lotada');
+  assert.equal(B._admitNewPlayer(ids.E, {}, false), false, 'novo jogador não entra em partida em andamento');
+  assert.equal(B._admitNewPlayer(ids.A, {}, false), true, 'quem caiu por rede volta à própria vaga');
+  const lobby = makeNode(ids.A, true, [ids.A]);
+  lobby.matchPhase = 'waiting';
+  assert.equal(lobby._admitNewPlayer(ids.E, {}, false), true, 'no lobby ainda entra');
+  console.log('OK: partida em andamento bloqueia novos jogadores; lobby e retorno por queda continuam funcionando');
+}
+
+// 6) Cliente novo numa sala em andamento é recusado na hora (sem iniciar a partida)
+{
+  const host = makeNode(ids.B, true, [ids.B, ids.C]);
+  const newcomer = makeNode(ids.E, false, [ids.B, ids.C]);
+  newcomer.wasAdmitted = false; newcomer.roster = null; newcomer.matchPhase = 'waiting'; newcomer.matchState = 'running';
+  let started = false;
+  newcomer.scene.beginMatch = () => { started = true; };
+  newcomer._applyHostLobby({ roster: host.getRoster(), roomPhase: 'playing', matchState: 'running', runEpoch: 'ep1' });
+  assert.equal(newcomer.rejected, true);
+  assert.equal(newcomer.sceneRejected, true);
+  assert.equal(started, false, 'não pode nem começar a partida');
+  console.log('OK: quem tenta entrar em sala em andamento é recusado imediatamente');
 }

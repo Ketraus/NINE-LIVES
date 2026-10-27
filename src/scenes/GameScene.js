@@ -381,7 +381,7 @@ export default class GameScene extends Phaser.Scene {
 
   // O Host nunca me aceitou na sala (cheia ou senha errada).
   onRoomRejected() {
-    this.leaveToMenu('ENTRADA RECUSADA: SALA CHEIA OU SENHA INCORRETA');
+    this.leaveToMenu('ENTRADA RECUSADA: SALA CHEIA, SENHA INCORRETA OU PARTIDA EM ANDAMENTO');
   }
 
   leaveToMenu(notice = null) {

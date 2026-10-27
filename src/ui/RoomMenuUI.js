@@ -374,6 +374,8 @@ export default class RoomMenuUI {
   _buildRow(entry, y) {
     const scene = this.scene;
     const full = entry.players >= entry.max;
+    const inGame = entry.phase === 'playing';
+    const locked = full || inGame; // partida em andamento não aceita novos jogadores
     const row = scene.add.container(this.cx, y);
 
     const g = scene.add.graphics();
@@ -381,12 +383,12 @@ export default class RoomMenuUI {
       g.clear();
       g.fillStyle(PANEL_FILL, hover ? 0.95 : 0.7);
       g.fillRect(-ROW_W / 2, -ROW_H / 2, ROW_W, ROW_H);
-      g.lineStyle(1, hover && !full ? BORDER_HOVER : BORDER_IDLE, full ? 0.5 : 1);
+      g.lineStyle(1, hover && !locked ? BORDER_HOVER : BORDER_IDLE, locked ? 0.5 : 1);
       g.strokeRect(-ROW_W / 2, -ROW_H / 2, ROW_W, ROW_H);
     };
     draw(false);
 
-    const nameColor = full ? TEXT_DIM : TEXT_HOVER;
+    const nameColor = locked ? TEXT_DIM : TEXT_HOVER;
     const name = this._text(-ROW_W / 2 + 14, 0, `SALA ${entry.room}`, 10, nameColor, 0);
     const kind = this._text(-70, 0, entry.priv ? 'PRIVADA' : 'PÚBLICA', 8, entry.priv ? PRIVATE_COLOR : TEXT_DIM, 0);
     const count = this._text(ROW_W / 2 - 110, 0, `${entry.players}/${entry.max}`, 10, full ? WARN_COLOR : OK_COLOR, 1);
@@ -394,10 +396,10 @@ export default class RoomMenuUI {
     const stateColor = full ? WARN_COLOR : entry.phase === 'playing' ? PRIVATE_COLOR : TEXT_IDLE;
     const state = this._text(ROW_W / 2 - 14, 0, stateLabel, 8, stateColor, 1);
 
-    const hit = scene.add.rectangle(0, 0, ROW_W, ROW_H, 0xffffff, 0).setInteractive({ useHandCursor: !full });
+    const hit = scene.add.rectangle(0, 0, ROW_W, ROW_H, 0xffffff, 0).setInteractive({ useHandCursor: !locked });
     hit.on('pointerover', () => {
       draw(true);
-      if (!full) scene.sound.play('sfx_hover', { volume: 0.5 });
+      if (!locked) scene.sound.play('sfx_hover', { volume: 0.5 });
     });
     hit.on('pointerout', () => draw(false));
     hit.on('pointerdown', () => {
@@ -411,6 +413,10 @@ export default class RoomMenuUI {
 
   async _joinRoom(entry) {
     if (this.scene._transitioning || this._joining) return;
+    if (entry.phase === 'playing') {
+      this._setBrowseMessage('PARTIDA JÁ EM ANDAMENTO: NÃO É POSSÍVEL ENTRAR');
+      return;
+    }
     if (entry.players >= entry.max) {
       this._setBrowseMessage('ESSA SALA JÁ ESTÁ CHEIA (4/4)');
       return;

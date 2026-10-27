@@ -430,13 +430,10 @@ export default class MultiplayerManager {
   _admitNewPlayer(playerId, state, acceptedHost) {
     if (this.isRoomHost) {
       if (this.slotOrder.includes(playerId)) return true;
-      if (this.slotOrder.length >= MAX_ROOM_PLAYERS) {
-        // só toma vaga de quem está caído (reservada); nunca de quem está online
-        const evict = this.slotOrder.find((id) => this.reservedSlots.has(id));
-        if (!evict) return false;
-        this.slotOrder = this.slotOrder.filter((id) => id !== evict);
-        this.reservedSlots.delete(evict);
-      }
+      // Partida em andamento: ninguém novo entra. Só volta quem já tem vaga
+      // (inclui a vaga reservada de quem caiu por rede).
+      if (this.matchPhase === 'playing') return false;
+      if (this.slotOrder.length >= MAX_ROOM_PLAYERS) return false;
       this.slotOrder.push(playerId);
       return true;
     }
@@ -486,6 +483,14 @@ export default class MultiplayerManager {
   _applyHostLobby(state) {
     if (Array.isArray(state.roster)) {
       this.roster = state.roster.filter((id) => typeof id === 'string').slice(0, MAX_ROOM_PLAYERS);
+      // Sala já em andamento e eu não estou no roster: o Host nunca vai me admitir,
+      // então recusa na hora (sem nem começar a partida aqui).
+      if (!this.isRoomHost && !this.rejected && !this.wasAdmitted && state.roomPhase === 'playing' &&
+        !this.roster.includes(this.playerId)) {
+        this.rejected = true;
+        this.scene.onRoomRejected?.();
+        return;
+      }
     }
     if (this.isRoomHost) return;
     if (state.roomPhase !== 'waiting' && state.roomPhase !== 'playing') return;

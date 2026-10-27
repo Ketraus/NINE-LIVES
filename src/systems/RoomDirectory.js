@@ -73,8 +73,8 @@ export default class RoomDirectory {
   // salas com vaga primeiro, depois por código
   getRooms() {
     return [...this.rooms.values()].sort((a, b) => {
-      const fullA = a.players >= a.max ? 1 : 0;
-      const fullB = b.players >= b.max ? 1 : 0;
+      const fullA = a.players >= a.max || a.phase === 'playing' ? 1 : 0;
+      const fullB = b.players >= b.max || b.phase === 'playing' ? 1 : 0;
       return fullA - fullB || a.room.localeCompare(b.room);
     });
   }
