@@ -333,6 +333,9 @@ export default class LevelUpUI {
 
   // Comum a show() e showEvolution(): limpa a tela anterior e pausa o jog…
   _openOverlay() {
+    // Real time: the scene clock is paused while cards are on screen.
+    this._selectionUnlockAt = this.scene.sys.game.device.input.touch
+      ? performance.now() + 1500 : 0;
     this._applyZoomCompensation(this.container); // zoom pode ter mudado desde o construtor
     this.container.removeAll(true);
     this.scene.physics.pause();
@@ -389,7 +392,7 @@ export default class LevelUpUI {
         this._springHover(group, false);
         setHoverFx(false);
       });
-      art.on('pointerdown', () => this._choose(upgrade));
+      art.on('pointerdown', (pointer) => this._choose(upgrade, pointer));
 
       return group;
     }
@@ -445,7 +448,7 @@ export default class LevelUpUI {
       this._springHover(group, false);
       setHoverFx(false);
     });
-    bg.on('pointerdown', () => this._choose(upgrade));
+    bg.on('pointerdown', (pointer) => this._choose(upgrade, pointer));
 
     return group;
   }
@@ -630,7 +633,7 @@ export default class LevelUpUI {
         this.scene.sound.play('sfx_hover', { volume: 0.5 });
       });
       art.on('pointerout', () => this._springHover(group, false));
-      art.on('pointerdown', () => this._chooseEvolution(evolution));
+      art.on('pointerdown', (pointer) => this._chooseEvolution(evolution, pointer));
 
       this._popIn(group);
       return group;
@@ -676,7 +679,7 @@ export default class LevelUpUI {
       this.scene.sound.play('sfx_hover', { volume: 0.5 });
     });
     bg.on('pointerout', () => this._springHover(group, false));
-    bg.on('pointerdown', () => this._chooseEvolution(evolution));
+    bg.on('pointerdown', (pointer) => this._chooseEvolution(evolution, pointer));
 
     this._popIn(group);
     return group;
@@ -820,7 +823,7 @@ export default class LevelUpUI {
         paint(idleBorder, 0.1);
         spin.timeScale = 1;
       });
-      hit.on('pointerdown', () => this._restock());
+      hit.on('pointerdown', (pointer) => this._restock(pointer));
     }
 
     return group;
@@ -875,7 +878,20 @@ export default class LevelUpUI {
   }
 
   // Reamostra as opções do level-up atual e redesenha a tela (mantém
-  _restock() {
+  _canSelect(pointer) {
+    if (!this.container.visible) return false;
+    if (!this._selectionUnlockAt) return true;
+    if (performance.now() < this._selectionUnlockAt) return false;
+    // Phaser records the original DOM event timestamp, not its processing time.
+    // Reject queued/old touches too; holding or releasing a finger never selects.
+    if (!Number.isFinite(pointer?.downTime)) return false;
+    const downTime = pointer.downTime > 1e12
+      ? pointer.downTime - performance.timeOrigin : pointer.downTime;
+    return downTime >= this._selectionUnlockAt;
+  }
+
+  _restock(pointer) {
+    if (!this._canSelect(pointer)) return;
     if (this._restockUsed) return;
     const options = this.runManager.rerollOptions();
     if (!options) return;
@@ -883,7 +899,8 @@ export default class LevelUpUI {
     this.show(options);
   }
 
-  _choose(upgrade) {
+  _choose(upgrade, pointer) {
+    if (!this._canSelect(pointer)) return;
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
     this._selectedUpgradeId = upgrade.id;
     // chooseUpgrade() pode, de forma síncrona, emitir 'evolution-ready' e
@@ -893,7 +910,8 @@ export default class LevelUpUI {
     }
   }
 
-  _chooseEvolution(evolution) {
+  _chooseEvolution(evolution, pointer) {
+    if (!this._canSelect(pointer)) return;
     this.scene.sound.play('sfx_card_select', { volume: 0.6 });
     // sfx_evolution_effect agora toca em showEvolution() (quando a carta
     const extraSfx = EVOLUTION_SFX[evolution.id];

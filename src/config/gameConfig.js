@@ -62,6 +62,8 @@ export const gameConfig = {
   },
   scale: {
     mode: Phaser.Scale.FIT,
+    expandParent: false,
+    fullscreenTarget: document.documentElement,
     autoCenter: Phaser.Scale.CENTER_BOTH
   },
   scene: [BootScene, PreloadScene, MainMenuScene, SettingsScene, WeaponSelectScene, GameScene, LobbyGateScene, CreditsScene]

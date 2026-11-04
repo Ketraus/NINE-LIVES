@@ -1,12 +1,12 @@
 // Indicador de borda de tela para companheiros fora da câmera: um quadrado na
-// cor do gato de cada vaga (mesma ideia das setas de medkit/ímã, sem a seta).
+// cor de cada vaga (mesma ideia das setas de medkit/ímã, sem a seta).
 // Puramente visual: não toca em rede, física ou autoridade de multiplayer.
 const SIZE = 14;
 const BORDER = 2;
 const EDGE_MARGIN_PX = 22;
 const DEPTH = 189;
 
-// vaga 0 = Host original (preto), 1 = branco, 2 = laranja, 3 = marrom
+// 0 = Host original (preto), 1 = branco, 2 = laranja, 3 = marrom.
 const SLOT_STYLES = [
   { fill: 0x000000, outline: 0xffffff },
   { fill: 0xffffff, outline: 0x020713 },
