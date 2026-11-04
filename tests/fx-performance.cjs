@@ -80,8 +80,10 @@ assert.ok(timing.timers[0].removed, 'destroy cancels trail timer immediately');
 let wallTime = 100;
 const consoleCode = fs.readFileSync('src/systems/DevConsole.js', 'utf8')
   .replace(/^import .*;\r?\n/gm, '').replace('export default class', 'class');
+const commandCode = fs.readFileSync('src/systems/DevCommands.js', 'utf8').replace(/export /g, '');
+const commandTools = vm.runInNewContext(`${commandCode}\n({ HOST_COMMANDS, COMMAND_NAMES, runDevCommand })`);
 const DevConsole = vm.runInNewContext(`${consoleCode}\nDevConsole`, {
-  fxBudgetStats, document: { hidden: false }, performance: { now: () => wallTime }
+  ...commandTools, fxBudgetStats, document: { hidden: false }, performance: { now: () => wallTime }
 });
 const dev = Object.create(DevConsole.prototype);
 const logs = [];

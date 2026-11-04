@@ -1,6 +1,7 @@
 import EventBus from './EventBus.js';
 import promptText from '../ui/TextPrompt.js';
 import { fxBudgetStats } from '../fx/FxBudget.js';
+import { COMMAND_NAMES, HOST_COMMANDS, runDevCommand } from './DevCommands.js';
 
 // Trava casual contra curioso (F9 pede senha). Guardamos só o hash, não o texto.
 // Não é segurança de verdade: o código do jogo roda no navegador do jogador.
@@ -27,6 +28,9 @@ export default class DevConsole {
     this.scene = scene;
     this.runManager = runManager;
     this.isOpen = false;
+    this._history = [];
+    this._historyIndex = 0;
+    this._historyDraft = '';
 
     this.root = document.getElementById('dev-console');
     this.output = document.getElementById('dev-console-output');
@@ -93,6 +97,8 @@ export default class DevConsole {
     this.root.classList.remove('hidden');
     this.input.value = '';
     this.input.focus();
+    this._historyIndex = this._history.length;
+    this._historyDraft = '';
 
     this.scene.physics.pause();
     this.scene.time.timeScale = 0;
@@ -131,40 +137,57 @@ export default class DevConsole {
   _onInputKeydown(e) {
     // impede que o EventBus/Phaser vejam essas teclas (ex.: barra de
     e.stopPropagation();
+    if (e.key === 'Escape' || e.key === 'F9') {
+      e.preventDefault();
+      this.close();
+      return;
+    }
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (this._historyIndex === this._history.length) this._historyDraft = this.input.value;
+      this._historyIndex = Math.max(0, Math.min(this._history.length,
+        this._historyIndex + (e.key === 'ArrowUp' ? -1 : 1)));
+      this.input.value = this._history[this._historyIndex] ?? this._historyDraft;
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const prefix = this.input.value.trim().toLowerCase();
+      if (!prefix || /\s/.test(prefix)) return;
+      const matches = [...new Set(COMMAND_NAMES)].filter(name => name.startsWith(prefix)).sort();
+      if (matches.length === 1) this.input.value = matches[0] + ' ';
+      else if (matches.length) this._log(matches.join(' | '));
+      return;
+    }
     if (e.key !== 'Enter') return;
 
     const raw = this.input.value.trim();
     this.input.value = '';
     if (!raw) return;
+    if (this._history[this._history.length - 1] !== raw) this._history.push(raw);
+    if (this._history.length > 100) this._history.shift();
+    this._historyIndex = this._history.length;
+    this._historyDraft = '';
     this._log(`> ${raw}`);
-    this._run(raw);
+    try {
+      this._run(raw);
+    } catch (error) {
+      this._log(`Erro no comando: ${error.message}`);
+      console.error('[DevConsole]', error);
+    }
   }
 
   _run(raw) {
     const [cmd, ...args] = raw.split(/\s+/);
+    const command = cmd.toLowerCase();
+    if (HOST_COMMANDS.has(command) && this.scene.multiplayer?.isMultiplayer &&
+        !this.scene.multiplayer.isRoomHost) {
+      this._log('Este comando altera a arena compartilhada. Execute no console do host.');
+      return;
+    }
+    if (runDevCommand(this, command, args)) return;
 
     switch (cmd.toLowerCase()) {
-      case 'help':
-        this._log('perf start | stop — mede os últimos 1800 frames de combate; feche o console durante a captura.');
-        this._log('give <cartaId> [quantidade] — dá N cópias de uma carta (padrão: 1)');
-        this._log('remove <cartaId> [quantidade] — remove N cópias de uma carta (padrão: 1)');
-        this._log('resetcards — limpa todas as cartas/upgrades da run atual');
-        this._log('list — lista as cartas disponíveis pra sua classe atual');
-        this._log('xp <quantidade> — ganha XP de verdade (pode subir de nível)');
-        this._log('levelup [quantidade] — sobe N níveis na hora (padrão: 1)');
-        this._log('heal — cura o jogador pra vida máxima');
-        this._log('god — liga/desliga invencibilidade');
-        this._log('kill — mata o jogador na hora');
-        this._log('spawn <inimigoId> [quantidade] — spawna N inimigos específicos');
-        this._log('killall — elimina todos os inimigos da arena');
-        this._log('listenemies — lista os tipos de inimigo disponíveis (id, hp, velocidade, dano)');
-        this._log('freeze — liga/desliga o congelamento de todos os inimigos');
-        this._log('autospawn — liga/desliga as levas automáticas (spawn manual continua funcionando)');
-        this._log('settime <segundos> — ajusta o tempo decorrido da run (afeta dificuldade e vitória aos 10:00)');
-        this._log('fim [segundos] — simula o fim: limpa a arena, só horda base (sem Minotauro/eventos) e pula pro tempo (padrão 595 = 9:55)');
-        this._log('mino [segundos] — pula pro pré-Minotauro (padrão 350 = 5:50): limpa a arena, marca Sealer/Elite anteriores como já ocorridos, spawna horda base e deixa o Minotauro nascer às 6:00');
-        break;
-
       case 'perf': {
         if (args[0] === 'start') {
           this._stopPerf();
@@ -193,12 +216,6 @@ export default class DevConsole {
           this._log(`${samples.length} frames: média ${avg.toFixed(1)} ms (~${(1000 / avg).toFixed(0)} FPS), p95 ${p95.toFixed(1)} ms, pior ${samples[samples.length - 1].toFixed(1)} ms; ${samples.filter((value) => value > 33.3).length} acima de 33,3 ms.`);
           this._log(`Detalhes secundários poupados pelo orçamento desde o início: ${fxBudgetStats(this.scene).skipped - capture.skipped}.`);
         } else this._log('Uso: perf start | stop');
-        break;
-      }
-
-      case 'list': {
-        const lines = this.runManager.cheatListCards();
-        lines.forEach((line) => this._log(line));
         break;
       }
 
@@ -262,10 +279,6 @@ export default class DevConsole {
 
       case 'heal':
         this._log(this.runManager.cheatHeal().message);
-        break;
-
-      case 'god':
-        this._log(this.runManager.cheatToggleGodMode().message);
         break;
 
       case 'kill':
@@ -388,6 +401,7 @@ export default class DevConsole {
     const line = document.createElement('div');
     line.textContent = text;
     this.output.appendChild(line);
+    while (this.output.childElementCount > 500) this.output.firstElementChild.remove();
     this.output.scrollTop = this.output.scrollHeight;
   }
 }

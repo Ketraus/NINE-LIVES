@@ -18,6 +18,8 @@ import BossEntrancePipeline from '../fx/BossEntrancePipeline.js';
 import { BASE_WIDTH, BASE_HEIGHT } from './layout.js';
 
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+// Use the primary pointer so a desktop with a touchscreen keeps desktop sizing.
+export const useMobileViewport = window.matchMedia('(pointer: coarse)').matches;
 
 // Celular: em vez de cortar a tela (ENVELOP cortava vida/XP/escudo e o
 let width = BASE_WIDTH;
@@ -62,8 +64,10 @@ export const gameConfig = {
   },
   scale: {
     mode: Phaser.Scale.FIT,
-    expandParent: false,
-    fullscreenTarget: document.documentElement,
+    ...(useMobileViewport ? {
+      expandParent: false,
+      fullscreenTarget: document.documentElement
+    } : {}),
     autoCenter: Phaser.Scale.CENTER_BOTH
   },
   scene: [BootScene, PreloadScene, MainMenuScene, SettingsScene, WeaponSelectScene, GameScene, LobbyGateScene, CreditsScene]

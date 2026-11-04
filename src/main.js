@@ -1,5 +1,5 @@
-import { gameConfig } from './config/gameConfig.js';
+import { gameConfig, useMobileViewport } from './config/gameConfig.js';
 import { installViewportSizing } from './systems/ViewportSizing.js';
 
-installViewportSizing();
+installViewportSizing(useMobileViewport);
 window.__nineLivesGame = new Phaser.Game(gameConfig);

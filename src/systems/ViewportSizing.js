@@ -1,7 +1,9 @@
 // Keep FIT inside the visible browser area, including mobile browser bars.
 // Logical scene dimensions stay fixed so HUD and touch controls keep their layout.
-export function installViewportSizing() {
+export function installViewportSizing(enabled = false) {
+  if (!enabled) return;
   const container = document.getElementById('game-container');
+  container.classList.add('mobile-viewport');
   let pending = false;
   const sync = () => {
     pending = false;

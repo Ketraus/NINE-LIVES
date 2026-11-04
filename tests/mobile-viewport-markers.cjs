@@ -5,14 +5,17 @@ const callbacks = {};
 const frames = [];
 let refreshes = 0;
 let visible = true;
-const container = { style: {}, getBoundingClientRect: () => ({ width: visible ? 800 : 0 }) };
+const container = { style: {}, classList: { add() {} }, getBoundingClientRect: () => ({ width: visible ? 800 : 0 }) };
 const viewport = { width: 800, height: 350, offsetLeft: 0, offsetTop: 0,
   addEventListener: (name, fn) => { callbacks[`visual:${name}`] = fn; } };
 const windowMock = { visualViewport: viewport, innerWidth: 800, innerHeight: 400,
   __nineLivesGame: { scale: { refresh: () => refreshes++ } },
   requestAnimationFrame: fn => frames.push(fn),
   addEventListener: (name, fn) => { callbacks[name] = fn; } };
-vm.runInNewContext(fs.readFileSync('src/systems/ViewportSizing.js', 'utf8').replace('export ', '') + '\ninstallViewportSizing();', {
+const sizingSource = fs.readFileSync('src/systems/ViewportSizing.js', 'utf8').replace('export ', '');
+// Desktop must not read/write DOM sizing or register mobile resize handlers.
+vm.runInNewContext(sizingSource + '\ninstallViewportSizing(false);', {});
+vm.runInNewContext(sizingSource + '\ninstallViewportSizing(true);', {
   window: windowMock,
   document: { getElementById: () => container, addEventListener: (name, fn) => { callbacks[name] = fn; } }
 });
@@ -33,6 +36,23 @@ callbacks.resize();
 frames.shift()();
 assert.equal(refreshes, 3);
 assert.equal(container.style.width, '800px');
+
+const configSource = fs.readFileSync('src/config/gameConfig.js', 'utf8');
+const dependencies = Object.fromEntries([...configSource.matchAll(/^import (\w+) from/gm)]
+  .map(([, name]) => [name, class {}]));
+function configFor(coarse) {
+  return vm.runInNewContext(configSource.replace(/^import .*;\r?\n/gm, '').replace(/export /g, '') + '\ngameConfig;', {
+    ...dependencies, BASE_WIDTH: 1024, BASE_HEIGHT: 576,
+    window: { innerWidth: 1920, innerHeight: 1080, matchMedia: () => ({ matches: coarse }) },
+    navigator: { maxTouchPoints: coarse ? 1 : 0 }, document: { documentElement: 'root' },
+    Phaser: { AUTO: 'auto', Scale: { FIT: 'fit', CENTER_BOTH: 'center' } }
+  });
+}
+const desktopScale = configFor(false).scale;
+assert.equal('expandParent' in desktopScale, false, 'Desktop retains Phaser defaults');
+assert.equal('fullscreenTarget' in desktopScale, false, 'Desktop retains original fullscreen wrapper');
+assert.equal(configFor(true).scale.fullscreenTarget, 'root');
+assert.equal(configFor(true).scale.expandParent, false);
 
 const colors = [];
 const gfx = { clear() {}, fillStyle(color) { colors.push(color); }, fillRect() {},
