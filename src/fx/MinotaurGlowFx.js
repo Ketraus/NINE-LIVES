@@ -169,7 +169,9 @@ export default class MinotaurGlowFx {
 
     // transformação da fase 2 (ver MinotaurTransformFx): luzes, contorno e olhos sobem junto da energia
     const tf = Math.min(1.6, boss._tfGlow || 0);
-    const gain = pal.gain * (1 + 0.3 * atk) * (1 + 0.9 * tf) * calm;
+    // fúria pós-salto (MinotaurFuryFx): olhos, luzes e contorno ficam bem mais acesos enquanto dura
+    const fury = Math.min(1, boss.furyFx?.level || 0);
+    const gain = pal.gain * (1 + 0.3 * atk) * (1 + 0.9 * tf) * (1 + 0.55 * fury) * calm;
     const period = pal.period * (1 - 0.4 * atk);
     const ph = (time % period) / period;
     const beat = Math.min(1, bump(ph, 0.1, 0.06) + 0.6 * bump(ph, 0.3, 0.07)); // "tum-tum"
@@ -190,9 +192,9 @@ export default class MinotaurGlowFx {
       // olhos da fase 2: acesos o tempo todo, mais fortes no batimento e nos ataques
       const stare = 0.88 + 0.12 * Math.sin(time / 45);
       L.eyes.setAlpha(Math.min(1, base * (0.9 + 0.1 * beat)));
-      L.eyeGlow.setAlpha(Math.min(1, base * (0.55 + 0.3 * beat + 0.25 * atk + 0.5 * tf) * stare));
+      L.eyeGlow.setAlpha(Math.min(1, base * (0.55 + 0.3 * beat + 0.25 * atk + 0.5 * tf + 0.45 * fury) * stare));
     }
-    const lift = Math.max(atk, Math.min(1, tf)); // a transformação acende o contorno como um ataque
+    const lift = Math.max(atk, Math.min(1, tf), fury * 0.85); // a transformação e a fúria acendem o contorno como um ataque
     const rimOn = lift > 0.02;
     if (rimOn) L.rim.setTint(pal.rim).setAlpha(base * lift * (0.16 + 0.16 * beat) * gain);
 

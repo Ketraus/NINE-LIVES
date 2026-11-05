@@ -3,11 +3,14 @@
 //
 // Peças (ver playMinotaurCleave):
 //  - arco do machado   -> crescente roxo varrendo o ângulo do corte em volta do boss
-//  - ondas de energia  -> o arco do sprite (CorteMino.png, recolorido) corre pelo cone todo
+//  - FRENTE DE CORTE   -> lâmina de energia nítida (fio branco, corpo em crescente, esteira serrilhada)
+//                         que nasce quando o machado cruza o centro do golpe e avança pelo cone;
+//                         perto do fim ela vai se quebrando em pedaços e soltando estilhaços
+//  - ondas de energia  -> o arco do sprite (CorteMino.png, recolorido) segue ATRÁS da frente, como esteira elétrica
 //  - cometas           -> 2 riscos do sprite correndo pelas bordas do cone
 //  - impacto           -> clarão + anéis de choque no ponto do golpe
-//  - chão destruído    -> mancha escura + rachaduras com energia roxa + chamas roxas
-//                         saindo das frestas (frame 3 do sprite)
+//  - chão destruído    -> mancha escura + rachaduras que CRESCEM atrás da lâmina (ponta em brasa,
+//                         energia roxa por dentro) + chamas roxas saindo das frestas (frame 3 do sprite)
 //  - detritos          -> pedaços de terra e estilhaços de energia arremessados
 //  - poeira
 // A marca do chão (mancha, rachaduras, entulho) fica ~2s e se desfaz aos poucos,
@@ -42,6 +45,12 @@ const DEPTH_AIR = 19;
 const DEPTH_FLASH = 21;
 
 const WAVE_MS = 280; // quanto leva a frente de destruição pra chegar no fim do cone
+const SWING_MS = 100; // varredura do machado em volta do boss
+const FRONT_DELAY_MS = 75; // a frente nasce quando a lâmina cruza o centro do golpe (~79% da varredura)
+// A frente, a fenda, as rachaduras, os blocos e as brasas usam a MESMA curva (Cubic.easeOut) pra
+// aparecerem exatamente onde a lâmina acabou de passar. frontInv = tempo em que a frente chega em k.
+const frontEase = (t) => 1 - Math.pow(1 - t, 3);
+const frontInv = (k) => 1 - Math.pow(1 - Math.min(1, Math.max(0, k)), 1 / 3);
 const HOLD_MS = 2000; // marca no chão inteira antes de começar a se desfazer
 const FADE_MS = 900; // cada pedaço some nesse tempo
 const FADE_SPREAD_MS = 1100; // diferença entre o 1º e o último pedaço sumirem
@@ -152,64 +161,21 @@ function polyFill(g, pts, color, alpha) {
   g.fillPoints(pts, true);
 }
 
-// FENDA: um rasgo no chão que se ABRE ao longo do corte (borda de terra, interior roxo, núcleo claro)
-function trench(scene, x, y, angle, range, at, scheduleFade) {
-  const step = 26;
-  const n = Math.floor((range * 0.92 - 80) / step);
-  const L = [], R = [], C = [], Li = [], Ri = [], Lc = [], Rc = [];
-  const lerp = (a, b, k) => ({ x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k });
-  let lat = 0;
-  for (let i = 0; i <= n; i++) {
-    const d = 80 + i * step;
-    const k = d / range;
-    lat = Phaser.Math.Clamp(lat + rand(-7, 7), -30, 30);
-    const half = (isMobile(scene) ? 38 : 52) * (1.15 - k * 0.75);
-    const c = at(d, lat);
-    const l = at(d, lat - half * rand(0.75, 1.3));
-    const r = at(d, lat + half * rand(0.75, 1.3));
-    C.push(c); L.push(l); R.push(r);
-    Li.push(lerp(c, l, 0.6)); Ri.push(lerp(c, r, 0.6));
-    Lc.push(lerp(c, l, 0.22)); Rc.push(lerp(c, r, 0.22));
-  }
-  const dark = scene.add.graphics().setDepth(DEPTH_GROUND + 0.4);
-  const glow = scene.add.graphics().setDepth(DEPTH_GROUND + 0.5).setBlendMode(Phaser.BlendModes.ADD);
-  const poly = (A, B, k) => A.slice(0, k + 1).concat(B.slice(0, k + 1).reverse());
-  const draw = (k) => {
-    dark.clear(); glow.clear();
-    polyFill(dark, poly(L, R, k), DARK, 0.96);
-    dark.lineStyle(5, 0x3a2e4a, 0.95);
-    dark.beginPath(); L.slice(0, k + 1).forEach((q, i) => (i ? dark.lineTo(q.x, q.y) : dark.moveTo(q.x, q.y))); dark.strokePath();
-    dark.beginPath(); R.slice(0, k + 1).forEach((q, i) => (i ? dark.lineTo(q.x, q.y) : dark.moveTo(q.x, q.y))); dark.strokePath();
-    polyFill(glow, poly(Li, Ri, k), PURPLE, 0.85);
-    polyFill(glow, poly(Lc, Rc, k), PALE, 0.95);
-  };
-  const st = { i: 0 };
-  scene.tweens.add({
-    targets: st, i: n, duration: 240, ease: 'Cubic.easeOut',
-    onUpdate: () => draw(Math.max(0, Math.floor(st.i))),
-    onComplete: () => {
-      draw(n);
-      scene.tweens.add({ targets: glow, alpha: 0, delay: 700, duration: 1100, ease: 'Sine.easeIn', onComplete: () => glow.destroy() });
-    }
-  });
-  scheduleFade(dark, range * 0.5);
-}
-
 // blocos GRANDES de chão arremessados bem alto, com sombra no chão e poeira ao cair
 function bigChunks(scene, angle, range, at, delayFor, scheduleFade) {
   const dirX = Math.cos(angle);
   const dirY = Math.sin(angle);
-  const n = cnt(scene, 16);
+  const n = cnt(scene, 9);
   for (let i = 0; i < n; i++) {
     const d = rand(100, range * 0.85);
     const start = at(d, rand(-1, 1) * 46);
     const side = Math.random() < 0.5 ? -1 : 1;
-    const throwD = rand(150, 340);
+    const throwD = rand(110, 250);
     const ex = start.x + dirX * throwD * 0.55 - dirY * side * throwD * 0.6;
     const ey = start.y + dirY * throwD * 0.55 + dirX * side * throwD * 0.6;
-    const height = rand(170, 340);
+    const height = rand(100, 220);
     const duration = Phaser.Math.Between(700, 1100);
-    const sc = rand(2.6, 5.2);
+    const sc = rand(1.0, 1.9);
     const img = scene.add.image(start.x, start.y, pick(DEBRIS_KEYS)).setDepth(DEPTH_AIR).setScale(sc).setAlpha(0)
       .setRotation(rand(0, 6.28)).setTint(0xb9a6d0);
     const shadow = scene.add.ellipse(start.x, start.y, 30 * sc * 0.5, 14 * sc * 0.5, 0x000000, 0.4).setDepth(DEPTH_GROUND + 1).setAlpha(0);
@@ -232,7 +198,7 @@ function bigChunks(scene, angle, range, at, delayFor, scheduleFade) {
           shadow.destroy();
           if (!img.scene) return;
           for (let k = 0; k < 3; k++) {
-            const puff = scene.add.image(img.x + rand(-10, 10), img.y, GLOW_KEY).setDepth(DEPTH_DUST).setTint(pick(DUST)).setScale(rand(0.4, 0.7)).setAlpha(0.5);
+            const puff = scene.add.image(img.x + rand(-10, 10), img.y, GLOW_KEY).setDepth(DEPTH_DUST).setTint(pick(DUST)).setScale(rand(0.3, 0.5)).setAlpha(0.45);
             scene.tweens.add({ targets: puff, y: puff.y - rand(14, 40), scale: rand(1.1, 1.8), alpha: 0, duration: rand(450, 750), ease: 'Cubic.easeOut', onComplete: () => puff.destroy() });
           }
           img.setDepth(DEPTH_RUBBLE).setTint(0xffffff).setScale(sc * 0.85);
@@ -279,7 +245,7 @@ function bossBurst(scene, x, y) {
 
 // brasas de energia subindo pelo cone inteiro, esfriando devagar
 function emberField(scene, at, latMax, range, delayFor) {
-  const n = cnt(scene, 44);
+  const n = cnt(scene, 32);
   for (let i = 0; i < n; i++) {
     const d = rand(80, range * 0.97);
     const p = at(d, rand(-1, 1) * latMax(d) * 0.9);
@@ -437,7 +403,7 @@ export function playMinotaurCleave(scene, x, y, angle, range, half) {
   // ponto a distância d do boss, deslocado lat pro lado (perpendicular ao corte)
   const at = (d, lat = 0) => ({ x: x + dirX * d - dirY * lat, y: y + dirY * d + dirX * lat });
   const latMax = (d) => tanHalf * d;
-  const delayFor = (d) => (Math.min(d, range) / range) * WAVE_MS;
+  const delayFor = (d) => FRONT_DELAY_MS + frontInv(Math.min(d, range) / range) * WAVE_MS;
 
   // some um objeto do chão: o fim do cone vai primeiro, a base (perto do boss) por último
   const scheduleFade = (obj, d) => {
@@ -468,10 +434,10 @@ export function playMinotaurCleave(scene, x, y, angle, range, half) {
   camPunch(scene, angle);
   bossBurst(scene, x, y);
   swingArc(scene, x, y, angle, half);
+  cutFront(scene, x, y, angle, range, half);
   energyWaves(scene, x, y, angle, range, half, at);
   impact(scene, at(110));
   dustRing(scene, x, y);
-  trench(scene, x, y, angle, range, at, scheduleFade);
   // tremor forçado bem mais pesado + réplicas (sobrepõe o tremor base do Minotaur.js)
   hardShake(scene, 820, 0.058);
   scene.time.delayedCall(260, () => { if (scene.sys?.isActive()) hardShake(scene, 520, 0.03); });
@@ -497,7 +463,7 @@ function swingArc(scene, x, y, angle, half, arcRadius = 118, startDelay = 0) {
   scene.tweens.add({
     targets: prog,
     t: 1,
-    duration: 120,
+    duration: SWING_MS,
     delay: startDelay,
     ease: 'Cubic.easeIn',
     onUpdate: () => {
@@ -516,32 +482,40 @@ function swingArc(scene, x, y, angle, half, arcRadius = 118, startDelay = 0) {
           g.strokePath();
         });
       }
+      // ponta dura da lâmina: fio branco radial na cabeça do arco (é onde o machado está)
+      g.lineStyle(5, WHITE, 1);
+      g.beginPath();
+      g.moveTo(x + Math.cos(head) * (radius - 34), y + Math.sin(head) * (radius - 34));
+      g.lineTo(x + Math.cos(head) * (radius + 30), y + Math.sin(head) * (radius + 30));
+      g.strokePath();
     },
     onComplete: () => {
-      scene.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });
+      scene.tweens.add({ targets: g, alpha: 0, duration: 130, onComplete: () => g.destroy() });
     }
   });
 }
 
-// arcos do sprite correndo pelo cone (esticados pra cobrir a largura) + 2 cometas nas bordas
+// arcos do sprite correndo pelo cone, agora como ESTEIRA elétrica atrás da frente de corte
+// (mais estreitos e apagando antes do fim) + 2 cometas nas bordas
 function energyWaves(scene, x, y, angle, range, half, at) {
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < 2; k++) {
     const s = scene.add.image(x, y, KEY, F_ARC).setDepth(DEPTH_FLASH).setRotation(angle).setAlpha(0);
     if (k > 0) s.setBlendMode(Phaser.BlendModes.ADD);
-    const state = { d: 70 };
+    const peak = k === 0 ? 0.7 : 0.4;
+    const state = { d: 62 };
     scene.tweens.add({
       targets: state,
       d: range * 0.98,
-      duration: 300 + k * 40,
-      delay: k * 45,
+      duration: WAVE_MS,
+      delay: FRONT_DELAY_MS + 22 + k * 34, // sempre atrás da lâmina
       ease: 'Cubic.easeOut',
-      onStart: () => s.setAlpha(1),
+      onStart: () => s.setAlpha(peak),
       onUpdate: () => {
         const p = at(state.d);
-        const sy = Math.min((2 * Math.tan(half) * state.d * 1.05) / ARC_FRAME_HEIGHT, 5.5);
+        const sy = Math.min((2 * Math.tan(half) * state.d * 0.55) / ARC_FRAME_HEIGHT, 3.4);
         s.setPosition(p.x, p.y);
-        s.setScale(Math.max(2.4, sy * 0.6), sy);
-        s.setAlpha(Math.max(0, 1 - Math.pow(state.d / range, 1.2) * 0.9));
+        s.setScale(Math.max(1.3, sy * 0.4), sy);
+        s.setAlpha(peak * Math.max(0, 1 - Math.pow(state.d / range, 1.4) * 1.05));
       },
       onComplete: () => s.destroy()
     });
@@ -553,6 +527,7 @@ function energyWaves(scene, x, y, angle, range, half, at) {
       .setDepth(DEPTH_FLASH)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setScale(3)
+      .setAlpha(0)
       .setRotation(edge - 0.55); // a cabeça do cometa aponta ~32° pra baixo-direita no sprite
     const dx = Math.cos(edge);
     const dy = Math.sin(edge);
@@ -560,8 +535,10 @@ function energyWaves(scene, x, y, angle, range, half, at) {
     scene.tweens.add({
       targets: state,
       d: range,
-      duration: 260,
-      ease: 'Quad.easeOut',
+      duration: WAVE_MS,
+      delay: FRONT_DELAY_MS - 10,
+      ease: 'Cubic.easeOut',
+      onStart: () => s.setAlpha(1),
       onUpdate: () => {
         s.setPosition(x + dx * state.d, y + dy * state.d);
         s.setAlpha(1 - (state.d / range) * 0.8);
@@ -569,6 +546,122 @@ function energyWaves(scene, x, y, angle, range, half, at) {
       onComplete: () => s.destroy()
     });
   });
+}
+
+// FRENTE DE CORTE: a lâmina de energia que o machado deixa pra trás. Em vez de uma barra reta
+// (efeito de laser), é um crescente com fio branco duro na frente — o centro vai à frente e as
+// pontas ficam pra trás, como o gume de um machado entrando no chão — e uma esteira serrilhada.
+// Perto do fim a lâmina se parte em pedaços (cada vez mais pedaços somem) e solta estilhaços de
+// energia que escorrem pelas bordas, o que alimenta visualmente as rachaduras que já estão ali.
+// Um único Graphics redesenhado por frame, pontos pré-alocados e ruído fixo por golpe.
+function cutFront(scene, x, y, angle, range, half) {
+  const dirX = Math.cos(angle);
+  const dirY = Math.sin(angle);
+  const nX = -dirY;
+  const nY = dirX;
+  const tanHalf = Math.tan(half);
+  const N = isMobile(scene) ? 9 : 13;
+  const mk = () => Array.from({ length: N + 1 }, () => ({ x: 0, y: 0 }));
+  const F = mk(); // fio (borda de ataque)
+  const B = mk(); // fundo do corpo
+  const M = mk(); // miolo claro
+  const W = mk(); // ponta da esteira
+  const quad = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+  const jag = [];
+  const gone = [];
+  for (let i = 0; i <= N; i++) { jag.push(rand(-1, 1)); gone.push(Math.random()); }
+
+  const g = scene.add.graphics().setDepth(DEPTH_FLASH + 1).setBlendMode(Phaser.BlendModes.ADD);
+  const fillQuad = (A, Bq, i, color, alpha) => {
+    quad[0].x = A[i].x; quad[0].y = A[i].y;
+    quad[1].x = A[i + 1].x; quad[1].y = A[i + 1].y;
+    quad[2].x = Bq[i + 1].x; quad[2].y = Bq[i + 1].y;
+    quad[3].x = Bq[i].x; quad[3].y = Bq[i].y;
+    g.fillStyle(color, alpha);
+    g.fillPoints(quad, true);
+  };
+  // posição da lâmina quando a frente está em d (progresso k)
+  const place = (d, k, big) => {
+    const w = Math.max(16, tanHalf * d * 0.96);
+    const tmax = Phaser.Math.Linear(40, 13, k);
+    for (let i = 0; i <= N; i++) {
+      const u = -1 + (2 * i) / N;
+      const lag = w * 0.5 * u * u + jag[i] * 5 * k; // pontas ficam atrás: formato de crescente
+      const fx = x + dirX * (d - lag) + nX * u * w;
+      const fy = y + dirY * (d - lag) + nY * u * w;
+      const th = tmax * Math.pow(Math.max(0, 1 - u * u), 0.6) + 2;
+      F[i].x = fx; F[i].y = fy;
+      if (!big) continue;
+      B[i].x = fx - dirX * th; B[i].y = fy - dirY * th;
+      M[i].x = fx - dirX * th * 0.42; M[i].y = fy - dirY * th * 0.42;
+      const tail = th * 2.6 + 34 * (1 - k * 0.45) + jag[(i + 3) % (N + 1)] * 9; // esteira serrilhada
+      W[i].x = fx - dirX * tail; W[i].y = fy - dirY * tail;
+    }
+  };
+
+  const st = { t: 0 };
+  scene.tweens.add({
+    targets: st,
+    t: 1,
+    duration: WAVE_MS,
+    delay: FRONT_DELAY_MS,
+    ease: 'Linear',
+    onUpdate: () => {
+      const k = frontEase(st.t);
+      const d = Math.max(42, range * k);
+      const broken = Phaser.Math.Clamp((k - 0.62) / 0.36, 0, 1); // fração da lâmina que já se partiu
+      place(d, k, true);
+      g.clear();
+      const fade = 1 - 0.55 * broken;
+      // esteira (escura/fria), some em pedaços
+      for (let i = 0; i < N; i++) {
+        if (gone[i] < broken * 0.8) continue;
+        fillQuad(F, W, i, DEEP, 0.5 * fade);
+      }
+      // corpo + miolo, e o fio branco por cima
+      for (let i = 0; i < N; i++) {
+        if (gone[i] < broken) continue; // pedaço já se desfez
+        fillQuad(F, B, i, PURPLE, 0.9 * fade);
+        fillQuad(F, M, i, PALE, 0.95 * fade);
+        g.lineStyle(7, BRIGHT, 0.45 * fade);
+        g.beginPath(); g.moveTo(F[i].x, F[i].y); g.lineTo(F[i + 1].x, F[i + 1].y); g.strokePath();
+        g.lineStyle(3, WHITE, fade);
+        g.beginPath(); g.moveTo(F[i].x, F[i].y); g.lineTo(F[i + 1].x, F[i + 1].y); g.strokePath();
+      }
+    },
+    onComplete: () => {
+      g.destroy();
+      // última centelha onde a lâmina morre
+      const e = scene.add.image(x + dirX * range * 0.96, y + dirY * range * 0.96, GLOW_KEY)
+        .setDepth(DEPTH_FLASH).setBlendMode(Phaser.BlendModes.ADD).setTint(PALE).setScale(0.6).setAlpha(reduced() ? 0.5 : 0.85);
+      scene.tweens.add({ targets: e, scale: 2.6, alpha: 0, duration: 200, ease: 'Cubic.easeOut', onComplete: () => e.destroy() });
+    }
+  });
+
+  // estilhaços que se soltam do fio, escorrendo pra trás e pros lados (energia virando fragmento)
+  const n = cnt(scene, 12);
+  for (let i = 0; i < n; i++) {
+    const k = rand(0.12, 0.95);
+    const d = Math.max(42, range * k);
+    const w = Math.max(16, tanHalf * d * 0.96);
+    const u = rand(-1, 1);
+    const bx = x + dirX * (d - w * 0.5 * u * u) + nX * u * w;
+    const by = y + dirY * (d - w * 0.5 * u * u) + nY * u * w;
+    const side = u === 0 ? 1 : Math.sign(u);
+    const vx = -dirX * 0.55 + nX * side * 0.85;
+    const vy = -dirY * 0.55 + nY * side * 0.85;
+    const dist = rand(45, 130);
+    const rot = Math.atan2(vy, vx);
+    scene.time.delayedCall(FRONT_DELAY_MS + frontInv(k) * WAVE_MS, () => {
+      if (!scene.sys?.isActive()) return;
+      const sh = scene.add.image(bx, by, 'hit_fx').setDepth(DEPTH_FLASH + 1).setBlendMode(Phaser.BlendModes.ADD)
+        .setTint(i % 3 ? BRIGHT : PALE).setScale(rand(0.5, 0.9)).setRotation(rot);
+      scene.tweens.add({
+        targets: sh, x: bx + vx * dist, y: by + vy * dist - rand(4, 16), alpha: 0, scale: 0.1,
+        duration: Phaser.Math.Between(240, 400), ease: 'Cubic.easeOut', onComplete: () => sh.destroy()
+      });
+    });
+  }
 }
 
 // o momento do acerto: clarão + 2 anéis de choque achatados no chão
@@ -618,56 +711,57 @@ function strokePoly(g, pts, width, color, alpha) {
   g.strokePath();
 }
 
-// mancha de terra revirada + rachaduras serrilhadas com energia roxa por dentro.
+// mancha de terra revirada + rachaduras que CRESCEM acompanhando a lâmina (a ponta de cada uma fica
+// branca, em brasa, e esfria pra roxo logo atrás). Nenhuma rachadura nasce no eixo central: elas
+// saem em leque, tortas, mais curtas no meio e longas nas bordas, pra não formar uma linha reta.
 // Devolve os pontos principais de cada rachadura (pras chamas nascerem nelas).
 function groundDestruction(scene, x, y, angle, range, half, at, latMax, delayFor, revealAt, scheduleFade) {
   // mancha irregular (várias elipses escuras translúcidas sobrepostas)
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 26; i++) {
     const d = rand(60, range * 0.97);
     const p = at(d, rand(-1, 1) * latMax(d) * 0.9);
-    const e = scene.add.ellipse(p.x, p.y, rand(60, 150), rand(40, 100), DARK, 0.16)
+    const e = scene.add.ellipse(p.x, p.y, rand(46, 110), rand(32, 76), DARK, 0.16)
       .setDepth(DEPTH_GROUND)
       .setRotation(angle + rand(-0.6, 0.6));
     revealAt(e, d, 120);
     scheduleFade(e, d);
   }
 
+  const withDist = (pt) => { pt.d = Math.hypot(pt.x - x, pt.y - y); return pt; };
   const cracks = [];
-  const count = 9;
+  const count = isMobile(scene) ? 8 : 11;
   for (let i = 0; i < count; i++) {
-    const u = i / (count - 1);
-    const base = angle + Phaser.Math.Linear(-half * 0.92, half * 0.92, u) + rand(-0.04, 0.04);
-    const d0 = rand(70, 130);
-    const len = range * (1 - Math.abs(u - 0.5) * 0.7) * rand(0.8, 1);
+    let sv = (i / (count - 1)) * 2 - 1; // -1..1 dentro do cone
+    if (Math.abs(sv) < 0.18) sv = (i % 2 ? 1 : -1) * rand(0.18, 0.3); // nada no eixo central
+    const base = angle + sv * half * 0.94 + rand(-0.05, 0.05);
+    const d0 = rand(60, 120);
+    const len = range * (0.5 + 0.5 * Math.pow(Math.abs(sv), 0.6)) * rand(0.8, 1);
     const bx = Math.cos(base);
     const by = Math.sin(base);
 
-    // linha principal serrilhada
-    const main = [{ x: x + bx * d0, y: y + by * d0 }];
+    // linha principal serrilhada, vagando de lado (torta)
+    const main = [withDist({ x: x + bx * d0, y: y + by * d0 })];
     let walked = 0;
+    let drift = 0;
     while (walked < len) {
-      const step = rand(28, 46);
-      walked += step;
-      const jitter = rand(-10, 10);
-      main.push({
-        x: x + bx * (d0 + walked) - by * jitter,
-        y: y + by * (d0 + walked) + bx * jitter
-      });
+      walked += rand(22, 38);
+      drift = Phaser.Math.Clamp(drift + rand(-10, 10), -24, 24);
+      main.push(withDist({ x: x + bx * (d0 + walked) - by * drift, y: y + by * (d0 + walked) + bx * drift }));
     }
 
-    // ramificações curtas saindo da principal
+    // ramificações saindo da principal (mais que antes, curtas e agudas)
     const polys = [{ pts: main, main: true }];
     for (let j = 2; j < main.length; j++) {
-      if (Math.random() > 0.35) continue;
+      if (Math.random() > 0.5) continue;
       const side = Math.random() < 0.5 ? -1 : 1;
-      const dir = base + side * rand(0.5, 1.0);
+      const dir = base + side * rand(0.45, 1.0);
       const branch = [main[j]];
-      const segs = Phaser.Math.Between(2, 3);
-      for (let s = 1; s <= segs; s++) {
-        const prev = branch[s - 1];
-        const stepLen = rand(18, 34);
-        const wob = rand(-0.35, 0.35);
-        branch.push({ x: prev.x + Math.cos(dir + wob) * stepLen, y: prev.y + Math.sin(dir + wob) * stepLen });
+      const segs = Phaser.Math.Between(2, 4);
+      for (let k = 1; k <= segs; k++) {
+        const prev = branch[k - 1];
+        const stepLen = rand(14, 30);
+        const wob = rand(-0.4, 0.4);
+        branch.push(withDist({ x: prev.x + Math.cos(dir + wob) * stepLen, y: prev.y + Math.sin(dir + wob) * stepLen }));
       }
       polys.push({ pts: branch, main: false });
     }
@@ -675,41 +769,63 @@ function groundDestruction(scene, x, y, angle, range, half, at, latMax, delayFor
     // camada escura (fica até o fim) e camada de energia (pulsa e apaga antes)
     const dark = scene.add.graphics().setDepth(DEPTH_GROUND);
     const glow = scene.add.graphics().setDepth(DEPTH_GROUND).setBlendMode(Phaser.BlendModes.ADD);
-    polys.forEach(({ pts, main: isMain }) => {
-      strokePoly(dark, pts, isMain ? 7 : 4, DARK, 0.92);
-      strokePoly(glow, pts, isMain ? 5 : 3, PURPLE, 0.8);
-      strokePoly(glow, pts, isMain ? 1.8 : 1.1, PALE, 0.95);
-    });
-
-    revealAt(dark, d0, 70);
-    revealAt(glow, d0, 70);
     scheduleFade(dark, d0);
-
-    // energia pulsando dentro da fenda, apagando bem antes da marca sumir
-    scene.time.delayedCall(delayFor(d0) + 120, () => {
-      if (!glow.scene) return;
-      scene.tweens.add({ targets: glow, alpha: 0.55, duration: 140, yoyo: true, repeat: 5 });
-    });
-    scene.time.delayedCall(delayFor(d0) + 1000 + rand(0, 500), () => {
-      if (!glow.scene) return;
-      scene.tweens.killTweensOf(glow);
-      scene.tweens.add({
-        targets: glow,
-        alpha: 0,
-        duration: 700,
-        onComplete: () => glow.destroy()
-      });
-    });
-
-    cracks.push({ main, d0 });
+    cracks.push({ main, d0, polys, dark, glow, shown: -1 });
   }
+
+  // trecho da polilinha que a frente já alcançou (interpola o último pedaço)
+  const visible = (pts, fd) => {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].d <= fd) { out.push(pts[i]); continue; }
+      if (i > 0 && pts[i - 1].d <= fd) {
+        const t = (fd - pts[i - 1].d) / Math.max(1, pts[i].d - pts[i - 1].d);
+        out.push({ x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t });
+      }
+      break;
+    }
+    return out;
+  };
+  const drawCrack = (c, fd, growing) => {
+    c.dark.clear(); c.glow.clear();
+    c.polys.forEach(({ pts, main: isMain }) => {
+      const v = visible(pts, fd);
+      if (v.length < 2) return;
+      strokePoly(c.dark, v, isMain ? 7 : 4, DARK, 0.92);
+      strokePoly(c.glow, v, isMain ? 5 : 3, PURPLE, 0.8);
+      strokePoly(c.glow, v, isMain ? 1.8 : 1.1, PALE, 0.95);
+      if (growing) strokePoly(c.glow, v.slice(-2), isMain ? 4 : 2.5, WHITE, 1); // ponta em brasa
+    });
+  };
+
+  const st = { t: 0 };
+  scene.tweens.add({
+    targets: st, t: 1, duration: WAVE_MS, delay: FRONT_DELAY_MS, ease: 'Linear',
+    onUpdate: () => {
+      const fd = range * frontEase(st.t);
+      cracks.forEach((c) => { if (c.d0 <= fd) drawCrack(c, fd, true); });
+    },
+    onComplete: () => {
+      cracks.forEach((c) => {
+        drawCrack(c, Infinity, false);
+        const { glow } = c;
+        // energia pulsando dentro da fenda, apagando bem antes da marca sumir
+        scene.tweens.add({ targets: glow, alpha: 0.55, duration: 140, yoyo: true, repeat: 5 });
+        scene.time.delayedCall(880 + rand(0, 500), () => {
+          if (!glow.scene) return;
+          scene.tweens.killTweensOf(glow);
+          scene.tweens.add({ targets: glow, alpha: 0, duration: 700, onComplete: () => glow.destroy() });
+        });
+      });
+    }
+  });
   return cracks;
 }
 
 // chamas roxas (frame 3 do sprite) estourando das frestas, em pé no chão
 function flames(scene, cracks, range, delayFor) {
   cracks.forEach(({ main, d0 }) => {
-    const picks = Math.random() < 0.5 ? 2 : 1;
+    const picks = Math.random() < 0.3 ? 2 : 1;
     for (let k = 0; k < picks; k++) {
       const p = main[Phaser.Math.Between(1, main.length - 1)];
       const dist = d0 + k * 120;
@@ -741,7 +857,7 @@ function flames(scene, cracks, range, delayFor) {
 function debris(scene, angle, range, at, latMax, delayFor, scheduleFade) {
   const dirX = Math.cos(angle);
   const dirY = Math.sin(angle);
-  for (let i = 0; i < cnt(scene, 70); i++) {
+  for (let i = 0; i < cnt(scene, 46); i++) {
     const d = Math.min(range, 50 + range * Math.pow(Math.random(), 0.8) * 0.95);
     const lat = rand(-1, 1) * latMax(d) * 0.95;
     const start = at(d, lat);
@@ -752,8 +868,8 @@ function debris(scene, angle, range, at, latMax, delayFor, scheduleFade) {
     const dy = dirY * throwD * 0.7 + dirX * side * throwD * 0.5 + rand(-20, 20);
     const height = rand(60, 190);
     const duration = Phaser.Math.Between(480, 820);
-    const isEnergy = Math.random() < 0.3;
-    const baseScale = rand(0.7, 1.6);
+    const isEnergy = Math.random() < 0.18;
+    const baseScale = rand(0.4, 0.95);
 
     const img = isEnergy
       ? scene.add.image(start.x, start.y, 'hit_fx').setTint(pick([PURPLE, BRIGHT, PALE])).setBlendMode(Phaser.BlendModes.ADD)

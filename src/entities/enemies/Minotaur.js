@@ -38,6 +38,7 @@ import {
 } from '../../fx/MinotaurStompFx.js';
 import { playMinotaurFootDust } from '../../fx/MinotaurStompFx.js';
 import MinotaurGlowFx from '../../fx/MinotaurGlowFx.js';
+import MinotaurFuryFx, { playMinotaurFuryBurst } from '../../fx/MinotaurFuryFx.js';
 import MinotaurArenaFx from '../../fx/MinotaurArenaFx.js';
 import MinotaurTransformFx from '../../fx/MinotaurTransformFx.js';
 
@@ -100,7 +101,6 @@ const LEAP_LANDING_SHAKE_MS = 420;
 const LEAP_LANDING_SHAKE_INTENSITY = 0.035;
 const LEAP_TAKEOFF_SHAKE_MS = 200;
 const LEAP_TAKEOFF_SHAKE_INTENSITY = 0.015;
-const LEAP_AGGRO_AURA_RADIUS = 95;
 
 // Corte Destrutivo (3ª habilidade do Minotauro, sorteada 1/3 com a
 const CLEAVE_COLOR = 0xff1133;
@@ -154,6 +154,8 @@ export default class Minotaur extends Enemy {
     this.on(Phaser.Animations.Events.ANIMATION_UPDATE, this._onWalkFrame, this);
     // Luzes nos mecanismos, energia pulsante e brilho de contorno (só visual, ver MinotaurGlowFx.js)
     this.glowFx = new MinotaurGlowFx(scene, this);
+    // Fúria pós-salto: aura de energia, arcos e chamas enquanto ele está agressivo (ver MinotaurFuryFx.js)
+    this.furyFx = new MinotaurFuryFx(scene, this);
     // Arena instável na fase 2: rachaduras/feixes/pulsos aqua, só visuais (ver MinotaurArenaFx.js)
     this.arenaFx = new MinotaurArenaFx(scene, this);
     // Versões SEM machado (Machado Arremessado, ver _launchAxe/
@@ -231,7 +233,6 @@ export default class Minotaur extends Enemy {
     this.leapAirStartAt = 0;
     this.leapAirUntil = 0;
     this.leapLocked = false;
-    this.leapAura = null;
     // true enquanto está no ar: ninguém consegue acertar (ver DamageSystem)
     this.untargetable = false;
     // Entrada (ver EnemySpawner._findBossSpawnPosition): ele nasce na frente do
@@ -307,7 +308,6 @@ export default class Minotaur extends Enemy {
   // Chuva de Meteoros roda EM PARALELO a qualquer estado do corpo
   _adjustChaseSpeed(target, nowMs, speedMultiplier) {
     this._updateMeteorRain(target, nowMs);
-    this._updateLeapAggroFx(nowMs);
     // agressividade pós-salto: só um multiplicador temporário, nada é
     // alterado de forma permanente — passou leapAggroUntil, volta ao normal
     if (this._isLeapAggro()) speedMultiplier *= this.def.leapAggroSpeedMultiplier;
@@ -392,6 +392,8 @@ export default class Minotaur extends Enemy {
         if (this.transformFx.done) this.transformFx = null;
       }
       this.glowFx?.update(time);
+      // fúria pós-salto: roda em qualquer estado do corpo (ataques, recuperação, perseguição)
+      this.furyFx?.update(time, delta, this._isLeapAggro() ? this.leapAggroUntil - this.scene.time.now : 0);
       this.arenaFx?.update(time, delta);
     }
   }
@@ -401,6 +403,8 @@ export default class Minotaur extends Enemy {
     this.transformFx = null;
     this.glowFx?.destroy();
     this.glowFx = null;
+    this.furyFx?.destroy();
+    this.furyFx = null;
     this.arenaFx?.destroy();
     this.arenaFx = null;
     cancelChargeVisuals(this.scene, this);
@@ -1750,7 +1754,7 @@ export default class Minotaur extends Enemy {
     cam.flash(160, 255, 140, 60);
     this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
     this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.9 });
-    this._flashCircle(lx, ly, radius, (this.isEnraged ? 0x20c6ba : LEAP_COLOR));
+    playMinotaurFuryBurst(this.scene, this, lx, ly, radius); // rugido: clarão, anel no raio do impacto, ondas e chamas
     this._showAxeExplosionFx(lx, ly, radius);
     const ring = this.scene.add
       .circle(lx, ly, radius, 0xffffff, 0)
@@ -1803,28 +1807,9 @@ export default class Minotaur extends Enemy {
     }
   }
 
-  // Aura vermelha pulsando em volta dele enquanto está agressivo — é o
-  // sinal visual de "está puto". Some sozinha quando a agressividade acaba.
-  _updateLeapAggroFx(nowMs) {
-    if (!this._isLeapAggro()) {
-      if (this.leapAura) { this.leapAura.destroy(); this.leapAura = null; }
-      return;
-    }
-    if (!this.leapAura) {
-      this.leapAura = this.scene.add
-        .circle(this.x, this.y, LEAP_AGGRO_AURA_RADIUS, (this.isEnraged ? 0x20c6ba : LEAP_COLOR), 0.2)
-        .setStrokeStyle(3, (this.isEnraged ? 0x20c6ba : LEAP_COLOR), 0.8)
-        .setDepth(8);
-    }
-    this.leapAura.setPosition(this.x, this.y);
-    this.leapAura.setVisible(this.visible);
-    this.leapAura.setAlpha(0.55 + 0.35 * Math.sin(nowMs / 70));
-  }
-
   // Limpa o que o salto criou fora do sprite (morte/fuga do boss — ver destroy()).
   _clearLeap() {
-    this.leapAura?.destroy();
-    this.leapAura = null;
+    this.furyFx?.stop();
     this.untargetable = false;
   }
 
