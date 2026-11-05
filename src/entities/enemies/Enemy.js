@@ -189,6 +189,7 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Garante que a sombra some junto quando o inimigo é destruído (morte,
   // despawn por fuga, etc.) — sem isso ela ficaria órfã na tela.
   destroy(fromScene) {
+    this._stopTimedSfx();
     this.shadow?.destroy();
     destroyBleedFx(this.bleedFx);
     this.bleedFx = null;
@@ -291,6 +292,12 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   pauseVisual() {
+    this._timedSfxPaused = true;
+    for (const sfx of this._timedSfx || []) {
+      if (sfx.isPlaying && sfx.pause()) {
+        (this._pausedTimedSfx ??= new Set()).add(sfx);
+      }
+    }
     if (!this.active || !this.idleTexture) return;
     this.anims.stop();
     this.setTexture(this.idleTexture);
@@ -298,6 +305,11 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   resumeVisual() {
+    this._timedSfxPaused = false;
+    for (const sfx of this._pausedTimedSfx || []) {
+      if (this._timedSfx?.has(sfx) && sfx.isPaused) sfx.resume();
+    }
+    this._pausedTimedSfx?.clear();
     if (!this.active || !this.body || !this.idleTexture) return;
     // NÃO zera isIdleVisual aqui antes de chamar updateAnimState(): ele
     // precisa continuar true (do pauseVisual()) pra updateAnimState()
@@ -496,9 +508,23 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
   // Master, que é nativo do Phaser e pega tudo).
   _playTimedSfx(key, volume, rate = 1) {
     const sfx = this.scene.sound.add(key);
-    sfx.play({ volume: volume * SettingsManager.getSfx(), rate });
+    (this._timedSfx ??= new Set()).add(sfx);
+    sfx.once('destroy', () => {
+      this._timedSfx?.delete(sfx);
+      this._pausedTimedSfx?.delete(sfx);
+    });
     sfx.once('complete', () => sfx.destroy());
+    sfx.play({ volume: volume * SettingsManager.getSfx(), rate });
+    if ((this._timedSfxPaused || this.scene.isPaused) && sfx.isPlaying && sfx.pause()) {
+      (this._pausedTimedSfx ??= new Set()).add(sfx);
+    }
     return (sfx.duration / rate) * 1000;
+  }
+
+  _stopTimedSfx() {
+    for (const sfx of this._timedSfx || []) sfx.destroy();
+    this._timedSfx?.clear();
+    this._pausedTimedSfx?.clear();
   }
 
   // Dispara a fuga (evento do Boss/Minotauro, ver SpawnDirector.

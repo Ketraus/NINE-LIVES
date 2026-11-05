@@ -301,6 +301,7 @@ export default class Minotaur extends Enemy {
   }
 
   _cancelActionsForFlee() {
+    this._stopTimedSfx();
     // Boss/Minotauro no meio de uma habilidade (Investida, Machado ou
     if ((this.bossState && this.bossState !== 'chasing') || this.axePhase) {
       this._clearBossTelegraph();
@@ -313,6 +314,7 @@ export default class Minotaur extends Enemy {
   }
 
   _cleanupSpecial() {
+    this._stopTimedSfx();
     // Boss: mesma lógica — a linha de aviso da investida também não é
     this.bossTelegraphGraphics?.destroy();
     // Boss: o ícone do Machado Arremessado (voando ou já cravado) também

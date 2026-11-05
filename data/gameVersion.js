@@ -5,5 +5,5 @@
 //              GUERRA." com impacto -> preto -> créditos.
 
 export default {
-  version: 'snct'
+  version: 'feira'
 };

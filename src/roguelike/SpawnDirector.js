@@ -4,6 +4,7 @@ import { playBossTremor } from '../fx/MinotaurTremorFx.js';
 import { startBossEntranceBuildup } from '../fx/MinotaurEntranceFx.js';
 import { playSnctEnding } from '../systems/SnctEnding.js';
 import gameVersion from '../../data/gameVersion.js';
+import BossCinematicCamera, { BOSS_CAMERA_TRAVEL_MS } from '../systems/BossCinematicCamera.js';
 
 // Dono do "quando", "quantos" e "de que tipo" da sobrevivência por temp…
 // Fallback de segurança, só usado se GameScene não passar spawnCurves p…
@@ -67,6 +68,7 @@ export default class SpawnDirector {
 
     // Evento único do Boss (data/bossSchedule.js, {t}) — "primeiro e
     this.bossSchedule = bossSchedule;
+    this.bossCamera = new BossCinematicCamera(scene);
     this.bossTriggered = false;
     this.bossHasSpawned = false;
     this._bossMusicRestoreDone = false;
@@ -91,6 +93,9 @@ export default class SpawnDirector {
   }
 
   stop() {
+    this.bossCamera?.release(true);
+    this.bossOverlay?.destroy();
+    this.bossOverlay = null;
     this.authorityActive = false;
     this.authorityGeneration += 1;
     this.timerEvent?.remove();
@@ -365,6 +370,39 @@ export default class SpawnDirector {
   // Cliente: toca a cena que o Host anunciou (cada id só uma vez)
   playNetworkCinematic(cue) {
     if (!cue || this.authorityActive) return; // o Host já toca a própria
+    if (cue.kind === 'boss-focus') {
+      if (!cue.epicenter) return;
+      this.bossCamera.focus(cue.epicenter);
+      const generation = this.authorityGeneration;
+      this.scene.time.delayedCall(Math.max(0, BOSS_CAMERA_TRAVEL_MS - (cue.ageMs || 0)), () => {
+        if (this.authorityActive || generation !== this.authorityGeneration || this._networkBossPhase !== 'boss-focus') return;
+        this.bossTremor?.stop(0);
+        this.bossTremor = playBossTremor(this.scene, cue.epicenter);
+      });
+      this._networkBossPhase = cue.kind;
+      return;
+    }
+    if (cue.kind === 'boss-buildup') {
+      this._networkBossPhase = cue.kind;
+      if (!this.bossCamera.saved) this.bossCamera.focus(cue.epicenter);
+      this._startBossTensionBuildup(this.authorityGeneration, cue.epicenter, true, cue.ageMs || 0);
+      return;
+    }
+    if (cue.kind === 'boss-impact' || cue.kind === 'boss-release') {
+      this._networkBossPhase = cue.kind;
+      this.bossOverlay?.destroy();
+      this.bossOverlay = null;
+      this.bossTremor?.stop(200);
+      this.bossTremor = null;
+      this.bossBuildupFx?.finish();
+      this.bossBuildupFx = null;
+      if (cue.kind === 'boss-release') this.bossCamera.release();
+      else {
+        if (!this.bossCamera.saved) this.bossCamera.focus(cue.epicenter);
+        MusicManager.playBoss(this.scene);
+      }
+      return;
+    }
     if (cue.kind === 'boss-rupture') {
       MusicManager.duckForBoss(this.scene, BOSS_MUSIC_FADE_MS);
       return;
@@ -405,9 +443,17 @@ export default class SpawnDirector {
         if (this.bossTremor || this.scene.snctEndingStarted) return; // troca de Host no meio da cena: não repete
         // Cenas 2-4: o epicentro é onde o Minotauro vai nascer
         const rawEpicenter = this.enemySpawner.prepareBossSpawnPosition();
-        const epicenter = this._localEpicenter(rawEpicenter);
+        const epicenter = gameVersion.version === 'snct' ? this._localEpicenter(rawEpicenter) : rawEpicenter;
+        const feira = gameVersion.version !== 'snct';
+        if (feira) {
+          this._bossEpicenter = epicenter;
+          this.bossCamera.focus(epicenter);
+          this._announceCinematic('boss-focus', epicenter);
+        }
         // Versão SNCT: avisa os clientes pra rodarem o MESMO tremor + final, juntos do Host
         if (gameVersion.version === 'snct') this._announceCinematic('snct-finale', rawEpicenter);
+        this.scene.time.delayedCall(feira ? BOSS_CAMERA_TRAVEL_MS : 0, () => {
+        if (!this.authorityActive || generation !== this.authorityGeneration) return;
         this.bossTremor = playBossTremor(this.scene, epicenter, {
           onDone: () => {
             if (!this.authorityActive || generation !== this.authorityGeneration) return;
@@ -417,22 +463,26 @@ export default class SpawnDirector {
               playSnctEnding(this.scene, { epicenter, networked: this._isNetworked() });
               return;
             }
+            this._announceCinematic('boss-buildup', epicenter);
             this._startBossTensionBuildup(generation, epicenter);
             this.scene.time.delayedCall(BOSS_SILENCE_MS, () => this._triggerBossEntrance(generation));
           }
+        });
         });
       }
     });
   }
 
   // Começo do silêncio de verdade (tela já vazia): escurece a tela
-  _startBossTensionBuildup(generation = this.authorityGeneration, epicenter = null) {
-    if (!this.authorityActive || generation !== this.authorityGeneration) return;
+  _startBossTensionBuildup(generation = this.authorityGeneration, epicenter = null, remote = false, ageMs = 0) {
+    if ((!remote && !this.authorityActive) || generation !== this.authorityGeneration) return;
+    const remaining = Math.max(1, BOSS_SILENCE_MS - ageMs);
     const cam = this.scene.cameras.main;
     // Cinemática (fx/MinotaurEntranceFx.js): o mundo é sugado pro epicentro,
     // letterbox desce, lente treme a cada batimento e chega no spawn.
     try { this.bossBuildupFx?.cancel(); } catch (e) { /* já destruído */ }
-    this.bossBuildupFx = startBossEntranceBuildup(this.scene, epicenter, BOSS_SILENCE_MS);
+    this.bossBuildupFx = startBossEntranceBuildup(this.scene, epicenter, remaining);
+    this.bossOverlay?.destroy();
     this.bossOverlay = this.scene.add
       .rectangle(cam.width / 2, cam.height / 2, cam.width * 3, cam.height * 3, BOSS_OVERLAY_COLOR, 0)
       .setScrollFactor(0)
@@ -440,7 +490,7 @@ export default class SpawnDirector {
     this.scene.tweens.add({
       targets: this.bossOverlay,
       fillAlpha: BOSS_OVERLAY_MAX_ALPHA,
-      duration: BOSS_SILENCE_MS,
+      duration: remaining,
       ease: 'Sine.easeIn'
     });
 
@@ -448,8 +498,10 @@ export default class SpawnDirector {
     MusicManager.duckForBoss(this.scene, BOSS_SILENCE_MS);
 
     BOSS_HEARTBEAT_TIMES_MS.forEach((t, i) => {
-      this.scene.time.delayedCall(t, () => {
-        if (!this.authorityActive || generation !== this.authorityGeneration) return;
+      if (t < ageMs) return;
+      this.scene.time.delayedCall(t - ageMs, () => {
+        if ((!remote && !this.authorityActive) || generation !== this.authorityGeneration ||
+            (remote && this._networkBossPhase !== 'boss-buildup')) return;
         this.scene.cameras.main.shake(BOSS_HEARTBEAT_SHAKE_MS, BOSS_HEARTBEAT_INTENSITIES[i]);
         this.bossBuildupFx?.heartbeat(i, BOSS_HEARTBEAT_TIMES_MS.length);
         this.bossTremor?.pulse?.(i, BOSS_HEARTBEAT_TIMES_MS.length); // a luz das rachaduras bate junto
@@ -460,6 +512,7 @@ export default class SpawnDirector {
   // Fim do silêncio: corta o escurecimento na hora (contraste forte com
   _triggerBossEntrance(generation = this.authorityGeneration) {
     if (!this.authorityActive || generation !== this.authorityGeneration) return;
+    this._announceCinematic('boss-impact', this._bossEpicenter);
     this.bossOverlay?.destroy();
     this.bossOverlay = null;
     this.bossTremor?.climax?.(); // a luz roxa estoura toda antes de sumir no clarão
@@ -483,6 +536,11 @@ export default class SpawnDirector {
       }
       this.scene.physics.world.resume();
       this.enemySpawner.spawnByDefId('minotaur', 1);
+      this.scene.time.delayedCall(3700, () => {
+        if (!this.authorityActive || generation !== this.authorityGeneration) return;
+        this._announceCinematic('boss-release', this._bossEpicenter);
+        this.bossCamera.release();
+      });
       // tema do Minotauro sobe com fade in aqui — a música de jogo já
       // estava em silêncio (duckForBoss) desde a tensão de entrada
       MusicManager.playBoss(this.scene);

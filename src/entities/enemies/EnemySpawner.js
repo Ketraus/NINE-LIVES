@@ -371,7 +371,7 @@ export default class EnemySpawner {
     const n = Math.max(1, Math.floor(count));
     for (let i = 0; i < n; i++) {
       this._createAt(def, def.sealer ? this._findSealerSpawnPosition(def)
-        : def.boss ? this._findBossSpawnPosition()
+        : def.boss ? this._takeBossSpawnPosition()
         : this._findSpawnPosition());
     }
     return n;
@@ -406,6 +406,9 @@ export default class EnemySpawner {
     const reserved = this._reservedBossPos;
     this._reservedBossPos = null;
     if (reserved) {
+      // The cinematic owns the camera and its world-space spawn point.
+      if (this.scene.spawnDirector?.bossCamera?.saved &&
+          !this._isBlockedByWall(reserved.x, reserved.y, BOSS_SPAWN_CLEARANCE)) return reserved;
       const view = this._currentCameraView();
       const m = 40;
       const inside = reserved.x > view.x + m && reserved.x < view.right - m && reserved.y > view.y + m && reserved.y < view.bottom - m;

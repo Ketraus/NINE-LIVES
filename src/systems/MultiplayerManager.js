@@ -719,12 +719,12 @@ export default class MultiplayerManager {
   _applyHostCinematic(cue) {
     if (this.isRoomHost || !cue || typeof cue !== 'object') return;
     if (typeof cue.id !== 'string' || cue.id.length > 40 || this.seenCinematics.has(cue.id)) return;
-    if (cue.kind !== 'boss-rupture' && cue.kind !== 'snct-finale') return;
+    if (!['boss-rupture', 'snct-finale', 'boss-focus', 'boss-buildup', 'boss-impact', 'boss-release'].includes(cue.kind)) return;
     this.seenCinematics.add(cue.id);
     if (!Number.isFinite(cue.ageMs) || cue.ageMs > 20000) return;
     const e = cue.epicenter;
     const epicenter = e && Number.isFinite(e.x) && Number.isFinite(e.y) ? { x: e.x, y: e.y } : null;
-    this.scene.playNetworkCinematic?.({ kind: cue.kind, epicenter });
+    this.scene.playNetworkCinematic?.({ kind: cue.kind, epicenter, ageMs: Math.max(0, cue.ageMs) });
   }
 
   _isCurrentAuthorityMessage(message) {
