@@ -17,6 +17,7 @@
 //  - playMinotaurStompLaunch    -> rastro de poeira e estrela de impacto no jogador arremessado
 
 import { reserveFx } from './FxBudget.js';
+import SettingsManager from '../systems/SettingsManager.js';
 
 let RAGE_ACTIVE = false;
 let KEY = 'minotaur_stomp'; // folha 4 frames 32x32: faísca, explosão, anel, anel esvaindo
@@ -392,21 +393,110 @@ function ensureCraterTextures(scene, baseKey, glowKey, seed) {
 
 // ---------- peças ----------
 
-// clarão do impacto (curto e aditivo)
+// clarão do impacto (curto e aditivo): núcleo branco seco + halo roxo largo
 function flash(scene, x, y, radius) {
-  const f = scene.add.image(x, y, GLOW_KEY)
+  const reduced = SettingsManager.getReducedFlashes?.();
+  const big = scene.add.image(x, y, GLOW_KEY)
+    .setDepth(DEPTH_FLASH)
+    .setBlendMode(Phaser.BlendModes.ADD)
+    .setTint(BRIGHT)
+    .setScale(((radius * 2.2) / 64) * 0.4)
+    .setAlpha(reduced ? 0.6 : 1);
+  scene.tweens.add({
+    targets: big,
+    scale: (radius * 2.2) / 64,
+    alpha: 0,
+    duration: 260,
+    ease: 'Cubic.easeOut',
+    onComplete: () => big.destroy()
+  });
+  const core = scene.add.image(x, y, GLOW_KEY)
+    .setDepth(DEPTH_FLASH + 1)
+    .setBlendMode(Phaser.BlendModes.ADD)
+    .setTint(WHITE)
+    .setScale(((radius * 1.1) / 64) * 0.5)
+    .setAlpha(reduced ? 0.7 : 1);
+  scene.tweens.add({
+    targets: core,
+    scale: (radius * 1.1) / 64,
+    alpha: 0,
+    duration: 130,
+    ease: 'Cubic.easeOut',
+    onComplete: () => core.destroy()
+  });
+}
+
+// coluna de energia que sobe do ponto do pisão (golpe vertical)
+function pillar(scene, x, y, radius) {
+  const reduced = SettingsManager.getReducedFlashes?.();
+  const h = Math.max(260, radius * 2.6);
+  const col = scene.add.image(x, y, GLOW_KEY)
+    .setOrigin(0.5, 1)
     .setDepth(DEPTH_FLASH)
     .setBlendMode(Phaser.BlendModes.ADD)
     .setTint(PALE)
-    .setScale(((radius * 1.3) / 64) * 0.5)
-    .setAlpha(0.95);
+    .setScale(0.5, 0.2)
+    .setAlpha(reduced ? 0.45 : 0.9);
   scene.tweens.add({
-    targets: f,
-    scale: (radius * 1.3) / 64,
+    targets: col,
+    scaleX: radius / 150,
+    scaleY: h / 128,
     alpha: 0,
-    duration: 160,
+    duration: 340,
     ease: 'Cubic.easeOut',
-    onComplete: () => f.destroy()
+    onComplete: () => col.destroy()
+  });
+}
+
+// rachaduras de energia correndo pelo chão até (e além) do raio do dano
+function groundRays(scene, x, y, radius, q) {
+  const count = Math.max(6, Math.round(16 * q));
+  const rays = [];
+  for (let i = 0; i < count; i++) {
+    const a = (Math.PI * 2 * i) / count + rand(-0.14, 0.14);
+    const len = radius * rand(0.95, 1.3);
+    const pts = [];
+    let cx = 0;
+    let cy = 0;
+    let ang = a;
+    const steps = 7;
+    for (let s = 0; s < steps; s++) {
+      ang += rand(-0.35, 0.35);
+      const seg = len / steps;
+      cx += Math.cos(ang) * seg;
+      cy += Math.sin(ang) * seg;
+      pts.push([cx, cy]);
+    }
+    rays.push(pts);
+  }
+  const g = scene.add.graphics().setDepth(DEPTH_CRACK_GLOW + 0.2).setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.addCounter({
+    from: 0,
+    to: 1,
+    duration: 900,
+    ease: 'Linear',
+    onUpdate: (tw) => {
+      const t = tw.getValue();
+      const grow = Math.min(1, t / 0.16); // corre rápido até a ponta
+      const fade = t < 0.3 ? 1 : Math.max(0, 1 - (t - 0.3) / 0.7);
+      g.clear();
+      rays.forEach((pts) => {
+        const n = Math.max(1, Math.ceil(pts.length * grow));
+        g.lineStyle(7, DEEP, 0.5 * fade);
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < n; k++) g.lineTo(x + pts[k][0], y + pts[k][1]);
+        g.strokePath();
+        g.lineStyle(2.5, BRIGHT, 0.95 * fade);
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < n; k++) g.lineTo(x + pts[k][0], y + pts[k][1]);
+        g.strokePath();
+        g.lineStyle(1, WHITE, fade);
+        g.beginPath(); g.moveTo(x, y);
+        for (let k = 0; k < n; k++) g.lineTo(x + pts[k][0], y + pts[k][1]);
+        g.strokePath();
+      });
+    },
+    onComplete: () => g.destroy()
   });
 }
 
@@ -518,26 +608,26 @@ function crater(scene, x, y, radius) {
   });
 }
 
-// anéis de choque roxos que correm até o raio do dano
+// anéis de choque que correm até (e um pouco além) do raio do dano: 3 ondas + anel branco rápido
 function shockRings(scene, x, y, radius) {
-  [0, 90].forEach((delay, i) => {
-    const ring = scene.add.graphics().setDepth(DEPTH_DUST);
+  [0, 70, 150].forEach((delay, i) => {
+    const ring = scene.add.graphics().setDepth(DEPTH_DUST).setBlendMode(i === 0 ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL);
     scene.tweens.addCounter({
       from: 0,
       to: 1,
-      duration: 360 + i * 60,
+      duration: 420 + i * 90,
       delay,
       ease: 'Cubic.easeOut',
       onUpdate: (tw) => {
         const t = tw.getValue();
-        const r = radius * (0.2 + 0.8 * t) * (i === 0 ? 1 : 0.82);
-        const fade = Math.pow(1 - t, 1.3) * (i === 0 ? 1 : 0.7);
+        const r = radius * (0.15 + 0.95 * t) * (1 - i * 0.1);
+        const fade = Math.pow(1 - t, 1.2) * (1 - i * 0.18);
         ring.clear();
-        ring.lineStyle(10 * (1 - t) + 2, DEEP, 0.5 * fade);
+        ring.lineStyle(22 * (1 - t) + 3, DEEP, 0.55 * fade);
         ring.strokeCircle(x, y, r);
-        ring.lineStyle(3, BRIGHT, 0.85 * fade);
+        ring.lineStyle(7 * (1 - t) + 2, BRIGHT, 0.95 * fade);
         ring.strokeCircle(x, y, r);
-        ring.lineStyle(1, PALE, 0.9 * fade);
+        ring.lineStyle(2, i === 0 ? WHITE : PALE, fade);
         ring.strokeCircle(x, y, r);
       },
       onComplete: () => ring.destroy()
@@ -652,22 +742,22 @@ function dust(scene, x, y, radius, q) {
 
 // pedaços de chão arremessados em arco; os que pousam ficam um tempo no chão e somem
 function debris(scene, x, y, radius, q) {
-  const count = Math.max(4, Math.round(16 * q));
+  const count = Math.max(6, Math.round(30 * q));
   for (let i = 0; i < count; i++) {
     const a = (Math.PI * 2 * i) / count + rand(-0.25, 0.25);
-    const dist = radius * rand(0.5, 1.25);
+    const dist = radius * rand(0.4, 1.4);
     const tx = x + Math.cos(a) * dist;
     const ty = y + Math.sin(a) * dist;
-    const h = rand(50, 120);
+    const h = rand(80, 230);
     const piece = scene.add.image(x, y, pick(DEBRIS_KEYS))
       .setDepth(DEPTH_AIR)
-      .setScale(rand(0.9, 1.9));
+      .setScale(i % 5 === 0 ? rand(2.4, 3.6) : rand(1, 2.2));
     const spin = rand(-9, 9);
     const prog = { t: 0 };
     scene.tweens.add({
       targets: prog,
       t: 1,
-      duration: Phaser.Math.Between(520, 780),
+      duration: Phaser.Math.Between(620, 960),
       ease: 'Quad.easeOut',
       onUpdate: () => {
         piece.x = x + (tx - x) * prog.t;
@@ -688,25 +778,26 @@ function debris(scene, x, y, radius, q) {
   }
 }
 
-// faíscas de energia roxa disparadas pra fora: rápidas e pequenas
+// faíscas de energia disparadas pra fora: riscos alongados na direção do voo
 function sparks(scene, x, y, radius, q) {
-  const count = Math.max(4, Math.round(30 * q));
+  const count = Math.max(6, Math.round(48 * q));
   for (let i = 0; i < count; i++) {
     const a = (Math.PI * 2 * i) / count + rand(-0.2, 0.2);
     const start = radius * rand(0.1, 0.3);
-    const end = radius * rand(0.7, 1.2);
-    const size = Phaser.Math.Between(2, 5);
-    const p = scene.add.rectangle(x + Math.cos(a) * start, y + Math.sin(a) * start, size, size, pick(SPARK))
+    const end = radius * rand(0.8, 1.5);
+    const long = Phaser.Math.Between(8, 22);
+    const p = scene.add.rectangle(x + Math.cos(a) * start, y + Math.sin(a) * start, long, Phaser.Math.Between(2, 3), pick(SPARK))
       .setDepth(DEPTH_FX)
+      .setRotation(a)
       .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.95);
+      .setAlpha(1);
     scene.tweens.add({
       targets: p,
       x: x + Math.cos(a) * end,
-      y: y + Math.sin(a) * end - rand(4, 16),
+      y: y + Math.sin(a) * end - rand(4, 20),
       alpha: 0,
-      scale: 0.4,
-      duration: Phaser.Math.Between(300, 520),
+      scaleX: 0.2,
+      duration: Phaser.Math.Between(300, 560),
       ease: 'Cubic.easeOut',
       onComplete: () => p.destroy()
     });
@@ -721,13 +812,20 @@ export function playMinotaurStomp(scene, x, y, radius, { q = 1, shake = 1, groun
   scene.terrainFx?.interact({ x, y, radius, strength: 1 });
   if (!hasMinotaurStompFx(scene)) return false;
   flash(scene, x, y, radius);
+  pillar(scene, x, y, radius);
   burst(scene, x, y, radius);
   if (groundMark) crater(scene, x, y, radius); // groundMark: false = sem cratera (ex.: explosão da transformação)
+  if (groundMark) groundRays(scene, x, y, radius, q);
   shockRings(scene, x, y, radius);
   dust(scene, x, y, radius, q);
   debris(scene, x, y, radius, q);
   sparks(scene, x, y, radius, q);
-  if (shake > 0) scene.cameras.main.shake(320, 0.028 * shake);
+  if (shake > 0) {
+    const cam = scene.cameras.main;
+    cam.shake(560, 0.05 * shake); // tremor bem mais pesado
+    scene.time.delayedCall(120, () => scene.cameras?.main?.shake(380, 0.022 * shake)); // réplica
+    if (!SettingsManager.getReducedFlashes?.() && shake >= 0.9) cam.flash(110, 255, 240, 255, false);
+  }
   return true;
 }
 

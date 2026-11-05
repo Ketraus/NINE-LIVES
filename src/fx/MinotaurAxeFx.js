@@ -2,6 +2,8 @@
 // Procedural e deliberadamente leve: poucos objetos persistentes durante a
 // carga, trail amostrado (~20 FPS visuais) e bursts pontuais no impacto.
 
+import SettingsManager from '../systems/SettingsManager.js';
+
 const PHASE1 = Object.freeze({
   main: 0xe044ff,
   bright: 0xffb2ff,
@@ -27,7 +29,7 @@ const TELEGRAPH_PULSE_INTERVAL_MS = 155;
 const TRAIL_INTERVAL_OUT_MS = 52;
 const TRAIL_INTERVAL_RETURN_MS = 42;
 const IMPLOSION_MS = 72;
-const CHARGE_MOTE_COUNT = 5;
+const CHARGE_MOTE_COUNT = 9;
 
 function palette(rage) {
   return rage ? PHASE2 : PHASE1;
@@ -51,6 +53,121 @@ function fadeDestroy(scene, target, duration, delay = 0, ease = 'Cubic.easeOut')
     ease,
     onComplete: () => safeDestroy(target)
   });
+}
+
+// ---------- peças compartilhadas do "absurdo" ----------
+const GLOW = 'maxe_glow';
+function ensureGlow(scene) {
+  if (scene.textures.exists(GLOW)) return;
+  const tex = scene.textures.createCanvas(GLOW, 128, 128);
+  const ctx = tex.getContext();
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.5)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  tex.refresh();
+}
+
+const reducedFlashes = () => !!SettingsManager.getReducedFlashes?.();
+const fxCount = (scene, n) => Math.max(2, Math.round(n * (scene.sys.game.device.input.touch ? 0.55 : 1)));
+const hardShake = (scene, ms, intensity) => scene.cameras.main.shake(ms, intensity, true);
+
+// clarão redondo que cresce e some (diâmetro em px)
+function glowAt(scene, x, y, tint, fromD, toD, duration, alpha = 1, depth = 22, delay = 0) {
+  ensureGlow(scene);
+  const g = scene.add.image(x, y, GLOW).setDepth(depth).setTint(tint)
+    .setBlendMode(Phaser.BlendModes.ADD).setScale(fromD / 128)
+    .setAlpha(reducedFlashes() ? alpha * 0.55 : alpha);
+  scene.tweens.add({
+    targets: g, scale: toD / 128, alpha: 0, duration, delay,
+    ease: 'Cubic.easeOut', onComplete: () => g.destroy()
+  });
+  return g;
+}
+
+// coluna de luz vertical saindo do chão
+function pillar(scene, x, y, tint, width, height, duration, alpha = 0.9) {
+  ensureGlow(scene);
+  const p = scene.add.image(x, y + 6, GLOW).setOrigin(0.5, 1).setDepth(23).setTint(tint)
+    .setBlendMode(Phaser.BlendModes.ADD).setScale(width / 256, height / 400)
+    .setAlpha(reducedFlashes() ? alpha * 0.5 : alpha);
+  scene.tweens.add({
+    targets: p, scaleX: width / 90, scaleY: height / 128, alpha: 0, duration,
+    ease: 'Cubic.easeOut', onComplete: () => p.destroy()
+  });
+}
+
+// anel de choque achatado (visão de cima inclinada)
+function shockRing(scene, x, y, color, radius, duration, thick = 5, delay = 0, alpha = 0.9) {
+  const r = scene.add.circle(x, y + 5, radius, color, 0.03).setDepth(22)
+    .setStrokeStyle(thick, color, alpha).setScale(0.12, 0.08)
+    .setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({
+    targets: r, scaleX: 1, scaleY: 0.68, alpha: 0, duration, delay,
+    ease: 'Cubic.easeOut', onComplete: () => r.destroy()
+  });
+}
+
+// raios de energia correndo pelo chão (cresce rápido, esfria devagar)
+function rayBurst(scene, x, y, c, length, count, duration = 820) {
+  const rays = [];
+  for (let i = 0; i < count; i++) {
+    let a = (Math.PI * 2 * i) / count + Phaser.Math.FloatBetween(-0.15, 0.15);
+    const pts = [];
+    let px = 0;
+    let py = 0;
+    const len = length * Phaser.Math.FloatBetween(0.75, 1.15);
+    for (let k = 0; k < 6; k++) {
+      a += Phaser.Math.FloatBetween(-0.32, 0.32);
+      px += Math.cos(a) * len / 6;
+      py += Math.sin(a) * len / 6 * 0.82;
+      pts.push([px, py]);
+    }
+    rays.push(pts);
+  }
+  const g = scene.add.graphics().setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.addCounter({
+    from: 0, to: 1, duration, ease: 'Linear',
+    onUpdate: (tw) => {
+      const t = tw.getValue();
+      const grow = Math.min(1, t / 0.15);
+      const fade = t < 0.3 ? 1 : Math.max(0, 1 - (t - 0.3) / 0.7);
+      g.clear();
+      rays.forEach((pts) => {
+        const n = Math.max(1, Math.ceil(pts.length * grow));
+        [[7, c.dark, 0.55], [2.6, c.main, 1], [1, 0xffffff, 1]].forEach(([w, col, al]) => {
+          g.lineStyle(w, col, al * fade);
+          g.beginPath(); g.moveTo(x, y + 5);
+          for (let k = 0; k < n; k++) g.lineTo(x + pts[k][0], y + 5 + pts[k][1]);
+          g.strokePath();
+        });
+      });
+    },
+    onComplete: () => g.destroy()
+  });
+}
+
+// brasas subindo devagar (energia que sobra)
+function embers(scene, x, y, c, count, spread) {
+  for (let i = 0; i < count; i++) {
+    const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const r = spread * Math.sqrt(Math.random());
+    const e = scene.add.rectangle(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.6,
+      Phaser.Math.Between(2, 4), Phaser.Math.Between(2, 4), i % 3 ? c.main : c.pale, 0.95)
+      .setDepth(23).setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+      targets: e,
+      x: e.x + Phaser.Math.Between(-24, 24),
+      y: e.y - Phaser.Math.Between(70, 190),
+      alpha: 0, scale: 0.3,
+      delay: Phaser.Math.Between(0, 180),
+      duration: Phaser.Math.Between(700, 1300),
+      ease: 'Quad.easeOut',
+      onComplete: () => e.destroy()
+    });
+  }
 }
 
 function drawJaggedCrack(g, x, y, angle, length, darkColor, hotColor, hotAlpha = 0.42, width = 3) {
@@ -255,6 +372,23 @@ export function playMinotaurAxeLaunchFx(scene, x, y, targetX, targetY, rage = fa
   }
 
   spawnDust(scene, x - dx * 4, y - dy * 4, c, 4, 0.75);
+
+  // Arrancada brutal: clarão grande, anel de pressão e linhas de velocidade na direção do arremesso.
+  glowAt(scene, x + dx * 10, y + dy * 10, c.bright, 20, 150, 220, 0.9, 20);
+  shockRing(scene, x, y, c.bright, 70, 260, 4);
+  for (let i = 0; i < fxCount(scene, 12); i++) {
+    const side = Phaser.Math.FloatBetween(-1, 1);
+    const sx = x + dx * Phaser.Math.Between(10, 40) + px * side * 24;
+    const sy = y + dy * Phaser.Math.Between(10, 40) + py * side * 24;
+    const line = scene.add.rectangle(sx, sy, Phaser.Math.Between(26, 60), 2, i % 3 ? c.main : c.pale, 0.9)
+      .setDepth(19).setRotation(angle).setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+      targets: line, x: sx + dx * Phaser.Math.Between(90, 190), y: sy + dy * Phaser.Math.Between(90, 190),
+      alpha: 0, scaleX: 0.3, duration: Phaser.Math.Between(160, 280),
+      ease: 'Cubic.easeOut', onComplete: () => line.destroy()
+    });
+  }
+  hardShake(scene, 140, 0.007);
 }
 
 // Trail quebrado: uma afterimage + dois segmentos pixelados por amostra.
@@ -311,6 +445,27 @@ export function emitMinotaurAxeTrail(scene, state, axeSprite, nowMs, rage = fals
     onComplete: () => ghost.destroy()
   });
 
+  // Rastro contínuo: faixa de energia entre as amostras + clarão no machado + faíscas soltas.
+  const beam = scene.add.rectangle(
+    (prevX + axeSprite.x) / 2, (prevY + axeSprite.y) / 2,
+    len + 14, returning ? 7 : 11, returning ? c.bright : c.main, returning ? 0.7 : 0.55
+  ).setDepth(15).setRotation(moveAngle).setBlendMode(Phaser.BlendModes.ADD);
+  scene.tweens.add({
+    targets: beam, alpha: 0, scaleY: 0.2, duration: returning ? 150 : 210,
+    ease: 'Quad.easeOut', onComplete: () => beam.destroy()
+  });
+  glowAt(scene, axeSprite.x, axeSprite.y, returning ? c.pale : c.bright, 26, 78, 170, 0.45, 13);
+  for (let j = 0; j < 2; j++) {
+    const sp = scene.add.rectangle(axeSprite.x, axeSprite.y, Phaser.Math.Between(3, 7), 2, j ? c.pale : c.main, 0.95)
+      .setDepth(17).setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2)).setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+      targets: sp,
+      x: sp.x + Phaser.Math.Between(-30, 30) - ux * 16,
+      y: sp.y + Phaser.Math.Between(-30, 30) - uy * 16,
+      alpha: 0, duration: Phaser.Math.Between(180, 320), onComplete: () => sp.destroy()
+    });
+  }
+
   for (let i = 0; i < 2; i++) {
     const back = (i + 1) * (returning ? 15 : 12);
     const seg = scene.add.rectangle(
@@ -350,9 +505,9 @@ export function playMinotaurAxeImpactFx(scene, state, axeSprite, x, y, radius, r
     .setBlendMode(Phaser.BlendModes.ADD);
   scene.tweens.add({
     targets: impactFlash,
-    scale: 1.35,
+    scale: 3.4,
     alpha: 0,
-    duration: 175,
+    duration: 210,
     ease: 'Cubic.easeOut',
     onComplete: () => impactFlash.destroy()
   });
@@ -372,8 +527,18 @@ export function playMinotaurAxeImpactFx(scene, state, axeSprite, x, y, radius, r
     onComplete: () => pressure.destroy()
   });
 
-  spawnDust(scene, x, y, c, 7, 1.02);
-  spawnGroundChips(scene, x, y, c, 6, 0.92);
+  spawnDust(scene, x, y, c, fxCount(scene, 14), 1.5);
+  spawnGroundChips(scene, x, y, c, fxCount(scene, 16), 1.5);
+
+  // Crava com violência: clarão branco, coluna de luz, anéis duplos, raios no chão e brasas.
+  glowAt(scene, x, y, c.pale, 30, radius * 2.4, 240, 0.95, 24);
+  glowAt(scene, x, y, c.main, 50, radius * 3.2, 380, 0.6, 21);
+  pillar(scene, x, y, c.bright, radius * 0.7, 360, 380, 0.85);
+  shockRing(scene, x, y, c.bright, radius * 1.1, 340, 6);
+  shockRing(scene, x, y, c.pale, radius * 0.9, 260, 3, 60);
+  rayBurst(scene, x, y, c, radius * 1.15, fxCount(scene, 10), 700);
+  embers(scene, x, y, c, fxCount(scene, 12), radius * 0.6);
+  hardShake(scene, 260, 0.024);
 
   // O machado realmente "entra" no piso por alguns pixels e volta, sem
   // alterar a posição final usada pela hitbox.
@@ -432,7 +597,10 @@ export function playMinotaurAxeImpactFx(scene, state, axeSprite, x, y, radius, r
     motes.push(mote);
   }
 
-  state.charge = { cracks, glowCracks, ring, innerRing, glow, flash, motes, radius, x, y, rage };
+  ensureGlow(scene);
+  const beam = scene.add.image(x, y + 4, GLOW).setOrigin(0.5, 1).setDepth(16)
+    .setTint(c.main).setBlendMode(Phaser.BlendModes.ADD).setScale(0.3, 1.4).setAlpha(0.2);
+  state.charge = { cracks, glowCracks, ring, innerRing, glow, flash, motes, beam, lastEmberAt: 0, radius, x, y, rage };
 }
 
 export function updateMinotaurAxeChargeFx(scene, state, x, y, nowMs, chargeStartAt, chargeEndAt, urgent = false) {
@@ -469,6 +637,19 @@ export function updateMinotaurAxeChargeFx(scene, state, x, y, nowMs, chargeStart
     .setAlpha(urgent && pulse > 0.62 ? (pulse - 0.62) * 1.8 : 0)
     .setScale(0.34 + pulse * 0.26);
 
+  // Pilar de energia sobe do machado e fica mais largo/intenso até a explosão.
+  if (fx.beam) {
+    const flicker = urgent ? 0.55 + pulse * 0.45 : 0.55 + pulse * 0.2;
+    fx.beam.setPosition(x, y + 4)
+      .setTint(urgent ? c.pale : c.main)
+      .setScale((0.28 + progress * 0.5 + (urgent ? 0.12 * pulse : 0)), 1.5 + progress * 2.2)
+      .setAlpha((0.16 + progress * 0.4) * flicker + (urgent ? 0.18 : 0));
+  }
+  if (nowMs - fx.lastEmberAt > (urgent ? 60 : 130)) {
+    fx.lastEmberAt = nowMs;
+    embers(scene, x, y, c, urgent ? 2 : 1, fx.radius * 0.5);
+  }
+
   const speed = urgent ? 2.85 : Phaser.Math.Linear(1.1, 2.0, progress);
   const maxR = fx.radius * (urgent ? 0.78 : 0.9);
   fx.motes.forEach((mote, index) => {
@@ -503,6 +684,9 @@ export function playMinotaurAxeBeepFx(scene, state, x, y, rage = false) {
     onComplete: () => ring.destroy()
   });
 
+  shockRing(scene, x, y, c.pale, 90, 260, 4, 40);
+  glowAt(scene, x, y, c.pale, 20, 170, 200, 0.8, 24);
+  hardShake(scene, 70, 0.005);
   if (state?.charge?.glowCracks) state.charge.glowCracks.setAlpha(1);
 }
 
@@ -515,6 +699,7 @@ export function destroyMinotaurAxeChargeFx(state) {
   safeDestroy(fx.innerRing);
   safeDestroy(fx.glow);
   safeDestroy(fx.flash);
+  safeDestroy(fx.beam);
   fx.motes?.forEach(safeDestroy);
   state.charge = null;
 }
@@ -542,6 +727,23 @@ function spawnExplosionScar(scene, x, y, radius, c) {
 
 function spawnRupture(scene, x, y, radius, rage) {
   const c = palette(rage);
+
+  // ===== EXPLOSÃO ABSURDA =====
+  // clarão branco que engole a tela local + onda de cor + coluna de luz gigante
+  glowAt(scene, x, y, 0xffffff, 40, radius * 2.8, 300, 1, 26);
+  glowAt(scene, x, y, c.bright, 60, radius * 4.2, 560, 0.75, 22);
+  glowAt(scene, x, y, c.main, 80, radius * 5.2, 800, 0.4, 20, 60);
+  pillar(scene, x, y, c.pale, radius * 0.8, 900, 620, 1);
+  pillar(scene, x, y, c.main, radius * 1.5, 700, 760, 0.55);
+  // 4 anéis de choque em sequência, até o raio real do dano
+  shockRing(scene, x, y, 0xffffff, radius, 380, 7, 0);
+  shockRing(scene, x, y, c.bright, radius * 1.05, 520, 10, 60);
+  shockRing(scene, x, y, c.main, radius * 1.15, 680, 14, 140, 0.7);
+  shockRing(scene, x, y, c.dark, radius * 1.25, 820, 18, 230, 0.5);
+  rayBurst(scene, x, y, c, radius * 1.15, fxCount(scene, 20), 1000);
+  embers(scene, x, y, c, fxCount(scene, 34), radius * 0.9);
+  hardShake(scene, 720, 0.062);
+  scene.time.delayedCall(200, () => { if (active(scene)) hardShake(scene, 460, 0.03); });
 
   const core = scene.add.circle(x, y, Math.max(18, radius * 0.3), c.pale, 0.92)
     .setDepth(24)
@@ -585,14 +787,15 @@ function spawnRupture(scene, x, y, radius, rage) {
     onComplete: () => outer.destroy()
   });
 
-  spawnGroundChips(scene, x, y, c, 10, 1.35);
-  spawnDust(scene, x, y, c, 8, 1.3);
+  spawnGroundChips(scene, x, y, c, fxCount(scene, 28), 2.6);
+  spawnDust(scene, x, y, c, fxCount(scene, 18), 2.1);
 
   // Poucos estilhaços energéticos, mais longos que a poeira e bem legíveis.
-  for (let i = 0; i < 7; i++) {
-    const a = (Math.PI * 2 * i) / 7 + Phaser.Math.FloatBetween(-0.2, 0.2);
-    const dist = radius * Phaser.Math.FloatBetween(0.82, 1.16);
-    const shard = scene.add.rectangle(x, y, Phaser.Math.Between(9, 17), 2, i % 2 ? c.main : c.bright, 0.92)
+  const shardCount = fxCount(scene, 22);
+  for (let i = 0; i < shardCount; i++) {
+    const a = (Math.PI * 2 * i) / shardCount + Phaser.Math.FloatBetween(-0.2, 0.2);
+    const dist = radius * Phaser.Math.FloatBetween(0.85, 1.45);
+    const shard = scene.add.rectangle(x, y, Phaser.Math.Between(16, 40), 3, i % 2 ? c.main : c.bright, 0.95)
       .setDepth(23)
       .setRotation(a)
       .setBlendMode(Phaser.BlendModes.ADD);
@@ -602,7 +805,7 @@ function spawnRupture(scene, x, y, radius, rage) {
       y: y + Math.sin(a) * dist * 0.82,
       alpha: 0,
       scaleX: 0.35,
-      duration: Phaser.Math.Between(260, 390),
+      duration: Phaser.Math.Between(320, 520),
       ease: 'Cubic.easeOut',
       onComplete: () => shard.destroy()
     });
@@ -711,5 +914,17 @@ export function playMinotaurAxeCatchFx(scene, x, y, rage = false) {
     });
   }
 
-  scene.cameras.main.shake(80, 0.0035);
+  glowAt(scene, x, y, c.bright, 20, 130, 220, 0.9, 24);
+  shockRing(scene, x, y, c.pale, 60, 240, 4);
+  for (let i = 0; i < fxCount(scene, 8); i++) {
+    const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const sp = scene.add.rectangle(x, y, Phaser.Math.Between(10, 22), 2, i % 2 ? c.pale : c.main, 0.95)
+      .setDepth(22).setRotation(a).setBlendMode(Phaser.BlendModes.ADD);
+    scene.tweens.add({
+      targets: sp, x: x + Math.cos(a) * Phaser.Math.Between(34, 80), y: y + Math.sin(a) * Phaser.Math.Between(34, 80),
+      alpha: 0, scaleX: 0.2, duration: Phaser.Math.Between(180, 300), ease: 'Cubic.easeOut',
+      onComplete: () => sp.destroy()
+    });
+  }
+  hardShake(scene, 140, 0.009);
 }
