@@ -33,6 +33,7 @@ import {
   hasMinotaurStompFx
 } from '../../fx/MinotaurStompFx.js';
 import { playMinotaurFootDust } from '../../fx/MinotaurStompFx.js';
+import MinotaurGlowFx from '../../fx/MinotaurGlowFx.js';
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
 const CHARGE_LINE_LENGTH = 1400;
@@ -82,8 +83,8 @@ const AXE_TELEGRAPH_COLOR = 0xffcc00;
 const METEOR_WARN_COLOR = 0x27d8c8;
 const METEOR_ROCK_COLOR = 0x128e9a;
 const METEOR_CORE_COLOR = 0xbafff1;
-const METEOR_FALL_OFFSET_X = -220; // de onde o meteoro "nasce" em relação ao ponto de impacto
-const METEOR_FALL_OFFSET_Y = -720;
+const METEOR_FALL_OFFSET_X = -110; // de onde o meteoro "nasce" em relação ao ponto de impacto
+const METEOR_FALL_OFFSET_Y = -430;
 const METEOR_SHAKE_MS = 140;
 const METEOR_SHAKE_INTENSITY = 0.004;
 // Salto de Perseguição (ver _shouldLeap e afins)
@@ -146,6 +147,8 @@ export default class Minotaur extends Enemy {
     this._weightApplied = false;
     this._stepSide = 1;
     this.on(Phaser.Animations.Events.ANIMATION_UPDATE, this._onWalkFrame, this);
+    // Luzes nos mecanismos, energia pulsante e brilho de contorno (só visual, ver MinotaurGlowFx.js)
+    this.glowFx = new MinotaurGlowFx(scene, this);
     // Versões SEM machado (Machado Arremessado, ver _launchAxe/
     this.walkAnimNormal = this.walkAnim;
     this.idleTextureNormal = this.idleTexture;
@@ -347,11 +350,32 @@ export default class Minotaur extends Enemy {
       if (walking) this.setScale(this.baseScale, this.baseScale);
       this.shadow?.setScale(1, 1);
     }
+    // Respiração parado: peito sobe e desce de leve (o boss não fica "congelado"). Só quando
+    // ninguém mais mexe na escala; a réplica recebe a escala do Host.
+    if (this.networkReplica || this._weightApplied || !walking) { this._breathApplied = false; return; }
+    if (this.isIdleVisual) {
+      if (!this._breathApplied && (Math.abs(this.scaleX - this.baseScale) > 0.002 || Math.abs(this.scaleY - this.baseScale) > 0.002)) return;
+      const b = Math.sin(this.scene.time.now / 650);
+      this.setScale(this.baseScale * (1 - 0.006 * b), this.baseScale * (1 + 0.014 * b));
+      this._breathApplied = true;
+    } else if (this._breathApplied) {
+      this._breathApplied = false;
+      this.setScale(this.baseScale, this.baseScale);
+    }
   }
 
   preUpdate(time, delta) {
     super.preUpdate(time, delta);
-    if (this.active) this._updateWeight(delta);
+    if (this.active) {
+      this._updateWeight(delta);
+      this.glowFx?.update(time);
+    }
+  }
+
+  destroy(fromScene) {
+    this.glowFx?.destroy();
+    this.glowFx = null;
+    super.destroy(fromScene);
   }
 
   _cancelActionsForFlee() {
@@ -1244,7 +1268,7 @@ export default class Minotaur extends Enemy {
 
       // pedra: cai em diagonal (ease-in, acelera perto do chão).
       // Fica menor e mais legível, com um rastro curto pra vender melhor a queda.
-      const fall = t * t;
+      const fall = Math.pow(t, 1.6); // queda mais curta e sem a aceleração absurda de antes
       const rockX = m.x + METEOR_FALL_OFFSET_X * (1 - fall);
       const rockY = m.y + METEOR_FALL_OFFSET_Y * (1 - fall);
       m.sprite?.setFrame(Math.min(3, Math.floor(nowMs / 85) % 4));
@@ -1260,11 +1284,6 @@ export default class Minotaur extends Enemy {
         const dirX = METEOR_FALL_OFFSET_X / len;
         const dirY = METEOR_FALL_OFFSET_Y / len;
         m.tail.clear();
-        m.tail.lineStyle(10, 0x102832, 0.16 + t * 0.06);
-        m.tail.beginPath();
-        m.tail.moveTo(rockX + dirX * 6, rockY + dirY * 6);
-        m.tail.lineTo(rockX + dirX * tailLen, rockY + dirY * tailLen);
-        m.tail.strokePath();
         m.tail.lineStyle(5, 0x27d8c8, 0.24 + t * 0.18);
         m.tail.beginPath();
         m.tail.moveTo(rockX + dirX * 4, rockY + dirY * 4);
