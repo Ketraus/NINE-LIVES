@@ -34,6 +34,7 @@ import {
 } from '../../fx/MinotaurStompFx.js';
 import { playMinotaurFootDust } from '../../fx/MinotaurStompFx.js';
 import MinotaurGlowFx from '../../fx/MinotaurGlowFx.js';
+import MinotaurArenaFx from '../../fx/MinotaurArenaFx.js';
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
 const CHARGE_LINE_LENGTH = 1400;
@@ -149,6 +150,8 @@ export default class Minotaur extends Enemy {
     this.on(Phaser.Animations.Events.ANIMATION_UPDATE, this._onWalkFrame, this);
     // Luzes nos mecanismos, energia pulsante e brilho de contorno (só visual, ver MinotaurGlowFx.js)
     this.glowFx = new MinotaurGlowFx(scene, this);
+    // Arena instável na fase 2: rachaduras/feixes/pulsos aqua, só visuais (ver MinotaurArenaFx.js)
+    this.arenaFx = new MinotaurArenaFx(scene, this);
     // Versões SEM machado (Machado Arremessado, ver _launchAxe/
     this.walkAnimNormal = this.walkAnim;
     this.idleTextureNormal = this.idleTexture;
@@ -369,12 +372,15 @@ export default class Minotaur extends Enemy {
     if (this.active) {
       this._updateWeight(delta);
       this.glowFx?.update(time);
+      this.arenaFx?.update(time, delta);
     }
   }
 
   destroy(fromScene) {
     this.glowFx?.destroy();
     this.glowFx = null;
+    this.arenaFx?.destroy();
+    this.arenaFx = null;
     super.destroy(fromScene);
   }
 
@@ -508,6 +514,7 @@ export default class Minotaur extends Enemy {
     const meteors = Array.isArray(state.meteors)
       ? state.meteors.slice(0, 20).filter((meteor) => Array.isArray(meteor) && meteor.length === 6 && meteor.every(Number.isFinite))
       : [];
+    this._netMeteors = meteors; // avisos de meteoro vindos do Host (a arena instável desvia deles)
     if (meteors.length > 0) {
       if (!this.networkMeteorGraphics) this.networkMeteorGraphics = this.scene.add.graphics().setDepth(15);
       this.networkMeteorGraphics.clear();

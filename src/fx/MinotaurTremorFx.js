@@ -684,4 +684,7 @@ export function playBossTremor(scene, epicenter, hooks = {}) {
   };
 }
 
+// a arena instável da fase 2 (MinotaurArenaFx) reaproveita as texturas de feixe/brilho/faísca daqui
+export { ensureTextures as ensureTremorTextures };
+
 export default playBossTremor;
