@@ -158,14 +158,16 @@ export function playMeteorImpact(scene, x, y, radius) {
     onComplete: () => shock.destroy()
   });
 
-  const dust = scene.add.graphics().setDepth(14);
+  // Graphics escala a partir da própria origem: desenhado em coords do mundo e escalado, a
+  // nuvem escura "voava" pelo mapa. Por isso ele nasce no ponto do impacto e desenha local.
+  const dust = scene.add.graphics({ x, y }).setDepth(14);
   dust.fillStyle(0x071015, 0.68);
-  dust.fillEllipse(x, y - radius * 0.02, radius * 1.46, radius * 0.72);
+  dust.fillEllipse(0, -radius * 0.02, radius * 1.46, radius * 0.72);
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2 + rng(-0.25, 0.25);
     const d = radius * rng(0.08, 0.32);
     dust.fillStyle(i % 2 ? 0x12242a : 0x0b171b, 0.76);
-    dust.fillCircle(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.55 - radius * 0.04, rng(radius * 0.11, radius * 0.18));
+    dust.fillCircle(Math.cos(a) * d, Math.sin(a) * d * 0.55 - radius * 0.04, rng(radius * 0.11, radius * 0.18));
   }
   scene.tweens.add({
     targets: dust,
