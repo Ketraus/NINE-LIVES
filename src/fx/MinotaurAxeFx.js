@@ -170,6 +170,58 @@ function embers(scene, x, y, c, count, spread) {
   }
 }
 
+// Brilho PRÓPRIO do machado (igual ao do sprite do Minotauro): na 1ª vez, gera por código a
+// partir dos pixels da textura do machado: 'rim' = contorno da silhueta, 'em' = pixels
+// emissivos (partes claras/saturadas) e 'bloom' = os emissivos suavizados. Sem asset novo.
+function ensureAxeGlowLayers(scene, key) {
+  const rimKey = `${key}__axeglow_rim`;
+  if (scene.textures.exists(rimKey)) return true;
+  if (!scene.textures.exists(key)) return false;
+  try {
+    const img = scene.textures.get(key).getSourceImage();
+    const W = img.width;
+    const H = img.height;
+    const scratch = document.createElement('canvas');
+    scratch.width = W; scratch.height = H;
+    const sctx = scratch.getContext('2d', { willReadFrequently: true });
+    sctx.drawImage(img, 0, 0);
+    const src = sctx.getImageData(0, 0, W, H).data;
+    const solid = (x, y) => x >= 0 && y >= 0 && x < W && y < H && src[(y * W + x) * 4 + 3] >= 128;
+    const rim = scene.textures.createCanvas(rimKey, W, H);
+    const em = scene.textures.createCanvas(`${key}__axeglow_em`, W, H);
+    const bloom = scene.textures.createCanvas(`${key}__axeglow_bloom`, W, H);
+    const rimD = rim.getContext().createImageData(W, H);
+    const emD = em.getContext().createImageData(W, H);
+    const put = (d, x, y, r, g, b, a) => {
+      const i = (y * W + x) * 4;
+      d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = a;
+    };
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        const r = src[i], g = src[i + 1], b = src[i + 2], a = src[i + 3];
+        if (a < 128) continue;
+        if (!solid(x - 1, y) || !solid(x + 1, y) || !solid(x, y - 1) || !solid(x, y + 1)) put(rimD.data, x, y, 255, 255, 255, 255);
+        const max = Math.max(r, g, b);
+        // emissivo: claro e/ou saturado (as lâminas/energia do machado), com a cor original
+        if (max >= 140 && (max - Math.min(r, g, b) >= 0.35 * max || max >= 215)) put(emD.data, x, y, r, g, b, 255);
+      }
+    }
+    rim.getContext().putImageData(rimD, 0, 0);
+    em.getContext().putImageData(emD, 0, 0);
+    const bctx = bloom.getContext();
+    bctx.filter = 'blur(2.5px)';
+    bctx.drawImage(em.getSourceImage(), 0, 0);
+    bctx.drawImage(em.getSourceImage(), 0, 0);
+    bctx.filter = 'none';
+    rim.refresh(); em.refresh(); bloom.refresh();
+    [rim, em, bloom].forEach((t) => t.setFilter(Phaser.Textures.FilterMode.NEAREST));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function drawJaggedCrack(g, x, y, angle, length, darkColor, hotColor, hotAlpha = 0.42, width = 3) {
   const pts = [{ x, y }];
   let px = x;
@@ -600,7 +652,27 @@ export function playMinotaurAxeImpactFx(scene, state, axeSprite, x, y, radius, r
   ensureGlow(scene);
   const beam = scene.add.image(x, y + 4, GLOW).setOrigin(0.5, 1).setDepth(16)
     .setTint(c.main).setBlendMode(Phaser.BlendModes.ADD).setScale(0.3, 1.4).setAlpha(0.2);
-  state.charge = { cracks, glowCracks, ring, innerRing, glow, flash, motes, beam, lastEmberAt: 0, radius, x, y, rage };
+  // camadas de brilho próprias do machado cravado
+  let axeGlow = null;
+  if (axeSprite?.texture && ensureAxeGlowLayers(scene, axeSprite.texture.key)) {
+    const k = axeSprite.texture.key;
+    const mk = (suffix, depth, tint) => scene.add.image(axeSprite.x, axeSprite.y, `${k}__axeglow_${suffix}`)
+      .setOrigin(axeSprite.originX, axeSprite.originY).setDepth(depth).setTint(tint)
+      .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(axeSprite.scaleX, axeSprite.scaleY);
+    axeGlow = {
+      sprite: axeSprite,
+      bloom: mk('bloom', 14.5, c.main).setScale(axeSprite.scaleX * 1.35, axeSprite.scaleY * 1.35),
+      rim: mk('rim', 16.6, c.bright),
+      em: mk('em', 16.7, c.pale)
+    };
+  } else if (axeSprite) {
+    // fallback: cópia aditiva do próprio sprite
+    const copy = scene.add.image(axeSprite.x, axeSprite.y, axeSprite.texture.key)
+      .setOrigin(axeSprite.originX, axeSprite.originY).setDepth(16.6).setTint(c.bright)
+      .setBlendMode(Phaser.BlendModes.ADD).setAlpha(0);
+    axeGlow = { sprite: axeSprite, copy };
+  }
+  state.charge = { cracks, glowCracks, ring, innerRing, glow, flash, motes, beam, axeGlow, lastEmberAt: 0, radius, x, y, rage };
 }
 
 export function updateMinotaurAxeChargeFx(scene, state, x, y, nowMs, chargeStartAt, chargeEndAt, urgent = false) {
@@ -644,6 +716,28 @@ export function updateMinotaurAxeChargeFx(scene, state, x, y, nowMs, chargeStart
       .setTint(urgent ? c.pale : c.main)
       .setScale((0.28 + progress * 0.5 + (urgent ? 0.12 * pulse : 0)), 1.5 + progress * 2.2)
       .setAlpha((0.16 + progress * 0.4) * flicker + (urgent ? 0.18 : 0));
+  }
+  // Brilho próprio do machado: contorno + partes emissivas pulsando em batimento, cada vez mais
+  // forte até a explosão; no bip final fica quase branco e piscando rápido.
+  const ag = fx.axeGlow;
+  if (ag?.sprite?.active) {
+    const sp = ag.sprite;
+    const beat = urgent ? 0.5 + pulse * 0.5 : 0.45 + pulse * 0.55;
+    const gain = urgent ? 1 : 0.35 + progress * 0.65;
+    const layers = ag.copy ? [ag.copy] : [ag.bloom, ag.rim, ag.em];
+    layers.forEach((l) => l.setPosition(sp.x, sp.y).setRotation(sp.rotation));
+    if (ag.copy) {
+      ag.copy.setScale(sp.scaleX * 1.08, sp.scaleY * 1.08).setTint(urgent ? c.pale : c.bright)
+        .setAlpha(Phaser.Math.Clamp(gain * beat * 0.8, 0, 1));
+    } else {
+      ag.bloom.setScale(sp.scaleX * (1.3 + pulse * 0.18), sp.scaleY * (1.3 + pulse * 0.18))
+        .setTint(urgent ? c.bright : c.main)
+        .setAlpha(Phaser.Math.Clamp(gain * (0.5 + beat * 0.5), 0, 1));
+      ag.rim.setScale(sp.scaleX * 1.06, sp.scaleY * 1.06).setTint(urgent ? c.pale : c.bright)
+        .setAlpha(Phaser.Math.Clamp(gain * beat, 0, 1));
+      ag.em.setScale(sp.scaleX, sp.scaleY).setTint(c.pale)
+        .setAlpha(Phaser.Math.Clamp(gain * (0.3 + beat * 0.7) * (urgent ? 1 : 0.85), 0, 1));
+    }
   }
   if (nowMs - fx.lastEmberAt > (urgent ? 60 : 130)) {
     fx.lastEmberAt = nowMs;
@@ -700,6 +794,7 @@ export function destroyMinotaurAxeChargeFx(state) {
   safeDestroy(fx.glow);
   safeDestroy(fx.flash);
   safeDestroy(fx.beam);
+  if (fx.axeGlow) { ['bloom', 'rim', 'em', 'copy'].forEach((k) => safeDestroy(fx.axeGlow[k])); fx.axeGlow = null; }
   fx.motes?.forEach(safeDestroy);
   state.charge = null;
 }
