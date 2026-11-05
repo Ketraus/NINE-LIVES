@@ -157,7 +157,7 @@ export default class TerrainFx {
       if (this.tufts.some(slot => slot.key === c.key)) continue;
       let slot = this.tufts.find(slot => slot.key === null);
       if (!slot) { slot = { image: this._image() }; this.tufts.push(slot); }
-      Object.assign(slot, c, { bend: 0, direction: 1, grow: 0 });
+      Object.assign(slot, c, { bend: 0, direction: 1, grow: 0, push: 0, pdx: 0, pdy: 0 });
       slot.image.setTexture(KEY, `${c.tone}-${c.seed % 3}`).setOrigin(0.5, PIVOT).setPosition(c.x, c.y + PIVOT_OFFSET)
         .setFlipX((c.seed & 1) === 1).setScale(1).setRotation(0).setAlpha(0).setVisible(true);
     }
@@ -165,7 +165,7 @@ export default class TerrainFx {
 
   // Public, visual-only terrain interaction. No physics, damage or network writes.
   // kind may be 'step' or 'impact'; future effects can use this same entry point.
-  interact({ x, y, radius = 36, strength = 0.5, kind = 'impact' } = {}) {
+  interact({ x, y, radius = 36, strength = 0.5, kind = 'impact', push = 0 } = {}) {
     if (!this.profile || !SettingsManager.getTerrainFx() || this.scene.isPaused || this.scene.lobbyGateActive) return;
     if (![x, y, radius, strength].every(Number.isFinite) || radius <= 0) return;
     const view = this.scene.cameras.main.worldView;
@@ -178,6 +178,11 @@ export default class TerrainFx {
       if (distance < radius) {
         slot.bend = Math.max(slot.bend, (1 - distance / radius) * strength);
         slot.direction = slot.x >= x ? 1 : -1;
+        // a grama é empurrada para longe dos pés (só quando o chamador pede, ex.: Minotauro)
+        const amount = (1 - distance / radius) * push;
+        if (amount > slot.push && distance > 0.001) {
+          slot.push = amount; slot.pdx = (slot.x - x) / distance; slot.pdy = (slot.y - y) / distance * 0.6;
+        }
       }
     }
     const band = this._grass(x, y);
@@ -201,7 +206,9 @@ export default class TerrainFx {
     if (!previous) return;
     const distance = Math.hypot(x - previous.x, y - previous.y);
     if (distance < 2 || distance > 128) return;
-    this.interact({ x, y, radius: actor.def?.boss ? 100 : 50, strength: actor.def?.boss ? 1 : 0.65, kind: 'step' });
+    // Minotauro: área um pouco maior que a dos gatos e a grama se afasta dos pés (push)
+    const boss = !!actor.def?.boss;
+    this.interact({ x, y, radius: boss ? 80 : 50, strength: boss ? 1 : 0.65, push: boss ? 12 : 0, kind: 'step' });
   }
 
   update(delta) {
@@ -218,9 +225,10 @@ export default class TerrainFx {
     if (this.elapsed < profile.interval) return;
     const dt = this.elapsed; this.elapsed = 0; this.age += dt;
     this._populate(this.scene.cameras.main.worldView);
-    this._sample(this.scene.player);
-    this.scene.multiplayer?.remotePlayers?.forEach(remote => this._sample(remote.sprite));
     const enemies = this.scene.enemySpawner?.group.getChildren() || [];
+    this._sample(this.scene.player);
+    this._sample(this._findBoss(enemies));
+    this.scene.multiplayer?.remotePlayers?.forEach(remote => this._sample(remote.sprite));
     for (let i = 0; i < Math.min(profile.actors, enemies.length); i++) this._sample(enemies[(this.cursor + i) % enemies.length]);
     this.cursor = (this.cursor + profile.actors) % Math.max(1, enemies.length);
     const motion = SettingsManager.getReducedMotion() ? 0 : 1;
@@ -232,6 +240,8 @@ export default class TerrainFx {
       const wave = Math.sin(this.age / 1100 - (slot.x * 0.006 + slot.y * 0.0035));
       const wind = (wave * 0.07 * gust + Math.sin(this.age / 430 + slot.phase) * 0.012) * motion;
       slot.grow = Math.min(1, slot.grow + dt / 400);
+      slot.push = Math.max(0, slot.push - dt * 0.012);
+      slot.image.setPosition(Math.round(slot.x + slot.pdx * slot.push), Math.round(slot.y + PIVOT_OFFSET + slot.pdy * slot.push));
       slot.image.setRotation(wind + slot.bend * slot.direction * 0.16 * motion)
         .setScale(1 + slot.bend * 0.15, 1 - slot.bend * 0.4).setAlpha(slot.alpha * slot.grow);
     }
@@ -244,6 +254,15 @@ export default class TerrainFx {
         mark.live = false; mark.image.setVisible(false);
       } else mark.image.setAlpha(0.3 * (1 - mark.age / mark.life));
     }
+  }
+
+  // Minotauro sempre amostrado (o rodízio de atores pode demorar a chegar nele).
+  _findBoss(enemies) {
+    if (this.boss?.active) return this.boss;
+    if (this.age - (this.bossCheckedAt ?? -1e9) < 500) return null;
+    this.bossCheckedAt = this.age;
+    this.boss = enemies.find(e => e.active && e.def?.boss) || null;
+    return this.boss;
   }
 
   _clear() {

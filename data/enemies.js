@@ -166,6 +166,9 @@ export default [
   },
   {
     "id": "minotaur",
+    // sombra um pouco mais densa e larga: dá peso ao boss (ver Enemy.js)
+    "shadowAlpha": 0.32,
+    "shadowWidthFrac": 0.5,
     "name": "Minotauro",
     "sprite": "minotaur_walk",
     "walkAnim": "minotaur-walk",

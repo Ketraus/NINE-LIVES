@@ -16,6 +16,8 @@
 //  - drawMinotaurStompTelegraph -> aviso roxo no chão (anéis convergindo + rachaduras crescendo)
 //  - playMinotaurStompLaunch    -> rastro de poeira e estrela de impacto no jogador arremessado
 
+import { reserveFx } from './FxBudget.js';
+
 let RAGE_ACTIVE = false;
 let KEY = 'minotaur_stomp'; // folha 4 frames 32x32: faísca, explosão, anel, anel esvaindo
 const FRAME = 32;
@@ -860,4 +862,34 @@ export function setMinotaurStompFxRage(enabled) {
   PALE = enabled ? 0xbafff1 : 0xe9c6ff;
   DUST = enabled ? [0x27474d,0x37585c,0x263b43] : [0x4a3a5c,0x5d4b72,0x3a2e4a];
   SPARK = enabled ? [PALE, BRIGHT, WHITE, PURPLE] : [PALE, BRIGHT, WHITE, PURPLE];
+}
+
+// Poeira de passo do Minotauro (andando): 1-3 nuvens baixas, tingidas com a poeira da fase
+// (roxa na fase 1, aqua na fase 2 — ver setMinotaurStompFxRage). Reusa a textura de poeira
+// do Pisão e o orçamento de FX; sem asset novo.
+export function playMinotaurFootDust(scene, x, y, { strength = 1, rage = false, side = 1 } = {}) {
+  if (!scene?.textures?.exists(DUST_KEY)) return;
+  if (RAGE_ACTIVE !== rage) setMinotaurStompFxRage(rage);
+  const touch = !!scene.sys.game.device.input.touch;
+  const wanted = touch ? 1 : strength >= 1 ? 3 : 2;
+  const count = reserveFx(scene, wanted);
+  const k = 0.7 + 0.3 * strength;
+  for (let i = 0; i < count; i++) {
+    const dir = i % 2 === 0 ? side : -side;
+    const puff = scene.add.image(x + dir * rand(4, 12), y + rand(-3, 3), DUST_KEY)
+      .setDepth(DEPTH_DUST)
+      .setTint(pick(DUST))
+      .setScale(rand(0.1, 0.15) * k)
+      .setAlpha(0.42 * k);
+    scene.tweens.add({
+      targets: puff,
+      x: puff.x + dir * rand(14, 28),
+      y: puff.y - rand(6, 16),
+      scale: puff.scale * rand(2.2, 2.9),
+      alpha: 0,
+      duration: Phaser.Math.Between(480, 720),
+      ease: 'Quad.easeOut',
+      onComplete: () => puff.destroy()
+    });
+  }
 }

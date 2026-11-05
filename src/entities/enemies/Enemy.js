@@ -73,13 +73,14 @@ export default class Enemy extends Phaser.Physics.Arcade.Sprite {
     // luz/dinâmica nenhuma — só pra dar noção de "chão" (ver preUpdate
     // logo abaixo, que a mantém colada nos pés a cada frame). Mantida
     // pequena e bem discreta pra não chamar atenção nos inimigos base.
-    const shadowWidth = this.displayWidth * 0.42;
+    const shadowWidth = this.displayWidth * (def.shadowWidthFrac ?? 0.42);
     const shadowHeight = shadowWidth * 0.38;
     // Fração vertical do frame até os pés (def.shadowOffsetYFrac, 0.46 é
     // o padrão que serve pra quase todo mundo — só o Exploder, que é bem
     // mais baixinho dentro do próprio frame, precisa de um valor menor).
     this._shadowYFrac = def.shadowOffsetYFrac != null ? def.shadowOffsetYFrac : 0.46;
-    this.shadow = scene.add.ellipse(x, y + this.displayHeight * this._shadowYFrac, shadowWidth, shadowHeight, 0x000000, 0.2);
+    this._shadowAlpha = def.shadowAlpha ?? 0.2; // def.shadowAlpha/shadowWidthFrac: sombra mais densa/larga (Minotauro)
+    this.shadow = scene.add.ellipse(x, y + this.displayHeight * this._shadowYFrac, shadowWidth, shadowHeight, 0x000000, this._shadowAlpha);
     this.shadow.setDepth(this.depth - 1);
     // Desvio horizontal opcional (def.shadowOffsetX, em pixels "nativos"
     // do PNG, medido nos pés, sem flip) pra corrigir sombra em artes que

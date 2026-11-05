@@ -32,6 +32,7 @@ import {
   drawMinotaurStompTelegraph,
   hasMinotaurStompFx
 } from '../../fx/MinotaurStompFx.js';
+import { playMinotaurFootDust } from '../../fx/MinotaurStompFx.js';
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
 const CHARGE_LINE_LENGTH = 1400;
@@ -140,6 +141,11 @@ const TELEGRAPH_DYNAMIC_REDRAW_MS = 40;
 export default class Minotaur extends Enemy {
   constructor(scene, x, y, def) {
     super(scene, x, y, def);
+    // Peso ao andar (ver _onWalkFrame/_updateWeight): só usa a animação e a escala atuais.
+    this._stepWeight = 0;
+    this._weightApplied = false;
+    this._stepSide = 1;
+    this.on(Phaser.Animations.Events.ANIMATION_UPDATE, this._onWalkFrame, this);
     // Versões SEM machado (Machado Arremessado, ver _launchAxe/
     this.walkAnimNormal = this.walkAnim;
     this.idleTextureNormal = this.idleTexture;
@@ -298,6 +304,54 @@ export default class Minotaur extends Enemy {
       return true;
     }
     return this._updateBossAbility(target, nowMs);
+  }
+
+  // Peso ao andar: o ciclo de 6 frames tem o passo largo no frame 0 (pisada forte) e um
+  // apoio mais leve no frame 3. A cada pisada: nuvem de poeira baixa (paleta da fase),
+  // leve achatamento do corpo, sombra que "assenta" e um tremor bem discreto da câmera.
+  _onWalkFrame(anim, frame) {
+    if (this.isIdleVisual || !this.active || !this.visible || this.scene.isPaused) return;
+    if (!anim?.key?.startsWith('minotaur-walk')) return;
+    if (this.bossState && this.bossState !== 'chasing') return;
+    const index = anim.frames.indexOf(frame);
+    if (index !== 0 && index !== 3) return;
+    const heavy = index === 0;
+    const strength = heavy ? 1 : 0.6;
+    this._stepSide = -this._stepSide;
+    playMinotaurFootDust(
+      this.scene,
+      this.x + this._stepSide * this.displayWidth * 0.1,
+      this.y + this.displayHeight * this._shadowYFrac,
+      { strength, rage: this.isEnraged, side: this._stepSide }
+    );
+    if (this.networkReplica) return; // a escala da réplica vem do Host
+    this._stepWeight = strength;
+    const player = this.scene.player;
+    if (heavy && player?.active && Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y) < 460) {
+      this.scene.cameras.main.shake(70, 0.0014);
+    }
+  }
+
+  _updateWeight(delta) {
+    if (this._stepWeight > 0) this._stepWeight = Math.max(0, this._stepWeight - delta / 230);
+    const walking = !this.bossState || this.bossState === 'chasing';
+    if (this._stepWeight > 0 && walking && !this.networkReplica) {
+      // outro efeito (golpe recebido, tween) está mexendo na escala: não briga com ele
+      if (!this._weightApplied && (Math.abs(this.scaleX - this.baseScale) > 0.002 || Math.abs(this.scaleY - this.baseScale) > 0.002)) return;
+      const e = this._stepWeight;
+      this.setScale(this.baseScale * (1 + 0.025 * e), this.baseScale * (1 - 0.035 * e));
+      this.shadow?.setScale(1 + 0.12 * e, 1 + 0.06 * e);
+      this._weightApplied = true;
+    } else if (this._weightApplied) {
+      this._weightApplied = false;
+      if (walking) this.setScale(this.baseScale, this.baseScale);
+      this.shadow?.setScale(1, 1);
+    }
+  }
+
+  preUpdate(time, delta) {
+    super.preUpdate(time, delta);
+    if (this.active) this._updateWeight(delta);
   }
 
   _cancelActionsForFlee() {
