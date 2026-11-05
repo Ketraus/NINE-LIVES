@@ -1,4 +1,4 @@
-import { playMeteorImpact } from '../../fx/MinotaurMeteorFx.js';
+import { playMeteorImpact, setupMeteorRockFx, updateMeteorRockFx, playMeteorAmbientRain } from '../../fx/MinotaurMeteorFx.js';
 import { playMinotaurDeathSequence } from '../../fx/MinotaurDeathFx.js';
 import EventBus from '../../systems/EventBus.js';
 import { updateMinotaurDevControl } from '../../systems/MinotaurDevControl.js';
@@ -28,7 +28,7 @@ import {
 import Enemy, { MISSILE_BLINK_PERIOD_MS, MISSILE_BLINK_ALPHA_MIN, MISSILE_BLINK_ALPHA_MAX } from './Enemy.js';
 import DamageSystem from '../../combat/DamageSystem.js';
 import SettingsManager from '../../systems/SettingsManager.js';
-import { playMinotaurCleave, hasMinotaurCleaveFx, setMinotaurCleaveFxRage } from '../../fx/MinotaurCleaveFx.js';
+import { playMinotaurCleave, playMinotaurCleaveBuildup, hasMinotaurCleaveFx, setMinotaurCleaveFxRage } from '../../fx/MinotaurCleaveFx.js';
 import {
   playMinotaurStomp,
   setMinotaurStompFxRage,
@@ -88,8 +88,8 @@ const AXE_TELEGRAPH_COLOR = 0xffcc00;
 const METEOR_WARN_COLOR = 0x27d8c8;
 const METEOR_ROCK_COLOR = 0x128e9a;
 const METEOR_CORE_COLOR = 0xbafff1;
-const METEOR_FALL_OFFSET_X = -110; // de onde o meteoro "nasce" em relação ao ponto de impacto
-const METEOR_FALL_OFFSET_Y = -430;
+const METEOR_FALL_OFFSET_X = -300; // de onde o meteoro "nasce" em relação ao ponto de impacto
+const METEOR_FALL_OFFSET_Y = -820; // queda longa e diagonal: o meteoro cruza a tela bem rápido (tempo/aviso/dano iguais)
 const METEOR_SHAKE_MS = 140;
 const METEOR_SHAKE_INTENSITY = 0.004;
 // Salto de Perseguição (ver _shouldLeap e afins)
@@ -1457,6 +1457,7 @@ export default class Minotaur extends Enemy {
   // boss nem mexe no bossState — roda em paralelo a tudo (ver chase()).
   _updateMeteorRain(target, nowMs) {
     if (!this.meteorRainActive && !this.meteors.length) return;
+    if (this.meteorRainActive) playMeteorAmbientRain(this.scene, nowMs, METEOR_FALL_OFFSET_X, METEOR_FALL_OFFSET_Y);
 
     if (this.meteorRainActive && nowMs >= this.meteorNextAt && target.active && !target.healthSystem?.isDead()) {
       this._spawnMeteor(target, nowMs);
@@ -1473,32 +1474,19 @@ export default class Minotaur extends Enemy {
       m.warn.setScale(Phaser.Math.Linear(0.35, 1, t));
       m.warn.setAlpha(Phaser.Math.Linear(0.25, 0.6, blink));
 
-      // pedra: cai em diagonal (ease-in, acelera perto do chão).
-      // Fica menor e mais legível, com um rastro curto pra vender melhor a queda.
-      const fall = Math.pow(t, 1.6); // queda mais curta e sem a aceleração absurda de antes
+      // pedra: fica fora da tela e despenca nos últimos ~45% do tempo do aviso (muito mais rápida
+      // de ver, mas o impacto e o aviso no chão continuam exatamente no mesmo tempo).
+      const fallT = Phaser.Math.Clamp((t - 0.55) / 0.45, 0, 1);
+      const fall = Math.pow(fallT, 1.25);
       const rockX = m.x + METEOR_FALL_OFFSET_X * (1 - fall);
       const rockY = m.y + METEOR_FALL_OFFSET_Y * (1 - fall);
       m.sprite?.setFrame(Math.min(3, Math.floor(nowMs / 85) % 4));
       m.rock.setRotation(t * 5.6);
-      m.rock.setAlpha(Math.min(1, 0.35 + t * 2.1));
+      m.rock.setAlpha(1);
       m.rock.setPosition(rockX, rockY);
-      m.rock.setScale(Phaser.Math.Linear(0.44, 0.78, t));
-      if (m.glow) m.glow.setScale(Phaser.Math.Linear(0.26, 0.42, t));
-      if (m.headGlow) m.headGlow.setScale(Phaser.Math.Linear(0.12, 0.18, t), Phaser.Math.Linear(0.28, 0.42, t));
-      if (m.tail) {
-        const tailLen = Phaser.Math.Linear(26, 58, t);
-        const len = Math.hypot(METEOR_FALL_OFFSET_X, METEOR_FALL_OFFSET_Y) || 1;
-        const dirX = METEOR_FALL_OFFSET_X / len;
-        const dirY = METEOR_FALL_OFFSET_Y / len;
-        m.tail.clear();
-        m.tail.lineStyle(5, 0x27d8c8, 0.24 + t * 0.18);
-        m.tail.beginPath();
-        m.tail.moveTo(rockX + dirX * 4, rockY + dirY * 4);
-        m.tail.lineTo(rockX + dirX * (tailLen * 0.72), rockY + dirY * (tailLen * 0.72));
-        m.tail.strokePath();
-        m.tail.fillStyle(0xbafff1, 0.55 + t * 0.18);
-        m.tail.fillCircle(rockX, rockY, 2.2 + t * 1.4);
-      }
+      m.rock.setScale(Phaser.Math.Linear(0.62, 0.95, fallT));
+      const fLen = Math.hypot(METEOR_FALL_OFFSET_X, METEOR_FALL_OFFSET_Y) || 1;
+      updateMeteorRockFx(this.scene, m, rockX, rockY, fallT, nowMs, -METEOR_FALL_OFFSET_X / fLen, -METEOR_FALL_OFFSET_Y / fLen);
 
       if (nowMs >= m.impactAt) {
         this._impactMeteor(m, target, nowMs);
@@ -1543,7 +1531,9 @@ export default class Minotaur extends Enemy {
     const rock = this.scene.add.container(0, 0, [glow, sprite, headGlow]).setDepth(15);
     rock.setPosition(x + METEOR_FALL_OFFSET_X, y + METEOR_FALL_OFFSET_Y);
 
-    this.meteors.push({ x, y, warn, rock, tail, sprite, glow, headGlow, startAt: nowMs, impactAt: nowMs + this.def.meteorFallMs });
+    const meteor = { x, y, warn, rock, tail, sprite, glow, headGlow, startAt: nowMs, impactAt: nowMs + this.def.meteorFallMs };
+    setupMeteorRockFx(this.scene, meteor);
+    this.meteors.push(meteor);
   }
 
   _impactMeteor(m, target, nowMs) {
@@ -1552,7 +1542,10 @@ export default class Minotaur extends Enemy {
     m.rock.destroy();
     this.scene.cameras.main.shake(METEOR_SHAKE_MS, METEOR_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_axe_explosion', { volume: 0.35 });
-    playMeteorImpact(this.scene, m.x, m.y, this.def.meteorImpactRadius);
+    {
+      const fLen = Math.hypot(METEOR_FALL_OFFSET_X, METEOR_FALL_OFFSET_Y) || 1;
+      playMeteorImpact(this.scene, m.x, m.y, this.def.meteorImpactRadius, { x: -METEOR_FALL_OFFSET_X / fLen, y: -METEOR_FALL_OFFSET_Y / fLen });
+    }
     const dist = Phaser.Math.Distance.Between(m.x, m.y, target.x, target.y);
     if (dist <= this.def.meteorImpactRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.meteorDamage), this, nowMs);
@@ -1861,6 +1854,7 @@ export default class Minotaur extends Enemy {
     this.cleaveTelegraphDurationMs = this._bossTelegraph(this.def.cleaveTelegraphMs);
     this.cleaveTelegraphEndAt = nowMs + this.cleaveTelegraphDurationMs;
     this.scene.sound.play('sfx_minotaur_cleave_roar', { volume: 0.85 }); // grito de abertura do golpe mais forte dele
+    if (hasMinotaurCleaveFx(this.scene)) playMinotaurCleaveBuildup(this.scene, this, this.cleaveTelegraphDurationMs + this.def.cleavePauseMs, this.isEnraged); // energia sendo carregada
   }
 
   _updateCleaveTelegraph(nowMs) {
