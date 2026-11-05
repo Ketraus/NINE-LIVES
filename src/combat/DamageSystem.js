@@ -26,6 +26,7 @@ export default class DamageSystem {
     if (this._isDisarmedPlayerSideHit(attacker, target)) return false;
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
+    if (target.invulnerable) return false; // boss se transformando (ver Minotaur._beginTransformation)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (target.invulnerableUntil && nowMs < target.invulnerableUntil) return false;
 
@@ -61,6 +62,7 @@ export default class DamageSystem {
     if (this._isDisarmedPlayerSideHit(source, target)) return false;
     if (target.godMode) return false; // cheat "god" do DevConsole (F9) — ver Player.godMode
     if (target.untargetable) return false; // boss no ar (Salto de Perseguição, ver Enemy)
+    if (target.invulnerable) return false; // boss se transformando (ver Minotaur._beginTransformation)
     if (!target.active || !target.healthSystem || target.healthSystem.isDead()) return false;
     if (this._rollDodge(target)) return false;
     const isCritical = !!source?.runState && Math.random() < (source.runState.criticalChance || 0);

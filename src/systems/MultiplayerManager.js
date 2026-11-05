@@ -957,6 +957,8 @@ export default class MultiplayerManager {
         .find((candidate) => candidate.active && candidate.networkId === hit[0]);
       const damage = Phaser.Math.Clamp(hit[1], 0, MAX_DAMAGE_PER_MESSAGE);
       if (!enemy || damage <= 0) return;
+      // mesmas regras do DamageSystem: boss no ar ou se transformando não toma dano de cliente também
+      if (enemy.untargetable || enemy.invulnerable) return;
       enemy.killerPlayerId = playerId;
       const hitX = enemy.x;
       const hitY = enemy.y;

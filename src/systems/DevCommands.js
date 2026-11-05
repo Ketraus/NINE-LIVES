@@ -26,7 +26,8 @@ export const COMMAND_HELP = {
   partida: [
     'settime <segundos> — ajusta tempo da run',
     'fim [segundos=595] — prepara teste de vitória',
-    'mino [segundos=350] — prepara teste do Minotauro'
+    'mino [segundos=350] — prepara teste do Minotauro',
+    'fase2 — manda o Minotauro vivo direto pra transformação da fase 2'
   ],
   diagnostico: [
     'mapinfo — dimensões, camadas e texturas; net — estado da conexão e jogadores',
@@ -39,10 +40,10 @@ export const COMMAND_NAMES = [
   'help', 'tp', 'mark', 'unmark', 'marks', 'destinos', 'pos', 'status', 'stats',
   'hp', 'damage', 'heal', 'god', 'kill', 'list', 'cards', 'give', 'remove',
   'resetcards', 'xp', 'levelup', 'listenemies', 'enemies', 'spawn', 'killall',
-  'freeze', 'autospawn', 'settime', 'fim', 'mino', 'mapinfo', 'net', 'perf',
+  'freeze', 'autospawn', 'settime', 'fim', 'mino', 'fase2', 'mapinfo', 'net', 'perf',
   'clear', 'history', 'close'
 ];
-export const HOST_COMMANDS = new Set(['spawn', 'killall', 'freeze', 'autospawn', 'settime', 'fim', 'mino']);
+export const HOST_COMMANDS = new Set(['spawn', 'killall', 'freeze', 'autospawn', 'settime', 'fim', 'mino', 'fase2']);
 
 export function showHelp(console, query = '') {
   const term = query.toLowerCase();

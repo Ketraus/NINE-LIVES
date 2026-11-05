@@ -35,6 +35,7 @@ import {
 import { playMinotaurFootDust } from '../../fx/MinotaurStompFx.js';
 import MinotaurGlowFx from '../../fx/MinotaurGlowFx.js';
 import MinotaurArenaFx from '../../fx/MinotaurArenaFx.js';
+import MinotaurTransformFx from '../../fx/MinotaurTransformFx.js';
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
 const CHARGE_LINE_LENGTH = 1400;
@@ -166,6 +167,12 @@ export default class Minotaur extends Enemy {
     this.isEnraged = false;
     this.rageHpThreshold = def.rageHpThreshold || 0;
     this._deathSequenceStarted = false;
+    // Transformação da fase 2 (ver _triggerRage/_beginTransformation): invulnerável do momento em
+    // que a vida cruza o limiar até o fim da sequência (~2s), sem pausar o jogo.
+    this.invulnerable = false;
+    this._tfPending = false; // limiar cruzado, esperando sair de um estado em que não dá pra interromper (salto no ar)
+    this.transformFx = null;
+    this._tfGlow = 0; // empurra o brilho do corpo (MinotaurGlowFx) durante a sequência
 
     // Boss/Minotauro (def.boss = true, ver data/enemies.js): TRÊS
     this.bossState = 'chasing';
@@ -237,7 +244,8 @@ export default class Minotaur extends Enemy {
 
   // Rage: entra em fúria quando a vida cai abaixo de def.rageHpThreshold (ver _triggerRage).
   _onHealthChange(current, max) {
-    if (!this.isEnraged && this.rageHpThreshold > 0 && current <= max * this.rageHpThreshold) {
+    if (!this.isEnraged && !this._tfPending && !this.transformFx &&
+      this.rageHpThreshold > 0 && current <= max * this.rageHpThreshold) {
       this._triggerRage();
     }
   }
@@ -248,6 +256,10 @@ export default class Minotaur extends Enemy {
   die() {
     if (!this.active || this._deathSequenceStarted) return;
     this._deathSequenceStarted = true;
+    this.transformFx?.destroy();
+    this.transformFx = null;
+    this.invulnerable = false;
+    this._tfPending = false;
 
     this.scene.tweens.killTweensOf(this);
     const deathX = this.x;
@@ -371,12 +383,18 @@ export default class Minotaur extends Enemy {
     super.preUpdate(time, delta);
     if (this.active) {
       this._updateWeight(delta);
+      if (this.transformFx) {
+        this.transformFx.update(delta);
+        if (this.transformFx.done) this.transformFx = null;
+      }
       this.glowFx?.update(time);
       this.arenaFx?.update(time, delta);
     }
   }
 
   destroy(fromScene) {
+    this.transformFx?.destroy();
+    this.transformFx = null;
     this.glowFx?.destroy();
     this.glowFx = null;
     this.arenaFx?.destroy();
@@ -424,6 +442,7 @@ export default class Minotaur extends Enemy {
       bossState: this.bossState,
       isEnraged: this.isEnraged,
       isDisarmed: this.isDisarmed,
+      inv: this.invulnerable ? 1 : 0,
       visible: this.visible,
       scaleX: this.scaleX,
       scaleY: this.scaleY,
@@ -459,17 +478,28 @@ export default class Minotaur extends Enemy {
       setMinotaurStompFxRage(this.isEnraged);
       playMinotaurStomp(this.scene, this.x, this.y, this.def.stompImpactRadius, { q: 0.6, shake: near ? 0.6 : 0 });
     }
+    // Transformação: o Host manda bossState 'transform' e a réplica toca a MESMA sequência
+    // localmente (visual/áudio). Invulnerabilidade vem do Host (inv) pra não mostrar dano falso.
+    this.invulnerable = state.inv === 1 || state.bossState === 'transform';
+    if (state.bossState === 'transform' && this._netPrevBossState !== 'transform' && !this.transformFx &&
+      !this.isEnraged) {
+      this._startTransformFx();
+    }
     this._netPrevBossState = state.bossState;
-    if (this.isEnraged !== (state.isEnraged === true) || this.isDisarmed !== (state.isDisarmed === true)) {
-      this.isEnraged = state.isEnraged === true;
+    // durante a sequência local, a troca roxo -> aqua é da linha do tempo dela (não do snapshot)
+    const netEnraged = this.transformFx ? this.isEnraged : state.isEnraged === true;
+    if (this.isEnraged !== netEnraged || this.isDisarmed !== (state.isDisarmed === true)) {
+      this.isEnraged = netEnraged;
       this.isDisarmed = state.isDisarmed === true;
       this._refreshBossVisual();
     }
     this.setVisible(state.visible !== false);
-    this.setScale(
-      Number.isFinite(state.scaleX) ? state.scaleX : this.baseScale,
-      Number.isFinite(state.scaleY) ? state.scaleY : this.baseScale
-    );
+    if (!this.transformFx) {
+      this.setScale(
+        Number.isFinite(state.scaleX) ? state.scaleX : this.baseScale,
+        Number.isFinite(state.scaleY) ? state.scaleY : this.baseScale
+      );
+    }
     if (Array.isArray(state.chargeDir) && state.chargeDir.every(Number.isFinite)) {
       this.bossChargeDir = { x: state.chargeDir[0], y: state.chargeDir[1] };
     }
@@ -562,14 +592,74 @@ export default class Minotaur extends Enemy {
   }
 
   // Entra em fúria pro resto da luta (ver rageHpThreshold em
+  // A fase 2 NÃO começa seca: primeiro vem a transformação (~2s, ver MinotaurTransformFx). Ele fica
+  // invulnerável desde o instante em que a vida cruza o limiar; se estiver no ar (Salto) a sequência
+  // espera ele pousar (ver _updateBossAbility). Fúria/Chuva de Meteoros só valem depois dela.
   _triggerRage() {
+    this._tfPending = true;
+    this.invulnerable = true;
+  }
+
+  // Interrompe tudo que estiver em andamento, para no lugar e abre a sequência. Host apenas.
+  _beginTransformation() {
+    this._tfPending = false;
+    this._cancelActionsForFlee(); // aviso, machado (volta pra mão), estado de ataque -> 'chasing'
+    this._clearLeap();
+    this._stopChargeFootsteps();
+    this.bossVulnerableUntil = 0;
+    this.vulnerableDamageMultiplier = 1;
+    this.leapFleeSince = null;
+    this.leapAggroUntil = 0;
+    this._currentStatusTint = null;
+    this._refreshStatusTint(this.scene.time.now);
+    this.bossState = 'transform';
+    this._moveTo(0, 0);
+    this._freezeVisual();
+    this._startTransformFx();
+  }
+
+  // Parado na textura idle (a sequência só treme/estica ele; nada de andar no lugar)
+  _freezeVisual() {
+    this._wantsToMove = false;
+    this.anims.stop();
+    if (this.idleTexture) this.setTexture(this.idleTexture);
+    this.isIdleVisual = true;
+  }
+
+  _startTransformFx() {
+    this.transformFx = new MinotaurTransformFx(this.scene, this, {
+      onSwap: () => this._applyRageSwap(),
+      onRelease: () => this._endTransformation()
+    });
+  }
+
+  // Instante da troca roxo -> aqua: sprite/paleta da fase 2 (HUD, grade de cor, luzes e avisos
+  // seguem isEnraged sozinhos). Roda igual na réplica, só visual.
+  _applyRageSwap() {
     this.isEnraged = true;
+    setMinotaurStompFxRage(true);
+    setMinotaurCleaveFxRage(true);
     this._refreshBossVisual();
-    this.scene.cameras.main.shake(250, 0.015);
-    this.scene.sound.play('sfx_cyberus_wakeup', { volume: 0.5 });
-    // Chuva de Meteoros: começa junto com a fúria e não para mais
-    this.meteorRainActive = true;
-    this.meteorNextAt = this.scene.time.now + this.def.meteorFirstDelayMs;
+  }
+
+  // Fim da sequência: o combate retoma na fase 2. Cooldowns recomeçam com uma folga curta pra ele
+  // não atacar no mesmo frame em que se solta.
+  _endTransformation() {
+    if (this.networkReplica) return;
+    this.invulnerable = false;
+    if (this.bossState === 'transform') this.bossState = 'chasing';
+    const now = this.scene.time.now;
+    this.meteorRainActive = true; // Chuva de Meteoros: começa junto com a fúria e não para mais
+    this.meteorNextAt = now + this.def.meteorFirstDelayMs;
+    const grace = now + 600;
+    this.bossChargeReadyAt = Math.max(this.bossChargeReadyAt, grace);
+    this.stompReadyAt = Math.max(this.stompReadyAt, grace);
+    this.leapReadyAt = Math.max(this.leapReadyAt, grace);
+  }
+
+  _updateTransform() {
+    this._moveTo(0, 0);
+    this.setVelocity(0, 0);
   }
 
   // "Minotauro puto" (ver _triggerRage acima): a partir do rage, todo
@@ -603,6 +693,12 @@ export default class Minotaur extends Enemy {
 
   // Estado das TRÊS habilidades do Minotauro (só roda quando def.boss =
   _updateBossAbility(target, nowMs) {
+    // Transformação da fase 2 (ver _triggerRage): assume o corpo todo; no ar (Salto) espera pousar
+    if (this.bossState === 'transform') { this._updateTransform(); return true; }
+    if (this._tfPending && this.bossState !== 'leap_rise' && this.bossState !== 'leap_air') {
+      this._beginTransformation();
+      return true;
+    }
     // Machado fora da mão: a trilha dele (voo, cravado, explosão, volta)
     // avança em paralelo e NÃO prende o corpo — enquanto ela roda, o
     // Minotauro segue livre pra aproximar, pisar ou investir.

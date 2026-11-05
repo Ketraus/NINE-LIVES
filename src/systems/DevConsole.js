@@ -364,6 +364,16 @@ export default class DevConsole {
         break;
       }
 
+      case 'fase2': {
+        const boss = this.scene.enemySpawner.group.getChildren().find((e) => e.active && e.def?.boss);
+        if (!boss) { this._log('Nenhum Minotauro vivo. Use "spawn minotaur" primeiro.'); break; }
+        if (boss.isEnraged || boss.transformFx || boss._tfPending) { this._log('O Minotauro já está na fase 2 (ou se transformando).'); break; }
+        const limit = boss.healthSystem.maxHp * boss.rageHpThreshold;
+        boss.healthSystem.takeDamage(Math.max(1, boss.healthSystem.current - limit + 1));
+        this._log('Minotauro empurrado pro limiar da fase 2.');
+        break;
+      }
+
       case 'mino': {
         const scene = this.scene;
         if (scene.victorySequenceStarted) {

@@ -903,4 +903,7 @@ export function createPresenceFx(scene, epicenter) {
   };
 }
 
+// usados também pela transformação da fase 2 (MinotaurTransformFx): mesmo shader, mesma contagem de uso
+export { acquirePipe, releasePipe };
+
 export default { startBossEntranceBuildup, playBossEntranceImpact, startBossFightGrade, createPresenceFx };

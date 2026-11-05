@@ -284,7 +284,9 @@ export default class MinotaurArenaFx {
     const retiring = !boss.active || boss._deathSequenceStarted === true
       || scene.isGameOver === true || this.st === 'dead';
 
-    if (enraged && !retiring) {
+    // Transformação em andamento: a arena só "acorda" na explosão (ver transformBurst)
+    const holding = boss.transformFx?.active === true && !boss.transformFx.blasted;
+    if (enraged && !retiring && !holding) {
       if (!this.wasEnraged) {
         this.wasEnraged = true;
         this.prevState = this.st;
@@ -440,7 +442,41 @@ export default class MinotaurArenaFx {
     for (let i = 0; i < nPulses; i += 1) this._spawnPulse(strength, true);
   }
 
-  _spawnCrack(strength, forced) {
+  // Transformação (fase 1 -> 2, ver MinotaurTransformFx): estouro RADIAL de rachaduras energizadas
+  // em volta do boss, com feixes e pulsos saindo delas. Só visual; respeita os mesmos tetos e a
+  // mesma qualidade adaptativa das outras rachaduras.
+  transformBurst(strength = 1) {
+    const b = this.boss;
+    if (this.destroyed || this.quality <= 0 || this.warm <= CRACK_VARIANTS || !b.active) return;
+    this.boost = Math.max(this.boost, strength);
+    if (!this.wasEnraged) {
+      // a explosão É o despertar da arena: nada de segundo estouro "de acordar" logo depois
+      this.wasEnraged = true;
+      this.prevState = this.st;
+      this.nextCrackAt = this.clock + 700;
+      this.nextBeamAt = this.clock + 900;
+      this.nextPulseAt = this.clock + 1000;
+      this.nextSparkAt = this.clock + 800;
+    }
+    const half = this.quality < 1 ? 0.5 : 1;
+    const count = Math.max(3, Math.round(this.cap.cracks * half));
+    const fx = b.x;
+    const fy = b.y + b.displayHeight * (b._shadowYFrac ?? 0.46);
+    const start = Math.random() * TAU;
+    for (let i = 0; i < count; i += 1) {
+      const a = start + (i * TAU) / count + rand(-0.22, 0.22);
+      const r = rand(95, 200);
+      const x = fx + Math.cos(a) * r;
+      const y = fy + Math.sin(a) * r * CRACK_SQUASH;
+      if (!this._inView(x, y, -16)) continue;
+      this._spawnCrack(1, true, { x: Math.round(x), y: Math.round(y) });
+    }
+    this.cracks.forEach((c) => { if (c.alive) c.spike = Math.max(c.spike, strength); });
+    for (let i = 0; i < Math.round(5 * half); i += 1) this._spawnBeam(1, true);
+    for (let i = 0; i < Math.round(4 * half); i += 1) this._spawnPulse(1, true);
+  }
+
+  _spawnCrack(strength, forced, at = null) {
     const slot = this._crackSlot(forced);
     if (!slot) return null;
     // escala inteira = pixel crisp; o mobile não passa de 3
@@ -450,7 +486,10 @@ export default class MinotaurArenaFx {
       : (roll < 0.7 ? 2 : 3);
     const radius = scale * 30;
     const pad = scale * 22; // o centro precisa ficar longe o bastante pra nenhum braço invadir um aviso
-    if (!this._pickPoint(this._pt, 70, 230, pad, 90)) return null;
+    if (at) {
+      this._pt.x = at.x;
+      this._pt.y = at.y;
+    } else if (!this._pickPoint(this._pt, 70, 230, pad, 90)) return null;
 
     const v = Math.floor(Math.random() * CRACK_VARIANTS);
     const flipX = Math.random() < 0.5;

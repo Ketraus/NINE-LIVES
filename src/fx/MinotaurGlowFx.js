@@ -167,7 +167,9 @@ export default class MinotaurGlowFx {
     this.atk += ((attacking ? 1 : 0) - this.atk) * Math.min(1, dt / (attacking ? 110 : 260));
     const atk = this.atk < 0.02 ? 0 : this.atk;
 
-    const gain = pal.gain * (1 + 0.3 * atk) * calm;
+    // transformação da fase 2 (ver MinotaurTransformFx): luzes, contorno e olhos sobem junto da energia
+    const tf = Math.min(1.6, boss._tfGlow || 0);
+    const gain = pal.gain * (1 + 0.3 * atk) * (1 + 0.9 * tf) * calm;
     const period = pal.period * (1 - 0.4 * atk);
     const ph = (time % period) / period;
     const beat = Math.min(1, bump(ph, 0.1, 0.06) + 0.6 * bump(ph, 0.3, 0.07)); // "tum-tum"
@@ -188,10 +190,11 @@ export default class MinotaurGlowFx {
       // olhos da fase 2: acesos o tempo todo, mais fortes no batimento e nos ataques
       const stare = 0.88 + 0.12 * Math.sin(time / 45);
       L.eyes.setAlpha(Math.min(1, base * (0.9 + 0.1 * beat)));
-      L.eyeGlow.setAlpha(Math.min(1, base * (0.55 + 0.3 * beat + 0.25 * atk) * stare));
+      L.eyeGlow.setAlpha(Math.min(1, base * (0.55 + 0.3 * beat + 0.25 * atk + 0.5 * tf) * stare));
     }
-    const rimOn = atk > 0;
-    if (rimOn) L.rim.setTint(pal.rim).setAlpha(base * atk * (0.16 + 0.16 * beat) * gain);
+    const lift = Math.max(atk, Math.min(1, tf)); // a transformação acende o contorno como um ataque
+    const rimOn = lift > 0.02;
+    if (rimOn) L.rim.setTint(pal.rim).setAlpha(base * lift * (0.16 + 0.16 * beat) * gain);
 
     let sweep = false;
     if (rimOn && !this.lite && !SettingsManager.getReducedMotion()) {
@@ -199,7 +202,7 @@ export default class MinotaurGlowFx {
       const top = 64 - t * (64 + SWEEP_H);
       const y0 = Math.max(0, Math.floor(top)), y1 = Math.min(64, Math.floor(top + SWEEP_H));
       if (y1 > y0) {
-        L.sweep.setCrop(0, y0, 64, y1 - y0).setTint(pal.sweep).setAlpha(base * 0.5 * atk * Math.sin(t * Math.PI) * calm);
+        L.sweep.setCrop(0, y0, 64, y1 - y0).setTint(pal.sweep).setAlpha(base * 0.5 * lift * Math.sin(t * Math.PI) * calm);
         sweep = true;
       }
     }
