@@ -2,6 +2,7 @@ import EventBus from './EventBus.js';
 import promptText from '../ui/TextPrompt.js';
 import { fxBudgetStats } from '../fx/FxBudget.js';
 import { COMMAND_NAMES, HOST_COMMANDS, runDevCommand } from './DevCommands.js';
+import { runMinotaurCommand, minotaurCompletions } from './MinotaurDevCommands.js';
 
 // Trava casual contra curioso (F9 pede senha). Guardamos só o hash, não o texto.
 // Não é segurança de verdade: o código do jogo roda no navegador do jogador.
@@ -108,6 +109,7 @@ export default class DevConsole {
     if (!this._greeted) {
       this._log(`Classe atual: ${this.runManager.runState.weaponId}.`);
       this._log('Digite "help" pra ver os comandos.');
+      this._log('Teste do Minotauro: helpmino (ataques, fases, repetição e modo manual).');
       this._greeted = true;
     }
   }
@@ -152,6 +154,12 @@ export default class DevConsole {
     }
     if (e.key === 'Tab') {
       e.preventDefault();
+      if (/^mino\s/i.test(this.input.value)) {
+        const suggestions = minotaurCompletions(this.input.value);
+        if (suggestions.length === 1) this.input.value = suggestions[0] + ' ';
+        else if (suggestions.length) this._log(suggestions.join(' | '));
+        return;
+      }
       const prefix = this.input.value.trim().toLowerCase();
       if (!prefix || /\s/.test(prefix)) return;
       const matches = [...new Set(COMMAND_NAMES)].filter(name => name.startsWith(prefix)).sort();
@@ -180,6 +188,13 @@ export default class DevConsole {
   _run(raw) {
     const [cmd, ...args] = raw.split(/\s+/);
     const command = cmd.toLowerCase();
+    // Preserve the legacy `mino <seconds>` scenario; the bare namespace now
+    // opens the dedicated guide. Mutations have their own host guard.
+    if (['helpmino', 'fase1', 'fase2'].includes(command) ||
+        (command === 'mino' && (!args.length || !Number.isFinite(Number(args[0]))))) {
+      runMinotaurCommand(this, command, args);
+      return;
+    }
     if (HOST_COMMANDS.has(command) && this.scene.multiplayer?.isMultiplayer &&
         !this.scene.multiplayer.isRoomHost) {
       this._log('Este comando altera a arena compartilhada. Execute no console do host.');

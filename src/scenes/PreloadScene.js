@@ -10,7 +10,7 @@ import { loadSlamFx, createSlamFx } from '../fx/SlamFx.js';
 import { loadEliteMissileSheet, createEliteMissileTextures } from '../fx/EliteMissileFx.js';
 import { loadMinotaurCleaveSheet, createMinotaurCleaveTextures } from '../fx/MinotaurCleaveFx.js';
 import { loadMinotaurStompSheet, createMinotaurStompTextures } from '../fx/MinotaurStompFx.js';
-import { loadMinotaurChargeSwing, prepareMinotaurChargeSwing } from '../fx/MinotaurChargeSwingFx.js';
+import { prepareMinotaurChargeSwing } from '../fx/MinotaurChargeSwingFx.js';
 import cardArtIds from '../../data/cardArt.js';
 import AssetManager from '../systems/AssetManager.js';
 import { buildLoadingScreen } from '../ui/LoadingScreen.js';
@@ -246,8 +246,7 @@ export default class PreloadScene extends Phaser.Scene {
     loadMinotaurCleaveSheet(this);
     // Pisão do Minotauro (4 frames roxos 32x32; cratera/poeira/detritos são gerados por código)
     loadMinotaurStompSheet(this);
-    // Corte circular pós-investida do Minotauro.
-    loadMinotaurChargeSwing(this);
+    // Investida/corte usam um atlas procedural, preparado uma vez em create().
 
     // salvar em assets/music/
      this.load.audio('music_menu', 'assets/music/menu_theme.mp3');

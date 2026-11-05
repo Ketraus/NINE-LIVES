@@ -1,13 +1,17 @@
 import { playMeteorImpact } from '../../fx/MinotaurMeteorFx.js';
 import { playMinotaurDeathSequence } from '../../fx/MinotaurDeathFx.js';
 import EventBus from '../../systems/EventBus.js';
+import { updateMinotaurDevControl } from '../../systems/MinotaurDevControl.js';
 import {
   playMinotaurChargeWindup,
   playMinotaurChargeLaunch,
   emitMinotaurChargeTrail,
-  playMinotaurChargeStop
+  playMinotaurChargeStop,
+  playMinotaurChargeSwingWindup
 } from '../../fx/MinotaurChargeFx.js';
 import { playMinotaurChargeSwing } from '../../fx/MinotaurChargeSwingFx.js';
+import { CHARGE_SWEEP, cancelChargeVisuals } from '../../fx/MinotaurChargeVisuals.js';
+import { recordChargeEvent, chargeEventSnapshot, readChargeEvents } from '../../fx/MinotaurChargeEvents.js';
 import {
   createMinotaurAxeFxState,
   cleanupMinotaurAxeFx,
@@ -38,7 +42,6 @@ import MinotaurArenaFx from '../../fx/MinotaurArenaFx.js';
 import MinotaurTransformFx from '../../fx/MinotaurTransformFx.js';
 
 // Investida do Minotauro (def.boss, ver _updateBossAbility e afins) — u…
-const CHARGE_LINE_LENGTH = 1400;
 const CHARGE_LAUNCH_SHAKE_MS = 240;
 const CHARGE_LAUNCH_SHAKE_INTENSITY = 0.02;
 const CHARGE_IMPACT_SHAKE_MS = 300;
@@ -52,8 +55,8 @@ const CHARGE_SWING_SHAKE_INTENSITY = 0.02;
 // O corte pós-investida não é 360º: ele abre quase um círculo inteiro na
 // DIREÇÃO da investida, deixando uma zona segura estreita atrás do Minotauro.
 // O dano é um SETOR preenchido do centro até o raio — não só a borda visual.
-const CHARGE_SWING_VISUAL_SWEEP = Math.PI * 1.60; // 288º visuais
-const CHARGE_SWING_HIT_SWEEP = Math.PI * (5 / 3); // 300º de hitbox, levemente generosa
+const CHARGE_SWING_VISUAL_SWEEP = CHARGE_SWEEP; // visual e dano: mesma abertura segura
+const CHARGE_SWING_HIT_SWEEP = CHARGE_SWEEP;
 // passos tocam em loop durante o dash (curto e rápido — chargeDurationMs)
 // acelerados pra soarem como uma corrida forte, não uma caminhada
 const CHARGE_FOOTSTEPS_RATE = 1.6;
@@ -314,6 +317,7 @@ export default class Minotaur extends Enemy {
   }
 
   _specialChase(target, nowMs) {
+    updateMinotaurDevControl(this, target, nowMs);
     // Boss/Minotauro: mesma lógica do Elite acima — só assume o
     // Entrada: parado durante o flash/pop (ver entranceIdleMs); depois anda, mas
     // sem atacar até acabar entranceGraceMs (os cooldowns são iniciados no construtor).
@@ -399,10 +403,13 @@ export default class Minotaur extends Enemy {
     this.glowFx = null;
     this.arenaFx?.destroy();
     this.arenaFx = null;
+    cancelChargeVisuals(this.scene, this);
     super.destroy(fromScene);
   }
 
   _cancelActionsForFlee() {
+    cancelChargeVisuals(this.scene, this);
+    this._chargeEvents = [];
     this._stopTimedSfx();
     // Boss/Minotauro no meio de uma habilidade (Investida, Machado ou
     if ((this.bossState && this.bossState !== 'chasing') || this.axePhase) {
@@ -416,6 +423,8 @@ export default class Minotaur extends Enemy {
   }
 
   _cleanupSpecial() {
+    cancelChargeVisuals(this.scene, this);
+    this._chargeEvents = [];
     this._stopTimedSfx();
     // Boss: mesma lógica — a linha de aviso da investida também não é
     this.bossTelegraphGraphics?.destroy();
@@ -440,6 +449,12 @@ export default class Minotaur extends Enemy {
 
     return {
       bossState: this.bossState,
+      devRevision: this._devRevision || 0,
+      chargeFx: chargeEventSnapshot(this, nowMs),
+      chargeTimeLeft: Math.max(0, Math.round(
+        (this.bossState === 'charge_telegraph' ? this.bossChargeTelegraphUntil :
+          this.bossState === 'charge_dash' ? this.bossChargeDashUntil :
+            this.bossState === 'charge_swing_telegraph' ? this.bossSwingUntil : nowMs) - nowMs)),
       isEnraged: this.isEnraged,
       isDisarmed: this.isDisarmed,
       inv: this.invulnerable ? 1 : 0,
@@ -470,6 +485,16 @@ export default class Minotaur extends Enemy {
 
   syncNetworkVisualState(state, nowMs) {
     if (!state || typeof state.bossState !== 'string') return;
+    // A dev reset can interrupt a transformation or windup on the host.
+    if (Number.isSafeInteger(state.devRevision) && state.devRevision > (this._netDevRevision || 0)) {
+      this._netDevRevision = this._devRevision = state.devRevision;
+      this.transformFx?.destroy();
+      this.transformFx = null;
+      cancelChargeVisuals(this.scene, this);
+      this._clearBossTelegraph();
+      this._netPrevBossState = null;
+    }
+    const previousBossState = this._netPrevBossState;
     // Pisão no cliente: o dano é do host, então o impacto visual (cratera, poeira...)
     // toca aqui quando o estado sai de 'stomp_raise'. Tremor só se estiver perto.
     if (this._netPrevBossState === 'stomp_raise' && state.bossState !== 'stomp_raise') {
@@ -507,6 +532,7 @@ export default class Minotaur extends Enemy {
       [this.axeTargetX, this.axeTargetY] = state.axeTarget;
     }
     if (Number.isFinite(state.cleaveAngle)) this.cleaveAngle = state.cleaveAngle;
+    this._syncChargeVisuals(state, previousBossState, nowMs);
 
     const telegraphStates = [
       'charge_telegraph', 'charge_swing_telegraph', 'axe_telegraph',
@@ -561,6 +587,64 @@ export default class Minotaur extends Enemy {
     } else {
       this.networkMeteorGraphics?.clear();
     }
+  }
+
+  _syncChargeVisuals(state, previous, nowMs) {
+    const remaining = Number.isFinite(state.chargeTimeLeft)
+      ? Phaser.Math.Clamp(state.chargeTimeLeft, 0, 2000) : 200;
+    this._netChargeState = state.bossState;
+    this._netChargeUntil = nowMs + Math.min(350, remaining + 80);
+    if (state.bossState !== 'charge_telegraph') cancelChargeVisuals(this.scene, this, 'windup');
+    if (state.bossState !== 'charge_swing_telegraph') cancelChargeVisuals(this.scene, this, 'swingWindup');
+    if (state.bossState === 'charge_telegraph' && previous !== state.bossState && remaining > 0) {
+      playMinotaurChargeWindup(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged, remaining, this);
+    }
+    if (state.bossState === 'charge_dash' && previous !== state.bossState) {
+      this.chargeFxLastTrailAt = nowMs - 100;
+      this.chargeFxStep = 0;
+      this.chargeFxStepSide = 1;
+    }
+    if (state.bossState === 'charge_swing_telegraph' && previous !== state.bossState && remaining > 0) {
+      playMinotaurChargeSwingWindup(this.scene, this, remaining);
+    }
+    // Replayed snapshots are idempotent. Ages use the host's clock only; no
+    // comparison between wall clocks, and old preparations are never replayed.
+    for (const event of readChargeEvents(state.chargeFx, this._chargeReceivedSeq || 0)) {
+      const [id, kind, x, y, dx, dy, rage, age] = event;
+      if (id <= (this._chargeReceivedSeq || 0)) continue;
+      this._chargeReceivedSeq = id;
+      this._chargeEventSeq = Math.max(this._chargeEventSeq || 0, id); // host migration
+      if (age > (kind === 'swing' ? 600 : 300)) continue;
+      const dir = { x: dx, y: dy };
+      if (kind === 'launch') playMinotaurChargeLaunch(this.scene, x, y, dir, !!rage, this);
+      else if (kind === 'stop') playMinotaurChargeStop(this.scene, x, y, dir, !!rage, this);
+      else playMinotaurChargeSwing(this.scene, x, y, this.def.chargeSwingRadius * 1.3, !!rage, dir);
+      // The authoritative endpoint and the cut must coincide on the client.
+      if (kind !== 'launch' && ['charge_swing_telegraph', 'charge_vulnerable'].includes(state.bossState)) {
+        this.setPosition(x, y);
+      }
+      const p = this.scene.player;
+      if (p && Math.hypot(p.x - x, p.y - y) < 500 && kind !== 'stop') {
+        this.scene.cameras.main.shake(kind === 'swing' ? 170 : 140, kind === 'swing' ? 0.009 : 0.007);
+        this.scene.sound.play(kind === 'swing' ? 'sfx_minotaur_swing_attack' : 'sfx_minotaur_charge_impact', { volume: 0.5 });
+      }
+    }
+  }
+
+  // Called AFTER replica interpolation so the wake follows the visible body.
+  updateNetworkChargeFx(nowMs) {
+    if (!this.networkReplica || this._netChargeState !== 'charge_dash' || nowMs > this._netChargeUntil) return;
+    this._emitChargeTrail(nowMs);
+  }
+
+  _emitChargeTrail(nowMs) {
+    const interval = this.scene.sys.game.device.input.touch ? 100 : 70;
+    if (nowMs - this.chargeFxLastTrailAt < interval) return;
+    this.chargeFxLastTrailAt = nowMs;
+    emitMinotaurChargeTrail(this.scene, this.x, this.y, this.bossChargeDir,
+      this.isEnraged, this.chargeFxStepSide, this.chargeFxStep, this);
+    this.chargeFxStepSide *= -1;
+    this.chargeFxStep += 1;
   }
 
   // Recalcula qual walkAnim/idleTexture usar AGORA, dado o estado atual
@@ -646,10 +730,10 @@ export default class Minotaur extends Enemy {
   // não atacar no mesmo frame em que se solta.
   _endTransformation() {
     if (this.networkReplica) return;
-    this.invulnerable = false;
+    this.invulnerable = !!this._devInvulnerable;
     if (this.bossState === 'transform') this.bossState = 'chasing';
     const now = this.scene.time.now;
-    this.meteorRainActive = true; // Chuva de Meteoros: começa junto com a fúria e não para mais
+    this.meteorRainActive = !this._devManual; // teste manual mantém apenas a habilidade escolhida
     this.meteorNextAt = now + this.def.meteorFirstDelayMs;
     const grace = now + 600;
     this.bossChargeReadyAt = Math.max(this.bossChargeReadyAt, grace);
@@ -717,6 +801,7 @@ export default class Minotaur extends Enemy {
     if (this.bossState === 'leap_rise') { this._updateLeapRise(nowMs); return true; }
     if (this.bossState === 'leap_air') { this._updateLeapAir(target, nowMs); return true; }
     if (this.bossState === 'leap_recover') { this._updateLeapRecover(nowMs); return true; }
+    if (this._devManual) { this._moveTo(0, 0); return true; }
     // Salto de Perseguição: jogador fugindo longe demais por tempo demais
     if (this._shouldLeap(target, nowMs)) { this._startLeap(nowMs); return true; }
     // Pisão: checado ANTES do cooldown compartilhado — é reativo (dispara
@@ -824,7 +909,7 @@ export default class Minotaur extends Enemy {
     this.bossChargeTelegraphUntil = nowMs + this._bossTelegraph(this.def.chargeTelegraphMs + this.def.chargePauseMs);
     playMinotaurChargeWindup(
       this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged,
-      Math.max(240, this.bossChargeTelegraphUntil - nowMs)
+      Math.max(240, this.bossChargeTelegraphUntil - nowMs), this
     );
     this.scene.sound.play('sfx_minotaur_charge', { volume: 0.75 });
   }
@@ -843,7 +928,8 @@ export default class Minotaur extends Enemy {
     this.bossChargeDashUntil = nowMs + this.def.chargeDurationMs;
     this._moveTo(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
     this.scene.cameras.main.shake(CHARGE_LAUNCH_SHAKE_MS, CHARGE_LAUNCH_SHAKE_INTENSITY);
-    playMinotaurChargeLaunch(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged);
+    playMinotaurChargeLaunch(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged, this);
+    recordChargeEvent(this, 'launch', nowMs);
     this.chargeFxLastTrailAt = nowMs - 100;
     this.chargeFxStepSide = Math.random() < 0.5 ? -1 : 1;
     this.chargeFxStep = 0;
@@ -860,12 +946,7 @@ export default class Minotaur extends Enemy {
   // Mantém a velocidade reta em linha (chase() normal não roda neste
   _updateChargeDash(target, nowMs) {
     this._moveTo(this.bossChargeDir.x * this.def.chargeSpeed, this.bossChargeDir.y * this.def.chargeSpeed);
-    if (nowMs - this.chargeFxLastTrailAt >= 52) {
-      this.chargeFxLastTrailAt = nowMs;
-      emitMinotaurChargeTrail(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged, this.chargeFxStepSide, this.chargeFxStep);
-      this.chargeFxStepSide *= -1;
-      this.chargeFxStep += 1;
-    }
+    this._emitChargeTrail(nowMs);
     if (!this.bossChargeHasHit) {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
       if (dist <= this.def.chargeHitRadius && target.active && !target.healthSystem?.isDead()) {
@@ -875,7 +956,8 @@ export default class Minotaur extends Enemy {
       }
     }
     if (nowMs >= this.bossChargeDashUntil) {
-      playMinotaurChargeStop(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged);
+      playMinotaurChargeStop(this.scene, this.x, this.y, this.bossChargeDir, this.isEnraged, this);
+      recordChargeEvent(this, 'stop', nowMs);
       // Sem machado na mão não há Corte pra dar ao fim da investida (a menos
       // que def.axeOverlapChargeSwing ligue isso) — vai direto pro cansaço.
       if (this.axePhase && !this.def.axeOverlapChargeSwing) {
@@ -894,6 +976,7 @@ export default class Minotaur extends Enemy {
     this._bossTelegraphNextDynamicDrawAt = 0;
     this._moveTo(0, 0);
     this.bossSwingUntil = nowMs + this.def.chargeSwingTelegraphMs;
+    playMinotaurChargeSwingWindup(this.scene, this, this.def.chargeSwingTelegraphMs);
     this._stopChargeFootsteps(); // parou de correr, para os passos
     this.scene.sound.play('sfx_minotaur_swing_attack', { volume: 0.8 });
   }
@@ -908,10 +991,12 @@ export default class Minotaur extends Enemy {
   // investida. Qualquer ponto DENTRO do setor toma dano (do centro à borda);
   // a única zona segura é a abertura estreita atrás do Minotauro.
   _resolveSwing(target, nowMs) {
+    cancelChargeVisuals(this.scene, this, 'swingWindup');
     this._clearBossTelegraph();
     this.scene.cameras.main.shake(CHARGE_SWING_SHAKE_MS, CHARGE_SWING_SHAKE_INTENSITY);
     const swingRadius = this.def.chargeSwingRadius * 1.3;
     playMinotaurChargeSwing(this.scene, this.x, this.y, swingRadius, this.isEnraged, this.bossChargeDir);
+    recordChargeEvent(this, 'swing', nowMs);
 
     const dx = target.x - this.x;
     const dy = target.y - this.y;
@@ -964,16 +1049,33 @@ export default class Minotaur extends Enemy {
 
     const key = `charge:${this.isEnraged ? 1 : 0}:${this.x.toFixed(1)}:${this.y.toFixed(1)}:${this.bossChargeDir.x.toFixed(3)}:${this.bossChargeDir.y.toFixed(3)}`;
     if (!this._prepareStaticTelegraph(key)) return;
-    g.lineStyle(7, palette.dark, 0.42);
-    g.beginPath();
-    g.moveTo(this.x, this.y);
-    g.lineTo(this.x + this.bossChargeDir.x * CHARGE_LINE_LENGTH, this.y + this.bossChargeDir.y * CHARGE_LINE_LENGTH);
-    g.strokePath();
-    g.lineStyle(4, palette.main, 1);
-    g.beginPath();
-    g.moveTo(this.x, this.y);
-    g.lineTo(this.x + this.bossChargeDir.x * CHARGE_LINE_LENGTH, this.y + this.bossChargeDir.y * CHARGE_LINE_LENGTH);
-    g.strokePath();
+    const { x: dx, y: dy } = this.bossChargeDir;
+    const length = this.def.chargeSpeed * this.def.chargeDurationMs / 1000;
+    const radius = this.def.chargeHitRadius;
+    const endX = this.x + dx * length, endY = this.y + dy * length;
+    const point = (d, side) => ({ x: this.x + dx * d - dy * side, y: this.y + dy * d + dx * side });
+    // A capsule shows the real swept hit area, including the rounded endpoint.
+    g.fillStyle(palette.main, 0.11);
+    g.fillPoints([point(0, -radius), point(length, -radius), point(length, radius), point(0, radius)], true);
+    const angle = Math.atan2(dy, dx);
+    g.slice(this.x, this.y, radius, angle + Math.PI / 2, angle + Math.PI * 1.5, false).fillPath();
+    g.slice(endX, endY, radius, angle - Math.PI / 2, angle + Math.PI / 2, false).fillPath();
+    for (const side of [-1, 1]) {
+      const a = point(0, side * radius), b = point(length, side * radius);
+      g.lineStyle(5, palette.dark, 0.6);
+      g.lineBetween(a.x, a.y, b.x, b.y);
+      g.lineStyle(1.5, palette.bright, 0.8);
+      g.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    g.lineStyle(2, palette.main, 0.85);
+    g.beginPath(); g.arc(endX, endY, radius, angle - Math.PI / 2, angle + Math.PI / 2); g.strokePath();
+    g.lineStyle(2, palette.bright, 0.65);
+    g.lineBetween(this.x, this.y, endX, endY);
+    for (let d = 75; d < length; d += 80) {
+      const tip = point(d + 13, 0), left = point(d, -9), right = point(d, 9);
+      g.lineStyle(2.5, palette.bright, 0.8);
+      g.beginPath(); g.moveTo(left.x, left.y); g.lineTo(tip.x, tip.y); g.lineTo(right.x, right.y); g.strokePath();
+    }
   }
 
   _drawSwingTelegraph(nowMs) {
@@ -1193,6 +1295,7 @@ export default class Minotaur extends Enemy {
   _explodeAxe(target, nowMs) {
     if (this.axePhase === 'detonating') return;
     this.axePhase = 'detonating';
+    const devRevision = this._devRevision || 0;
     this.axeSprite.setScale(AXE_SPRITE_SCALE).clearTint();
 
     playMinotaurAxeExplosionFx(
@@ -1204,6 +1307,7 @@ export default class Minotaur extends Enemy {
       this.isEnraged,
       () => {
         if (!this.active || !this.scene?.sys?.isActive()) return;
+        if (devRevision !== (this._devRevision || 0) || this.axePhase !== 'detonating') return;
         const paletteRgb = this.isEnraged ? [110, 255, 238] : [238, 96, 255];
         this.scene.cameras.main.shake(AXE_EXPLOSION_SHAKE_MS, AXE_EXPLOSION_SHAKE_INTENSITY);
         this.scene.cameras.main.flash(AXE_EXPLOSION_FLASH_MS, ...paletteRgb);
@@ -1352,9 +1456,9 @@ export default class Minotaur extends Enemy {
   // pedra cair até lá. Ao chegar, dá dano em área. Não prende o corpo do
   // boss nem mexe no bossState — roda em paralelo a tudo (ver chase()).
   _updateMeteorRain(target, nowMs) {
-    if (!this.meteorRainActive) return;
+    if (!this.meteorRainActive && !this.meteors.length) return;
 
-    if (nowMs >= this.meteorNextAt && target.active && !target.healthSystem?.isDead()) {
+    if (this.meteorRainActive && nowMs >= this.meteorNextAt && target.active && !target.healthSystem?.isDead()) {
       this._spawnMeteor(target, nowMs);
       const jitter = Phaser.Math.Between(-this.def.meteorIntervalJitterMs, this.def.meteorIntervalJitterMs);
       this.meteorNextAt = nowMs + this.def.meteorIntervalMs + jitter;

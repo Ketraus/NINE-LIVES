@@ -29,6 +29,15 @@ export const COMMAND_HELP = {
     'mino [segundos=350] — prepara teste do Minotauro',
     'fase2 — manda o Minotauro vivo direto pra transformação da fase 2'
   ],
+  minotauro: [
+    'helpmino — tutorial completo e todos os comandos do chefe',
+    'mino spawn | listar | selecionar <ID> | status — criar e selecionar o chefe',
+    'mino investida | giro | machado | corte | pisao | salto | meteoro — testar um ataque',
+    'mino repetir <ataque> [segundos] | parar | manual | auto — controle da IA',
+    'mino fase 1|2 | transformar | reset — fases; fase1 e fase2 são atalhos',
+    'mino vida <valor|%> | curar | invencivel on|off | meteoros on|off',
+    'Prepare o comando e feche F9/Esc para executar. Tab completa os subcomandos.'
+  ],
   diagnostico: [
     'mapinfo — dimensões, camadas e texturas; net — estado da conexão e jogadores',
     'perf start | stop — captura desempenho (feche o console durante a captura)',
@@ -41,9 +50,9 @@ export const COMMAND_NAMES = [
   'hp', 'damage', 'heal', 'god', 'kill', 'list', 'cards', 'give', 'remove',
   'resetcards', 'xp', 'levelup', 'listenemies', 'enemies', 'spawn', 'killall',
   'freeze', 'autospawn', 'settime', 'fim', 'mino', 'fase2', 'mapinfo', 'net', 'perf',
-  'clear', 'history', 'close'
+  'clear', 'history', 'close', 'helpmino', 'fase1'
 ];
-export const HOST_COMMANDS = new Set(['spawn', 'killall', 'freeze', 'autospawn', 'settime', 'fim', 'mino', 'fase2']);
+export const HOST_COMMANDS = new Set(['spawn', 'killall', 'freeze', 'autospawn', 'settime', 'fim', 'mino', 'fase1', 'fase2']);
 
 export function showHelp(console, query = '') {
   const term = query.toLowerCase();

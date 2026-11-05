@@ -356,6 +356,7 @@ export default class MultiplayerManager {
         Phaser.Math.Linear(enemy.y, enemy.targetY, blend)
       );
       const nowMs = this.scene.time.now;
+      enemy.updateNetworkChargeFx?.(nowMs);
       if (dx * dx + dy * dy > ENEMY_CATCHUP_PX_SQ) {
         enemy._netMovingUntil = Math.max(enemy._netMovingUntil || 0, nowMs + ENEMY_ANIM_HOLD_MS);
       }
