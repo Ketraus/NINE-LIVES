@@ -135,6 +135,7 @@ export function trailPlasmaGrenade(scene, proxy, time) {
 // ---------- explosão ----------
 
 export function playPlasmaExplosion(scene, x, y, radius) {
+  scene.terrainFx?.interact({ x, y, radius, strength: 1 });
   const flare = (scale, alpha, ms, tint) => {
     const img = scene.add
       .image(x, y, 'hit_fx')

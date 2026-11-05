@@ -716,6 +716,7 @@ function sparks(scene, x, y, radius, q) {
 // Toca o Pisão inteiro em (x, y). Devolve false se o FX não está carregado
 // (aí o Minotaur usa o visual antigo). `opts` (multiplayer): q = fator de partículas, shake = fator do tremor.
 export function playMinotaurStomp(scene, x, y, radius, { q = 1, shake = 1 } = {}) {
+  scene.terrainFx?.interact({ x, y, radius, strength: 1 });
   if (!hasMinotaurStompFx(scene)) return false;
   flash(scene, x, y, radius);
   burst(scene, x, y, radius);

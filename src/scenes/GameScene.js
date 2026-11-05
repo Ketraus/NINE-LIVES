@@ -31,6 +31,7 @@ import WorldEndSystem from '../systems/WorldEndSystem.js';
 import SeaFx from '../fx/SeaFx.js';
 import ShoreFx from '../fx/ShoreFx.js';
 import MistBorderFx from '../fx/MistBorderFx.js';
+import TerrainFx from '../fx/TerrainFx.js';
 import { UI_SCALE } from '../config/layout.js';
 
 import enemiesData from '../../data/enemies.js';
@@ -196,6 +197,7 @@ export default class GameScene extends Phaser.Scene {
     this.seaFx?.update();
     this.shoreFx?.update();
     this.mistBorderFx?.update();
+    this.terrainFx?.update(delta);
     this._updateRunTimer();
     this.multiplayer?.update(time, delta);
     if (this.lobbyGateActive) return; // esperando todos ficarem prontos: mundo parado
@@ -460,6 +462,7 @@ export default class GameScene extends Phaser.Scene {
 
   _buildMap() {
     this.mapManager = new MapManager(this).build();
+    this.terrainFx = new TerrainFx(this, this.mapManager);
     // mar animado por shader (ver fx/SeaFx.js e data/seaFx.js); null se sem WebGL
     this.seaFx = SeaFx.create(this, this.mapManager);
     // transição da praia com grama/água (ver fx/ShoreFx.js e data/shoreFx.js)

@@ -223,6 +223,7 @@ function playSparks(scene, x, y, radius, q = 1) {
 // Toca a Pancada Sísmica inteira em (x, y). `radius` = raio real do dano.
 // `opts` (multiplayer): q = fator de partículas, shake = fator do tremor.
 export function playSlamFx(scene, x, y, radius, { q = 1, shake = 1 } = {}) {
+  scene.terrainFx?.interact({ x, y, radius, strength: 1 });
   playFlash(scene, x, y, radius);
   playDent(scene, x, y, radius);
   playGroundWave(scene, x, y, radius, q);

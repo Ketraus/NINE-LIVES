@@ -6,7 +6,9 @@ const DEFAULTS = {
   playerSfx: 1,
   reducedMotion: false,
   reducedFlashes: false,
-  largeHud: false
+  largeHud: false,
+  terrainFx: true,
+  reducedTerrainFx: false
 };
 
 function clamp01(v) {
@@ -25,7 +27,9 @@ function load() {
       playerSfx: typeof parsed.playerSfx === 'number' ? clamp01(parsed.playerSfx) : DEFAULTS.playerSfx,
       reducedMotion: typeof parsed.reducedMotion === 'boolean' ? parsed.reducedMotion : DEFAULTS.reducedMotion,
       reducedFlashes: typeof parsed.reducedFlashes === 'boolean' ? parsed.reducedFlashes : DEFAULTS.reducedFlashes,
-      largeHud: typeof parsed.largeHud === 'boolean' ? parsed.largeHud : DEFAULTS.largeHud
+      largeHud: typeof parsed.largeHud === 'boolean' ? parsed.largeHud : DEFAULTS.largeHud,
+      terrainFx: typeof parsed.terrainFx === 'boolean' ? parsed.terrainFx : DEFAULTS.terrainFx,
+      reducedTerrainFx: typeof parsed.reducedTerrainFx === 'boolean' ? parsed.reducedTerrainFx : DEFAULTS.reducedTerrainFx
     };
   } catch (e) {
     return { ...DEFAULTS };
@@ -51,6 +55,8 @@ class SettingsManager {
   getReducedMotion() { return this.values.reducedMotion; }
   getReducedFlashes() { return this.values.reducedFlashes; }
   getLargeHud() { return this.values.largeHud; }
+  getTerrainFx() { return this.values.terrainFx; }
+  getReducedTerrainFx() { return this.values.reducedTerrainFx; }
 
   setMaster(v) { this.values.master = clamp01(v); this._save(); }
   setMusic(v) { this.values.music = clamp01(v); this._save(); }
@@ -59,6 +65,8 @@ class SettingsManager {
   setReducedMotion(v) { this.values.reducedMotion = Boolean(v); this._save(); }
   setReducedFlashes(v) { this.values.reducedFlashes = Boolean(v); this._save(); }
   setLargeHud(v) { this.values.largeHud = Boolean(v); this._save(); }
+  setTerrainFx(v) { this.values.terrainFx = Boolean(v); this._save(); }
+  setReducedTerrainFx(v) { this.values.reducedTerrainFx = Boolean(v); this._save(); }
 
   _save() {
     try {

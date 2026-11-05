@@ -105,6 +105,13 @@ export default class SettingsScene extends Phaser.Scene {
       EventBus.emit('accessibility-settings-changed');
     });
     this._buildFullscreenButton(accessibilityX, accessibilityY + Math.round(144 * UI_SCALE));
+    const terrainX = width - accessibilityX;
+    this._buildToggle(terrainX, accessibilityY, 'CHÃO VIVO', SettingsManager.getTerrainFx(), value => {
+      SettingsManager.setTerrainFx(value);
+    });
+    this._buildToggle(terrainX, accessibilityY + Math.round(48 * UI_SCALE), 'CHÃO LEVE', SettingsManager.getReducedTerrainFx(), value => {
+      SettingsManager.setReducedTerrainFx(value);
+    });
 
     this._buildBackButton(width / 2, startY + spacing * 4 + Math.round(10 * UI_SCALE));
 
