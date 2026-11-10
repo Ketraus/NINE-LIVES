@@ -100,6 +100,11 @@ export default class DroneAbility {
     if (this.scene && this.sprite) this._playUpgradeFx(this.scene, this.sprite.x, this.sprite.y);
   }
 
+  _shotFxIntensity(scene) {
+    if (scene.sys.game.device.input.touch) return 1;
+    return this.laser ? LASER_FX_INTENSITY : SHOT_FX_INTENSITY;
+  }
+
   // Usado só por AbilityManager (via setFormationOffset) — troca o ponto
   setFormationOffset(offset) {
     this.offset = offset;
@@ -135,7 +140,7 @@ export default class DroneAbility {
         color: this.laser ? this.laserColor : BASE_BULLET_COLOR
       });
       const hitAngle = Math.atan2(bullet.body.velocity.y, bullet.body.velocity.x);
-      const fxIntensity = this.laser ? LASER_FX_INTENSITY : SHOT_FX_INTENSITY;
+      const fxIntensity = this._shotFxIntensity(this.scene);
       spawnShotHitFx(this.scene, bullet.x, bullet.y, bullet.getData('color'), hitAngle, fxIntensity);
       if (bullet.getData('pierce')) {
         this._spawnHitSpark(this.scene, enemy.x, enemy.y, bullet.getData('color'));
@@ -151,7 +156,7 @@ export default class DroneAbility {
         bullet.y,
         bullet.getData('color'),
         Math.atan2(bullet.body.velocity.y, bullet.body.velocity.x),
-        this.laser ? LASER_FX_INTENSITY : SHOT_FX_INTENSITY
+        this._shotFxIntensity(this.scene)
       );
       bullet.destroy();
     });
@@ -236,7 +241,7 @@ export default class DroneAbility {
 
     // suco visual: estica ao sair, clarão no cano e rastro de brilho. O laser
     // roxo mantém também o clarão/rastro próprios (_spawnMuzzleFlash/_attachLaserTrail)
-    const fxIntensity = this.laser ? LASER_FX_INTENSITY : SHOT_FX_INTENSITY;
+    const fxIntensity = this._shotFxIntensity(scene);
     launchShotFx(scene, bullet, {
       x: this.sprite.x,
       y: this.sprite.y,
@@ -299,6 +304,9 @@ export default class DroneAbility {
 
   // Rastro de "fantasmas" desbotando atrás do feixe enquanto ele viaja —
   _attachLaserTrail(scene, bullet, color) {
+    // O rastro compartilhado de ShotFx já cobre o laser no touch; evite
+    // cinco imagens/tweens extras por disparo em aparelhos móveis.
+    if (scene.sys.game.device.input.touch) return;
     scene.time.addEvent({
       delay: LASER_TRAIL_INTERVAL_MS,
       repeat: LASER_TRAIL_COPIES - 1,
@@ -324,7 +332,7 @@ export default class DroneAbility {
 
   // Faísca de impacto ao perfurar um inimigo (laser não destrói a bala,
   _spawnHitSpark(scene, x, y, color) {
-    const shardCount = 4;
+    const shardCount = scene.sys.game.device.input.touch ? 2 : 4;
     for (let i = 0; i < shardCount; i++) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
       const dist = Phaser.Math.Between(10, 22);
