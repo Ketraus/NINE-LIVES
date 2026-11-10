@@ -365,6 +365,9 @@ export default class MultiplayerManager {
         enemy._wantsToMove = shouldWalk;
         enemy.updateAnimState();
       }
+      if (enemy.def.sealer) {
+        enemy.enforcePlayerBoundary?.(this.player, this.playerId);
+      }
     });
     this._evaluateMatchEnd();
     this._syncPauseVote();
@@ -1363,6 +1366,11 @@ export default class MultiplayerManager {
       healthSystem,
       shieldSystem,
       runState: { dodgeChance: 0, damageReductionFraction: 0 },
+      setPosition(x, y) {
+        remote.targetX = x;
+        remote.targetY = y;
+        remote.sprite.setPosition(x, y);
+      },
       getAimDirection() { return { x: remote.aimX || 0, y: remote.aimY || 1 }; },
       applyKnockback() {}
     };

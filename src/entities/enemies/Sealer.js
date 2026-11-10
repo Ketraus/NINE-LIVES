@@ -16,6 +16,7 @@ export default class Sealer extends Enemy {
     this.arenaGraphics = null;
     this.arenaNextVisualUpdateAt = 0;
     this.arenaNextCrushTickAt = 0;
+    this.arenaEnteredPlayerIds = new Set();
     // Movimento em "rajadas" (ver _updateSealerMovement/_decideSealerMoveDi…
     this.sealerMoveDir = { x: 0, y: 0 };
     this.sealerNextDecisionAt = 0;
@@ -62,7 +63,12 @@ export default class Sealer extends Enemy {
       this._updateSealerMovement(target, radius, nowMs, speedMultiplier);
     }
 
-    this._containWithinArena(target, radius);
+    if (this.scene.multiplayer?.isMultiplayer) {
+      const players = this.scene.multiplayer.getEnemyTargets();
+      players.forEach((player) => this.enforcePlayerBoundary(player));
+    } else {
+      this._containWithinArena(this.scene.player, radius);
+    }
     // o próprio Sealer também é contido — sem isto, se ele nascer perto da
     this._containWithinArena(this, radius);
     this.scene.enemySpawner?.group.getChildren().forEach((enemy) => {
@@ -145,17 +151,46 @@ export default class Sealer extends Enemy {
     body.setPosition(this.arenaCenter.x + dx * scale, this.arenaCenter.y + dy * scale);
   }
 
+  enforcePlayerBoundary(player, playerId = player?.playerId) {
+    if (!player?.active || typeof player.setPosition !== 'function' ||
+      !this.arenaCenter || !Number.isFinite(this.arenaRadius)) return;
+    const id = playerId ?? player?.playerId ??
+      (player === this.scene.player ? this.scene.multiplayer?.playerId ?? 'local' : null);
+    if (typeof id !== 'string' || !id) return;
+
+    const dx = player.x - this.arenaCenter.x;
+    const dy = player.y - this.arenaCenter.y;
+    const distance = Math.hypot(dx, dy);
+    const radius = Math.max(0, this.arenaRadius - (player.body?.radius || 0));
+    if (distance <= radius || distance === 0) {
+      this.arenaEnteredPlayerIds.add(id);
+      return;
+    }
+    if (!this.arenaEnteredPlayerIds.has(id)) return;
+
+    const nx = dx / distance;
+    const ny = dy / distance;
+    player.setPosition(this.arenaCenter.x + nx * radius, this.arenaCenter.y + ny * radius);
+
+    const velocity = player.body?.velocity;
+    const outwardSpeed = velocity ? velocity.x * nx + velocity.y * ny : 0;
+    if (outwardSpeed > 0) {
+      player.setVelocity?.(velocity.x - outwardSpeed * nx, velocity.y - outwardSpeed * ny);
+    }
+  }
+
   syncArenaVisual(centerX, centerY, radius, progress, targetPlayerId) {
     if (![centerX, centerY, radius, progress].every(Number.isFinite)) return;
     this.arenaCenter = { x: centerX, y: centerY };
     this.arenaTargetPlayerId = typeof targetPlayerId === 'string' ? targetPlayerId : null;
     this.arenaRadius = radius;
     this.arenaProgress = Phaser.Math.Clamp(progress, 0, 1);
+    if (this.arenaBirthMs == null) {
+      this.arenaBirthMs = this.scene.time.now - this.arenaProgress * this.def.arenaShrinkDurationMs;
+    }
     if (!this.arenaGraphics) this.arenaGraphics = this.scene.add.graphics().setDepth(4);
     this._drawArena(this.arenaRadius, this.arenaProgress, this.scene.time.now, true);
-    if (this.arenaTargetPlayerId === this.scene.multiplayer?.playerId) {
-      this._containWithinArena(this.scene.player, this.arenaRadius);
-    }
+    this.enforcePlayerBoundary(this.scene.player, this.scene.multiplayer?.playerId);
   }
 
   // Desenha o anel da arena — vai de um roxo frio (recém-aberta) pra um
