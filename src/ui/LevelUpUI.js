@@ -335,7 +335,7 @@ export default class LevelUpUI {
   _openOverlay() {
     // Real time: the scene clock is paused while cards are on screen.
     this._selectionUnlockAt = this.scene.sys.game.device.input.touch
-      ? performance.now() + 1000 : 0;
+      ? performance.now() + 100 : 0;
     this._applyZoomCompensation(this.container); // zoom pode ter mudado desde o construtor
     this.container.removeAll(true);
     this.scene.physics.pause();
