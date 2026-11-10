@@ -333,9 +333,9 @@ export default class LevelUpUI {
 
   // Comum a show() e showEvolution(): limpa a tela anterior e pausa o jog…
   _openOverlay() {
-    // Real time: the scene clock is paused while cards are on screen.
+    // Reject touches that began before the overlay without delaying new taps.
     this._selectionUnlockAt = this.scene.sys.game.device.input.touch
-      ? performance.now() + 100 : 0;
+      ? performance.now() : null;
     this._applyZoomCompensation(this.container); // zoom pode ter mudado desde o construtor
     this.container.removeAll(true);
     this.scene.physics.pause();
@@ -880,7 +880,7 @@ export default class LevelUpUI {
   // Reamostra as opções do level-up atual e redesenha a tela (mantém
   _canSelect(pointer) {
     if (!this.container.visible) return false;
-    if (!this._selectionUnlockAt) return true;
+    if (this._selectionUnlockAt === null) return true;
     if (performance.now() < this._selectionUnlockAt) return false;
     // Phaser records the original DOM event timestamp, not its processing time.
     // Reject queued/old touches too; holding or releasing a finger never selects.
