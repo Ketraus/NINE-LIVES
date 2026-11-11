@@ -1,543 +1,368 @@
-// Sequência de morte do Minotauro.
-// Não depende de animação desenhada: usa o próprio sprite, Graphics, hit_fx,
-// câmera e sons já carregados. Quando uma animação de morte existir, ela pode
-// entrar no lugar do squash/tint sem jogar fora o resto desta coreografia.
+// Morte de encontro, não de fim de jogo. Um relógio próprio respeita pausa/level-up.
+// Nenhuma física, hitbox, dano ou pausa global. Partículas em pool; nenhum tween.
+import SettingsManager from '../systems/SettingsManager.js';
+import MusicManager from '../systems/MusicManager.js';
+import BossCinematicCamera from '../systems/BossCinematicCamera.js';
+import { ensureTremorTextures } from './MinotaurTremorFx.js';
+import { acquirePipe, releasePipe } from './MinotaurEntranceFx.js';
+import { reserveFx } from './FxBudget.js';
 
-const PHASE1 = Object.freeze({
-  main: 0xe044ff,
-  bright: 0xffb9ff,
-  mid: 0x8d2ab6,
-  deep: 0x2a0a36,
-  smoke: 0x171019,
-  scar: 0x32133e
-});
+const ROAR = 2050;
+const SILENCE = 3180;
+const BLAST = 3770;
+const LAND = 4870;
+export const MINOTAUR_DEATH_END_MS = 6900;
+const AQUA = 0x32e9d6;
+const WHITE = 0xdffff7;
+const TAU = Math.PI * 2;
+const clamp = v => Math.max(0, Math.min(1, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const out = t => 1 - (1 - clamp(t)) ** 3;
+const smooth = t => { t = clamp(t); return t * t * (3 - 2 * t); };
+const rand = (a, b) => a + Math.random() * (b - a);
 
-const PHASE2 = Object.freeze({
-  main: 0x32e9d6,
-  bright: 0xeafffb,
-  mid: 0x159aa0,
-  deep: 0x062b32,
-  smoke: 0x0b171a,
-  scar: 0x163b40
-});
-
-const DEPTH_GROUND = 2;
-const DEPTH_BEHIND_BOSS = 8;
-const DEPTH_BODY_FX = 18;
-const DEPTH_FRONT_FX = 24;
-
-function safeLater(scene, delay, callback) {
-  return scene.time.delayedCall(delay, () => {
-    if (!scene?.sys?.isActive()) return;
-    callback();
-  });
-}
-
-function briefHitstop(scene, duration = 80) {
-  const world = scene.physics?.world;
-  if (!world) return;
-  const wasPaused = world.isPaused === true;
-  if (!wasPaused) world.pause();
-  safeLater(scene, duration, () => {
-    if (!wasPaused && scene.physics?.world) scene.physics.world.resume();
-  });
-}
-
-function shockRing(scene, x, y, radius, palette, strength = 1, delay = 0) {
-  safeLater(scene, delay, () => {
-    const g = scene.add.graphics().setDepth(DEPTH_BODY_FX).setBlendMode(Phaser.BlendModes.ADD);
-    const state = { r: radius * 0.12, a: 1 };
-    scene.tweens.add({
-      targets: state,
-      r: radius,
-      a: 0,
-      duration: 300 + strength * 90,
-      ease: 'Cubic.easeOut',
-      onUpdate: () => {
-        g.clear();
-        g.lineStyle(12 * strength, palette.deep, state.a * 0.26);
-        g.strokeEllipse(x, y + 7, state.r * 2.25, state.r * 1.12);
-        g.lineStyle(5 * strength, palette.main, state.a * 0.72);
-        g.strokeEllipse(x, y + 6, state.r * 2.05, state.r * 0.98);
-        g.lineStyle(2.2 * strength, palette.bright, state.a * 0.92);
-        g.strokeEllipse(x, y + 5, state.r * 1.84, state.r * 0.84);
-      },
-      onComplete: () => g.destroy()
-    });
-  });
-}
-
-function bodyFlash(scene, boss, palette, alpha = 0.95, duration = 110) {
-  if (!boss.active) return;
-  const oldTint = boss.tintTopLeft;
-  boss.setTintFill(palette.bright);
-  boss.setAlpha(Math.max(boss.alpha, alpha));
-  safeLater(scene, duration, () => {
-    if (!boss.active) return;
-    boss.clearTint();
-    // Minotauro usa a arte como cor principal; não precisamos manter o fill.
-    // Um tint antigo de status seria indevido aqui porque ele já está morto.
-    if (oldTint && oldTint !== 0xffffff) boss.setTint(0xffffff);
-  });
-}
-
-function spawnLeakBurst(scene, boss, palette, count = 9, power = 1) {
-  const x = boss.x;
-  const y = boss.y - boss.displayHeight * 0.06;
-  for (let i = 0; i < count; i++) {
-    const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    const startR = Phaser.Math.FloatBetween(4, Math.max(8, boss.displayWidth * 0.2));
-    const dist = Phaser.Math.FloatBetween(28, 76) * power;
-    const p = scene.add.image(
-      x + Math.cos(a) * startR,
-      y + Math.sin(a) * startR * 0.7,
-      'hit_fx'
-    )
-      .setDepth(DEPTH_FRONT_FX)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setTint(i % 4 === 0 ? palette.bright : palette.main)
-      .setAlpha(Phaser.Math.FloatBetween(0.55, 0.95))
-      .setRotation(a)
-      .setScale(
-        Phaser.Math.FloatBetween(0.08, 0.2) * power,
-        Phaser.Math.FloatBetween(0.025, 0.07)
-      );
-    scene.tweens.add({
-      targets: p,
-      x: x + Math.cos(a) * dist,
-      y: y + Math.sin(a) * dist * 0.72 - Phaser.Math.Between(5, 24),
-      scaleX: p.scaleX * 0.18,
-      alpha: 0,
-      duration: Phaser.Math.Between(260, 520),
-      ease: 'Cubic.easeOut',
-      onComplete: () => p.destroy()
-    });
-  }
-}
-
-function spawnGroundDebris(scene, x, y, radius, palette, count = 12) {
-  for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.28, 0.28);
-    const dist = radius * Phaser.Math.FloatBetween(0.45, 1.15);
-    const size = Phaser.Math.FloatBetween(3, 7);
-    const piece = scene.add.rectangle(
-      x,
-      y + 10,
-      size,
-      size * Phaser.Math.FloatBetween(0.45, 0.85),
-      i % 4 === 0 ? palette.mid : 0x172126,
-      0.9
-    )
-      .setDepth(DEPTH_FRONT_FX - 2)
-      .setRotation(a + Phaser.Math.FloatBetween(-0.6, 0.6));
-    scene.tweens.add({
-      targets: piece,
-      x: x + Math.cos(a) * dist,
-      y: y + Math.sin(a) * dist * 0.7 - Phaser.Math.FloatBetween(6, 26),
-      rotation: piece.rotation + Phaser.Math.FloatBetween(-3.5, 3.5),
-      alpha: 0,
-      duration: Phaser.Math.Between(340, 620),
-      ease: 'Cubic.easeOut',
-      onComplete: () => piece.destroy()
-    });
-  }
-}
-
-function createDeathScar(scene, x, y, radius, palette) {
-  const g = scene.add.graphics().setDepth(DEPTH_GROUND);
-  const rng = (a, b) => Phaser.Math.FloatBetween(a, b);
-
-  // Mancha irregular: escura o suficiente para parecer terreno queimado,
-  // mas não um buraco preto chapado.
-  const points = [];
-  const pointCount = 30;
-  const rotation = rng(0, Math.PI * 2);
-  for (let i = 0; i < pointCount; i++) {
-    const a = rotation + (i / pointCount) * Math.PI * 2;
-    const r = radius * rng(0.72, 1.05);
-    points.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r * 0.68 });
-  }
-  g.fillStyle(0x10191d, 0.68);
-  g.fillPoints(points, true);
-
-  // Centro quebrado e borda levantada.
-  g.fillStyle(palette.deep, 0.26);
-  g.fillEllipse(x, y + 5, radius * 1.2, radius * 0.62);
+function ensureTextures(scene) {
+  ensureTremorTextures(scene);
+  if (scene.textures.exists('minotaur_death_ring')) return;
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  g.lineStyle(9, AQUA, 0.12).strokeCircle(128, 128, 116);
+  g.lineStyle(4, AQUA, 0.65).strokeCircle(128, 128, 116);
+  g.lineStyle(1.5, WHITE, 1).strokeCircle(128, 128, 116);
+  g.generateTexture('minotaur_death_ring', 256, 256);
+  g.clear();
+  g.fillStyle(0x0b171a, 0.6).fillEllipse(192, 192, 224, 139);
   for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2 + rng(-0.11, 0.11);
-    const d = radius * rng(0.62, 0.95);
-    g.fillStyle(i % 3 === 0 ? 0x26343a : 0x1b282d, rng(0.45, 0.68));
-    g.fillEllipse(
-      x + Math.cos(a) * d,
-      y + Math.sin(a) * d * 0.68,
-      radius * rng(0.12, 0.22),
-      radius * rng(0.045, 0.09)
-    );
+    const a = i / 14 * TAU;
+    const r = rand(95, 172);
+    const bend = a + rand(-0.18, 0.18);
+    g.lineStyle(6, 0x091315, 0.8);
+    g.beginPath().moveTo(192, 192);
+    g.lineTo(192 + Math.cos(bend) * r * 0.48, 192 + Math.sin(bend) * r * 0.33);
+    g.lineTo(192 + Math.cos(a) * r, 192 + Math.sin(a) * r * 0.68).strokePath();
   }
-
-  // Rachaduras radiais, núcleo escuro + veia energética estreita.
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + rng(-0.16, 0.16);
-    const length = radius * rng(0.7, 1.45);
-    const crack = [];
-    for (let j = 0; j <= 4; j++) {
-      const t = j / 4;
-      const wobble = rng(-0.11, 0.11);
-      crack.push([
-        x + Math.cos(a + wobble) * length * t,
-        y + Math.sin(a + wobble) * length * t * 0.72
-      ]);
-    }
-    g.lineStyle(6, 0x111a1e, 0.9);
-    g.beginPath();
-    crack.forEach(([px, py], j) => (j ? g.lineTo(px, py) : g.moveTo(px, py)));
-    g.strokePath();
-    g.lineStyle(2, palette.main, 0.58);
-    g.beginPath();
-    crack.forEach(([px, py], j) => (j ? g.lineTo(px, py) : g.moveTo(px, py)));
-    g.strokePath();
+  g.generateTexture('minotaur_death_scar', 384, 384);
+  g.clear();
+  for (let i = 0; i < 11; i++) {
+    const a = i / 11 * TAU;
+    const r = rand(65, 148);
+    g.lineStyle(2, AQUA, 0.7);
+    g.beginPath().moveTo(192 + Math.cos(a) * 17, 192 + Math.sin(a) * 12);
+    g.lineTo(192 + Math.cos(a + 0.16) * r * 0.5, 192 + Math.sin(a + 0.16) * r * 0.34);
+    g.lineTo(192 + Math.cos(a) * r, 192 + Math.sin(a) * r * 0.68).strokePath();
   }
-
-  // A energia morre antes da cicatriz, deixando o chão queimado por mais tempo.
-  const energy = scene.add.ellipse(x, y + 4, radius * 1.16, radius * 0.58, palette.main, 0.22)
-    .setDepth(DEPTH_GROUND + 0.1)
-    .setBlendMode(Phaser.BlendModes.ADD);
-  scene.tweens.add({
-    targets: energy,
-    alpha: 0,
-    scaleX: 0.72,
-    scaleY: 0.72,
-    duration: 1800,
-    ease: 'Sine.easeOut',
-    onComplete: () => energy.destroy()
-  });
-
-  scene.tweens.add({
-    targets: g,
-    alpha: 0,
-    delay: 5000,
-    duration: 2600,
-    ease: 'Sine.easeIn',
-    onComplete: () => g.destroy()
-  });
+  g.generateTexture('minotaur_death_cracks', 384, 384);
+  g.destroy();
 }
 
-function spawnImplosion(scene, boss, palette) {
-  const x = boss.x;
-  const y = boss.y - 4;
-
-  // Escuridão atrás do corpo: cria a sensação de energia sendo sugada para dentro.
-  const vacuum = scene.add.circle(x, y, 10, 0x020608, 0.82).setDepth(DEPTH_BEHIND_BOSS);
-  scene.tweens.add({
-    targets: vacuum,
-    scale: 5.5,
-    alpha: 0.92,
-    duration: 150,
-    ease: 'Cubic.easeOut',
-    onComplete: () => {
-      scene.tweens.add({
-        targets: vacuum,
-        scale: 0.08,
-        alpha: 0,
-        duration: 210,
-        ease: 'Cubic.easeIn',
-        onComplete: () => vacuum.destroy()
-      });
-    }
-  });
-
-  // Partículas começam longe e são puxadas violentamente pro centro.
-  for (let i = 0; i < 28; i++) {
-    const a = (i / 28) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.16, 0.16);
-    const r = Phaser.Math.FloatBetween(70, 155);
-    const p = scene.add.rectangle(
-      x + Math.cos(a) * r,
-      y + Math.sin(a) * r * 0.72,
-      Phaser.Math.FloatBetween(3, 8),
-      Phaser.Math.FloatBetween(1, 3),
-      i % 5 === 0 ? palette.bright : palette.main,
-      0.9
-    )
-      .setDepth(DEPTH_FRONT_FX)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setRotation(a + Math.PI);
-    scene.tweens.add({
-      targets: p,
-      x: x + Phaser.Math.FloatBetween(-4, 4),
-      y: y + Phaser.Math.FloatBetween(-5, 5),
-      alpha: 0.15,
-      scaleX: 0.16,
-      duration: Phaser.Math.Between(180, 300),
-      ease: 'Cubic.easeIn',
-      onComplete: () => p.destroy()
-    });
-  }
-
-  // Eco espectral do próprio Minotauro: sobe um pouco e volta pro corpo.
-  try {
-    const echo = scene.add.image(x, boss.y, boss.texture.key, boss.frame.name)
-      .setDepth(boss.depth + 0.4)
-      .setOrigin(boss.originX, boss.originY)
-      .setScale(boss.scaleX, boss.scaleY)
-      .setFlipX(boss.flipX)
-      .setTint(palette.bright)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setAlpha(0.32);
-    scene.tweens.add({
-      targets: echo,
-      y: boss.y - 24,
-      scaleX: boss.scaleX * 1.05,
-      scaleY: boss.scaleY * 1.05,
-      alpha: 0.5,
-      duration: 150,
-      ease: 'Sine.easeOut',
-      onComplete: () => {
-        scene.tweens.add({
-          targets: echo,
-          x,
-          y: boss.y,
-          scaleX: boss.scaleX * 0.35,
-          scaleY: boss.scaleY * 0.35,
-          alpha: 0,
-          duration: 180,
-          ease: 'Cubic.easeIn',
-          onComplete: () => echo.destroy()
-        });
+export default class MinotaurDeathFx {
+  constructor(scene, boss, onComplete, ageMs = 0, origin = null) {
+    this.scene = scene;
+    this.boss = boss;
+    this.onComplete = onComplete;
+    this.t = Number.isFinite(ageMs) ? Math.max(0, Math.min(ageMs, MINOTAUR_DEATH_END_MS - 1)) : 0;
+    this.x = origin?.x ?? boss.x;
+    this.y = origin?.y ?? boss.y;
+    this.scale = boss.baseScale;
+    this.height = boss.height * this.scale;
+    this.footY = this.y + this.height * boss._shadowYFrac;
+    this.side = boss.flipX ? -1 : 1;
+    this.landX = this.x + this.side * 44;
+    this.landY = this.footY + 5;
+    this.lite = !!scene.sys.game.device.input.touch;
+    this.flashK = SettingsManager.getReducedFlashes() ? 0.2 : 1;
+    this.motionK = SettingsManager.getReducedMotion() ? 0.18 : 1;
+    this.images = [];
+    this.sounds = new Set();
+    this.pausedSounds = new Set();
+    this.done = false;
+    this.nextEvent = 0;
+    this.nextLeak = this.t;
+    this.dtEma = 16;
+    ensureTextures(scene);
+    this.scar = this.image('minotaur_death_scar', 1.8, false).setPosition(this.x, this.footY);
+    this.cracks = this.image('minotaur_death_cracks', 2.1).setPosition(this.x, this.footY);
+    this.aura = this.image('tremor_glow', 8.5).setTint(AQUA);
+    this.core = this.image('tremor_glow', 10.5).setTint(WHITE);
+    this.beam = this.image('tremor_beam', 8.8).setOrigin(0.5, 1).setTint(AQUA);
+    this.rings = Array.from({ length: 5 }, () => this.image('minotaur_death_ring', 2.4));
+    this.axe = this.image('minotaur_axe_thrown_rage', 15, false)
+      .setOrigin(23 / 64, 40 / 64).setScale(2.8);
+    this.mound = this.image('tremor_pebble_b', 8.2, false).setTint(0x364448)
+      .setPosition(this.landX, this.landY + 3).setScale(4.4, 1.25);
+    this.pool = Array.from({ length: this.lite ? 48 : 96 }, () => ({
+      image: this.image('tremor_spark', 14), live: false, age: 0, life: 1,
+      x: 0, y: 0, vx: 0, vy: 0, gravity: 0, spin: 0, scale: 1, alpha: 1, dust: false
+    }));
+    // Fragmentos reais da silhueta, sem repetir o machado embutido na arte.
+    const bodyKey = boss.isEnraged ? boss.idleTextureRageDisarmed : boss.idleTextureDisarmed;
+    this.fragments = [];
+    if (bodyKey && scene.textures.exists(bodyKey)) {
+      const frame = scene.textures.getFrame(bodyKey);
+      const cols = this.lite ? 3 : 4, rows = 3;
+      for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
+        const image = this.image(bodyKey, 13, false).setOrigin(boss.originX, boss.originY)
+          .setFlipX(boss.flipX).setScale(this.scale)
+          .setCrop(col * frame.width / cols, row * frame.height / rows, frame.width / cols, frame.height / rows);
+        const angle = Math.atan2(row - 1, (col - (cols - 1) / 2) * (boss.flipX ? -1 : 1));
+        this.fragments.push({ image, vx: Math.cos(angle) * rand(90, 190), vy: Math.sin(angle) * 90 - 85,
+          spin: rand(-0.5, 0.5) });
       }
-    });
-  } catch (_) {
-    // Se o frame atual não puder ser clonado, o resto da sequência continua.
-  }
-}
-
-function finalRupture(scene, boss, x, y, palette) {
-  const cam = scene.cameras.main;
-  briefHitstop(scene, 78);
-  cam.flash(105, 225, 255, 250, true);
-  cam.shake(560, 0.042);
-  scene.sound.play('sfx_blastwave', { volume: 0.82, rate: 0.92 });
-  scene.sound.play('sfx_cyberus_explosion', { volume: 0.58, rate: 0.88 });
-
-  createDeathScar(scene, x, y + 12, 86, palette);
-  spawnGroundDebris(scene, x, y + 8, 115, palette, 22);
-
-  // Clarão em três camadas: núcleo branco, aqua/roxo e halo escuro.
-  const darkHalo = scene.add.circle(x, y, 16, palette.deep, 0.78).setDepth(DEPTH_BODY_FX - 1);
-  const energyHalo = scene.add.image(x, y, 'hit_fx')
-    .setDepth(DEPTH_BODY_FX)
-    .setBlendMode(Phaser.BlendModes.ADD)
-    .setTint(palette.main)
-    .setScale(4.2)
-    .setAlpha(0.8);
-  const whiteCore = scene.add.image(x, y, 'hit_fx')
-    .setDepth(DEPTH_FRONT_FX + 2)
-    .setBlendMode(Phaser.BlendModes.ADD)
-    .setTint(palette.bright)
-    .setScale(2.4)
-    .setAlpha(1);
-
-  scene.tweens.add({ targets: darkHalo, scale: 7.5, alpha: 0, duration: 390, ease: 'Cubic.easeOut', onComplete: () => darkHalo.destroy() });
-  scene.tweens.add({ targets: energyHalo, scale: 10, alpha: 0, duration: 430, ease: 'Cubic.easeOut', onComplete: () => energyHalo.destroy() });
-  scene.tweens.add({ targets: whiteCore, scale: 7.2, alpha: 0, duration: 230, ease: 'Cubic.easeOut', onComplete: () => whiteCore.destroy() });
-
-  // Duas ondas de choque, uma imediata e outra atrasada.
-  shockRing(scene, x, y + 12, 135, palette, 1.25, 0);
-  shockRing(scene, x, y + 12, 165, palette, 0.75, 90);
-
-  // Raios curtos, largos e pixelados: grande impacto sem encher a tela de partículas miúdas.
-  for (let i = 0; i < 18; i++) {
-    const a = (i / 18) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.1, 0.1);
-    const ray = scene.add.rectangle(
-      x,
-      y,
-      Phaser.Math.FloatBetween(18, 40),
-      Phaser.Math.FloatBetween(2, 5),
-      i % 4 === 0 ? palette.bright : palette.main,
-      Phaser.Math.FloatBetween(0.55, 0.9)
-    )
-      .setDepth(DEPTH_FRONT_FX)
-      .setBlendMode(Phaser.BlendModes.ADD)
-      .setOrigin(0, 0.5)
-      .setRotation(a);
-    scene.tweens.add({
-      targets: ray,
-      scaleX: Phaser.Math.FloatBetween(2.5, 5.5),
-      alpha: 0,
-      duration: Phaser.Math.Between(220, 410),
-      ease: 'Cubic.easeOut',
-      onComplete: () => ray.destroy()
-    });
+    }
+    this.camera = new BossCinematicCamera(scene);
+    this.camera.focus({ x: this.x, y: this.y });
+    this.pipe = acquirePipe(scene);
+    if (this.pipe) {
+      this.lens = { wx: this.x, wy: this.footY, r: 0, a: 0 };
+      this.pipe.fx.rings.push(this.lens);
+      this.savedFlashColor = this.pipe.fx.flashColor;
+      this.pipe.fx.flashColor = [0.78, 1, 0.94];
+    }
+    this.music = MusicManager.bossSound;
+    this.musicVolume = this.music?.volume ?? 0;
+    if (this.music) scene.tweens.killTweensOf(this.music);
+    this.events = [
+      [0, stale => { if (!stale) { this.sound('sfx_minotaur_heavy_axe_impact', 0.9, 0.72); this.shake(210, 0.021); } }],
+      [480, stale => this.pulse(stale, 0.5)],
+      [980, stale => this.pulse(stale, 0.75)],
+      [1570, stale => this.pulse(stale, 1)],
+      [ROAR, stale => { if (!stale) { this.sound('sfx_minotaur_cleave_roar', 0.95, 0.78); this.shake(430, 0.011); } }],
+      [SILENCE, () => this.stopSounds()],
+      [BLAST, stale => this.blast(stale)],
+      [LAND, stale => this.land(stale)]
+    ];
+    this.tick = (_time, delta) => this.update(delta);
+    this.shutdown = () => this.destroy();
+    scene.events.on('update', this.tick);
+    scene.events.once('shutdown', this.shutdown);
   }
 
-  // Pixels do corpo se desfazendo em fragmentos energizados.
-  const halfW = Math.max(22, boss.displayWidth * 0.28);
-  const halfH = Math.max(28, boss.displayHeight * 0.32);
-  for (let i = 0; i < 34; i++) {
-    const sx = x + Phaser.Math.FloatBetween(-halfW, halfW);
-    const sy = y + Phaser.Math.FloatBetween(-halfH, halfH);
-    const a = Math.atan2(sy - y, sx - x) + Phaser.Math.FloatBetween(-0.45, 0.45);
-    const dist = Phaser.Math.FloatBetween(45, 145);
-    const size = Phaser.Math.Between(3, 7);
-    const pixel = scene.add.rectangle(
-      sx,
-      sy,
-      size,
-      Phaser.Math.Between(2, 6),
-      Phaser.Utils.Array.GetRandom([palette.deep, palette.mid, palette.main, palette.bright, 0x26343a]),
-      0.95
-    )
-      .setDepth(DEPTH_FRONT_FX + 1)
-      .setRotation(Phaser.Math.FloatBetween(0, Math.PI));
-    scene.tweens.add({
-      targets: pixel,
-      x: sx + Math.cos(a) * dist,
-      y: sy + Math.sin(a) * dist * 0.72 - Phaser.Math.FloatBetween(0, 35),
-      rotation: pixel.rotation + Phaser.Math.FloatBetween(-4, 4),
-      alpha: 0,
-      duration: Phaser.Math.Between(380, 720),
-      ease: 'Cubic.easeOut',
-      onComplete: () => pixel.destroy()
-    });
+  image(key, depth, additive = true) {
+    const image = this.scene.add.image(0, 0, key).setDepth(depth).setVisible(false);
+    if (additive) image.setBlendMode(Phaser.BlendModes.ADD);
+    for (const cam of this.scene.cameras.cameras) if (cam !== this.scene.cameras.main) cam.ignore(image);
+    this.images.push(image);
+    return image;
   }
 
-  // Poeira pesada fica baixa, para o jogador continuar enxergando a arena.
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.25, 0.25);
-    const d = Phaser.Math.FloatBetween(20, 75);
-    const puff = scene.add.circle(
-      x + Math.cos(a) * d * 0.35,
-      y + 10 + Math.sin(a) * d * 0.18,
-      Phaser.Math.FloatBetween(8, 17),
-      i % 3 === 0 ? palette.deep : palette.smoke,
-      Phaser.Math.FloatBetween(0.38, 0.62)
-    ).setDepth(DEPTH_BODY_FX - 2);
-    scene.tweens.add({
-      targets: puff,
-      x: x + Math.cos(a) * d * 1.25,
-      y: y + 10 + Math.sin(a) * d * 0.5 - Phaser.Math.FloatBetween(4, 18),
-      scale: Phaser.Math.FloatBetween(1.4, 2.1),
-      alpha: 0,
-      duration: Phaser.Math.Between(520, 900),
-      ease: 'Sine.easeOut',
-      onComplete: () => puff.destroy()
-    });
+  sound(key, volume, rate = 1) {
+    if (!this.scene.cache.audio.exists(key)) return;
+    const sound = this.scene.sound.add(key, { volume: volume * SettingsManager.getSfx(), rate });
+    this.sounds.add(sound);
+    sound.once('complete', () => { this.sounds.delete(sound); this.pausedSounds.delete(sound); sound.destroy(); });
+    sound.play();
   }
 
-  if (boss.active) {
-    scene.tweens.killTweensOf(boss);
-    scene.tweens.add({
-      targets: boss,
-      alpha: 0,
-      scaleX: boss.scaleX * 1.12,
-      scaleY: boss.scaleY * 1.12,
-      duration: 190,
-      ease: 'Cubic.easeOut'
-    });
-    if (boss.shadow?.active) {
-      scene.tweens.add({ targets: boss.shadow, alpha: 0, scaleX: 1.5, scaleY: 0.75, duration: 260 });
+  stopSounds() {
+    for (const sound of this.sounds) { sound.stop(); sound.destroy(); }
+    this.sounds.clear();
+    this.pausedSounds.clear();
+  }
+
+  shake(ms, intensity) { this.scene.cameras.main.shake(ms, intensity, true); }
+
+  pulse(stale, power) {
+    if (stale) return;
+    this.sound('sfx_minotaur_stomp', power * 0.27, 0.68);
+    this.shake(140, power * 0.008);
+    this.burst(this.x, this.y, this.lite ? 5 : 9, 'spark', 120 * power);
+  }
+
+  burst(x, y, count, kind, speed) {
+    let remaining = reserveFx(this.scene, count);
+    for (const p of this.pool) {
+      if (!remaining) break;
+      if (p.live) continue;
+      remaining--;
+      const a = rand(0, TAU), v = speed * rand(0.45, 1.1);
+      p.live = true; p.age = 0; p.x = x; p.y = y;
+      p.dust = kind === 'dust';
+      p.life = p.dust ? rand(1500, 2400) : rand(650, 1350);
+      p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v * 0.5 - (p.dust ? 8 : rand(40, 130));
+      p.gravity = p.dust ? 0 : 280;
+      p.spin = p.dust ? 0 : rand(-5, 5);
+      p.scale = p.dust ? rand(1.2, 2.3) : kind === 'debris' ? rand(0.7, 1.6) : rand(0.25, 0.65);
+      p.alpha = p.dust ? 0.38 : 0.95;
+      p.image.setTexture(p.dust ? 'tremor_dust' : kind === 'debris' ? 'tremor_shard_a' : 'tremor_spark')
+        .setBlendMode(kind === 'spark' ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL)
+        .setTint(p.dust ? 0x42565a : kind === 'debris' ? 0x527172 : AQUA)
+        .setPosition(x, y).setRotation(a).setVisible(true);
     }
   }
-}
 
-// Duração aproximada: 2,55 s.
-// onComplete é chamado só depois do grande estouro, para XP/score/música de boss
-// não cortarem o clímax no primeiro frame em que a vida chegou a zero.
-export function playMinotaurDeathSequence(scene, boss, onComplete) {
-  if (!scene?.sys?.isActive() || !boss?.active) {
-    onComplete?.();
-    return;
+  blast(stale) {
+    this.boss.setVisible(false);
+    this.boss.shadow?.setVisible(false);
+    if (stale) return;
+    this.shake(650, 0.035);
+    this.scene.cameras.main.flash(85, 215, 255, 245, true);
+    this.sound('sfx_blastwave', 0.95, 0.82);
+    this.sound('sfx_cyberus_explosion', 0.7, 0.7);
+    this.burst(this.x, this.y, this.lite ? 13 : 28, 'debris', 255);
+    this.burst(this.x, this.footY, this.lite ? 8 : 14, 'dust', 155);
+    this.burst(this.x, this.y, this.lite ? 12 : 25, 'spark', 350);
   }
 
-  const palette = boss.isEnraged ? PHASE2 : PHASE1;
-  const originX = boss.x;
-  const originY = boss.y;
-  const baseScaleX = boss.scaleX;
-  const baseScaleY = boss.scaleY;
+  land(stale) {
+    if (stale) return;
+    this.sound('sfx_minotaur_heavy_axe_impact', 0.7, 0.92);
+    this.sound('sfx_axe_dirt', 0.6, 0.85);
+    this.shake(200, 0.012);
+    this.burst(this.landX, this.landY, this.lite ? 5 : 9, 'dust', 60);
+    this.burst(this.landX, this.landY, this.lite ? 4 : 7, 'debris', 90);
+  }
 
-  // 0 ms — golpe fatal: trava curta, corpo branco e o chão responde na hora.
-  briefHitstop(scene, 92);
-  scene.cameras.main.shake(190, 0.024);
-  scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.82, rate: 0.78 });
-  bodyFlash(scene, boss, palette, 1, 105);
-  shockRing(scene, originX, originY + 10, 78, palette, 0.8);
-  spawnGroundDebris(scene, originX, originY + 12, 70, palette, 8);
-
-  // 180 ms — pernas cedem. Sem fingir animação: squash curto e deliberado.
-  safeLater(scene, 180, () => {
-    if (!boss.active) return;
-    scene.tweens.add({
-      targets: boss,
-      y: originY + 11,
-      scaleX: baseScaleX * 1.055,
-      scaleY: baseScaleY * 0.88,
-      duration: 360,
-      ease: 'Cubic.easeOut'
-    });
-    if (boss.shadow?.active) {
-      scene.tweens.add({ targets: boss.shadow, scaleX: 1.16, scaleY: 0.86, alpha: 0.32, duration: 360 });
+  update(delta) {
+    if (this.done) return;
+    if (!this.boss.active) { this.destroy(); return; }
+    const paused = this.scene.isPaused || this.scene.time.timeScale === 0;
+    if (paused) {
+      for (const sound of this.sounds) if (sound.isPlaying) { sound.pause(); this.pausedSounds.add(sound); }
+      return;
     }
-  });
-
-  // 420/760/1080 ms — três batidas de instabilidade, cada uma mais forte.
-  [
-    { t: 420, shake: 0.006, count: 7, power: 0.75, ring: 58 },
-    { t: 760, shake: 0.009, count: 10, power: 0.95, ring: 72 },
-    { t: 1080, shake: 0.014, count: 14, power: 1.18, ring: 92 }
-  ].forEach((pulse, index) => {
-    safeLater(scene, pulse.t, () => {
-      if (!boss.active) return;
-      scene.cameras.main.shake(95 + index * 25, pulse.shake);
-      scene.sound.play('sfx_minotaur_stomp', { volume: 0.18 + index * 0.08, rate: 0.72 + index * 0.08 });
-      bodyFlash(scene, boss, palette, 0.9, 68);
-      spawnLeakBurst(scene, boss, palette, pulse.count, pulse.power);
-      shockRing(scene, boss.x, originY + 12, pulse.ring, palette, 0.5 + index * 0.12);
-    });
-  });
-
-  // 1320 ms — rachaduras começam a anunciar o ponto do colapso final.
-  safeLater(scene, 1320, () => {
-    const crack = scene.add.graphics().setDepth(DEPTH_GROUND + 0.2);
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.18, 0.18);
-      const len = Phaser.Math.FloatBetween(34, 72);
-      crack.lineStyle(5, 0x111a1e, 0.78);
-      crack.beginPath();
-      crack.moveTo(originX, originY + 12);
-      crack.lineTo(originX + Math.cos(a) * len * 0.48, originY + 12 + Math.sin(a) * len * 0.34);
-      crack.lineTo(originX + Math.cos(a + 0.1) * len, originY + 12 + Math.sin(a + 0.1) * len * 0.7);
-      crack.strokePath();
-      crack.lineStyle(1.7, palette.main, 0.68);
-      crack.beginPath();
-      crack.moveTo(originX, originY + 12);
-      crack.lineTo(originX + Math.cos(a) * len * 0.48, originY + 12 + Math.sin(a) * len * 0.34);
-      crack.lineTo(originX + Math.cos(a + 0.1) * len, originY + 12 + Math.sin(a + 0.1) * len * 0.7);
-      crack.strokePath();
+    for (const sound of this.pausedSounds) if (this.sounds.has(sound) && sound.isPaused) sound.resume();
+    this.pausedSounds.clear();
+    this.dtEma += (Math.min(delta, 100) - this.dtEma) * 0.08;
+    const dt = Math.min(delta, 80) * this.scene.time.timeScale;
+    this.t += dt;
+    while (this.nextEvent < this.events.length && this.t >= this.events[this.nextEvent][0]) {
+      const [at, fn] = this.events[this.nextEvent++];
+      fn(this.t - at > 220);
     }
-    scene.tweens.add({ targets: crack, alpha: 0, delay: 1150, duration: 900, onComplete: () => crack.destroy() });
-  });
+    this.body();
+    this.light();
+    this.weapon();
+    const debrisAge = (this.t - BLAST) / 1000;
+    for (const piece of this.fragments) {
+      piece.image.setVisible(debrisAge >= 0 && debrisAge < 1.15);
+      if (debrisAge < 0 || debrisAge >= 1.15) continue;
+      piece.image.setPosition(this.x + piece.vx * debrisAge,
+        this.y + piece.vy * debrisAge + 100 * debrisAge * debrisAge)
+        .setRotation(piece.spin * debrisAge).setAlpha(1 - smooth(debrisAge / 1.15));
+    }
+    if (this.t > 550 && this.t < SILENCE && this.t >= this.nextLeak && this.dtEma < 35) {
+      this.nextLeak = this.t + (this.lite ? 170 : 100);
+      this.burst(this.x + rand(-20, 20), this.y + rand(-25, 18), 2, 'spark', 75);
+    }
+    for (const p of this.pool) {
+      if (!p.live) continue;
+      p.age += dt;
+      const u = clamp(p.age / p.life), seconds = dt / 1000;
+      if (u === 1) { p.live = false; p.image.setVisible(false); continue; }
+      p.vy += p.gravity * seconds; p.x += p.vx * seconds; p.y += p.vy * seconds;
+      p.image.setPosition(p.x, p.y).setRotation(p.image.rotation + p.spin * seconds)
+        .setScale(p.scale * (p.dust ? 1 + u * 2 : 1 - u * 0.35))
+        .setAlpha(p.alpha * (1 - smooth(u)));
+    }
+    if (this.music && !this.music.pendingRemove && MusicManager.bossSound === this.music) {
+      this.music.setVolume(this.musicVolume * (1 - smooth((this.t - 350) / (SILENCE - 350))));
+    }
+    if (this.t >= MINOTAUR_DEATH_END_MS) {
+      const callback = this.onComplete;
+      this.destroy(true);
+      callback?.();
+    }
+  }
 
-  // 1640 ms — implosão: tudo vai para dentro antes do rompimento.
-  safeLater(scene, 1640, () => {
-    if (!boss.active) return;
-    scene.cameras.main.shake(160, 0.008);
-    scene.sound.play('sfx_blastwave', { volume: 0.28, rate: 0.55 });
-    spawnImplosion(scene, boss, palette);
-    boss.setTint(0x071216);
-    scene.tweens.add({
-      targets: boss,
-      scaleX: baseScaleX * 0.94,
-      scaleY: baseScaleY * 0.82,
-      duration: 280,
-      ease: 'Cubic.easeIn'
-    });
-  });
+  body() {
+    if (this.t >= BLAST) return;
+    const b = this.boss, t = this.t;
+    const kneel = smooth((t - 100) / 500);
+    const rise = smooth((t - (ROAR - 300)) / 450);
+    const strain = clamp((t - 600) / 2000);
+    const silence = t >= SILENCE;
+    const tremble = silence ? 0 : strain * this.motionK;
+    const sx = lerp(1, 1.09, kneel) - rise * 0.13;
+    const sy = lerp(1, 0.69, kneel) + rise * 0.43;
+    b.setScale(this.scale * sx, this.scale * sy);
+    b.setPosition(this.x + Math.sin(t * 0.071) * tremble * 3,
+      this.footY - this.height * sy * b._shadowYFrac + Math.sin(t * 0.091) * tremble);
+    b.setRotation((kneel * 0.08 - rise * 0.13) * this.side * this.motionK);
+    b.setAlpha(1);
+    if (t < 95 && this.flashK > 0.5) b.setTintFill(WHITE);
+    else if (silence) b.setTint(0x457773);
+    else b.clearTint();
+    b._tfGlow = silence ? 0 : strain * 1.3;
+    if (b.shadow?.active) b.shadow.setPosition(this.x, this.footY).setScale(1 + kneel * 0.12, 1);
+  }
 
-  // 1980 ms — ruptura final.
-  safeLater(scene, 1980, () => {
-    finalRupture(scene, boss, originX, originY + 2, palette);
-  });
+  light() {
+    const t = this.t, age = t - BLAST;
+    const tension = clamp((t - 450) / (SILENCE - 450));
+    const silent = t >= SILENCE && t < BLAST;
+    const shock = age >= 0 ? 1 - clamp(age / 600) : 0;
+    const aura = t < BLAST ? (silent ? 0.04 : tension * (0.25 + 0.12 * Math.sin(t * 0.025))) : shock * 0.8;
+    this.aura.setVisible(true).setPosition(this.x, this.y).setScale(t < BLAST ? 1.2 + tension : 2 + out(age / 500) * 4)
+      .setAlpha(aura * this.flashK);
+    this.core.setVisible(true).setPosition(this.x, this.y - 8)
+      .setScale(age < 0 ? (silent ? 0.18 : 0.3 + tension * 0.35) : 0.3 + out(age / 220) * 3.8)
+      .setAlpha((age < 0 ? (silent ? 0.4 : tension * 0.65) : 1 - clamp(age / 240)) * this.flashK);
+    this.beam.setVisible(age >= 0 && age < 750).setPosition(this.x, this.footY)
+      .setScale((0.6 + shock * 2) * this.flashK, 2.2).setAlpha(shock * 0.65 * this.flashK);
+    this.scar.setVisible(age >= 0).setAlpha(0.85);
+    this.cracks.setVisible(t > 900).setAlpha((age < 0 ? (silent ? 0.03 : tension * 0.6) : (1 - clamp(age / 1900))) * this.flashK);
+    for (let i = 0; i < this.rings.length; i++) {
+      const ring = this.rings[i];
+      const at = i < 3 ? BLAST + i * 115 : i === 3 ? ROAR : LAND;
+      const duration = i < 3 ? 820 : 600;
+      const u = (t - at) / duration;
+      ring.setVisible(u >= 0 && u < 1);
+      if (u < 0 || u >= 1) continue;
+      const radius = (i < 3 ? 310 - i * 50 : i === 3 ? 110 : 65) * out(u);
+      ring.setPosition(i === 4 ? this.landX : this.x, i === 4 ? this.landY : this.footY)
+        .setScale(radius / 116, radius / 116 * 0.68).setAlpha((1 - u) * this.flashK);
+    }
+    if (this.pipe) {
+      const f = this.pipe.fx;
+      f.focusX = this.x; f.focusY = this.y;
+      f.pinch = t < SILENCE ? tension * 0.018 * this.motionK : 0;
+      f.aberr = shock * 1.8 * this.flashK;
+      f.flashA = 0; // flash único da câmera, já respeita a opção de acessibilidade.
+      this.lens.r = 0.015 + out(age / 850) * 0.85;
+      this.lens.a = age >= 0 && age < 850 ? (1 - age / 850) * 0.045 * this.motionK : 0;
+    }
+  }
 
-  // Dá tempo da onda/fragmentos aparecerem antes do objeto real sumir e do
-  // evento enemy-died disparar score/XP/restauração da música.
-  safeLater(scene, 2550, () => onComplete?.());
+  weapon() {
+    const t = this.t;
+    if (t < BLAST) return;
+    this.axe.setVisible(true);
+    if (t < LAND) {
+      const u = clamp((t - BLAST) / (LAND - BLAST));
+      this.axe.setPosition(lerp(this.x, this.landX, u),
+        lerp(this.y - 20, this.landY, u) - Math.sin(Math.PI * u) * 155)
+        .setRotation(lerp(-TAU - 1.35, -1.35, smooth(u)));
+    } else {
+      const age = (t - LAND) / 1000;
+      this.axe.setDepth(8.1).setPosition(this.landX, this.landY)
+        .setRotation(-1.35 + Math.sin(age * 29) * Math.exp(-age * 6) * 0.16 * this.motionK);
+      this.mound.setVisible(true);
+    }
+  }
+
+  destroy(keepRelic = false) {
+    if (this.done) return;
+    this.done = true;
+    this.scene.events.off('update', this.tick);
+    this.scene.events.off('shutdown', this.shutdown);
+    this.stopSounds();
+    this.camera.release(!keepRelic);
+    this.boss._tfGlow = 0;
+    if (this.pipe) {
+      const f = this.pipe.fx, at = f.rings.indexOf(this.lens);
+      if (at >= 0) f.rings.splice(at, 1);
+      f.pinch = 0; f.aberr = 0; f.flashA = 0;
+      f.flashColor = this.savedFlashColor;
+      releasePipe(this.scene, this.pipe);
+      this.pipe = null;
+    }
+    for (const image of this.images) {
+      if (keepRelic && (image === this.axe || image === this.mound || image === this.scar)) continue;
+      image.destroy();
+    }
+    this.images.length = 0;
+    this.pool.length = 0;
+    if (!keepRelic && this.music && !this.music.pendingRemove && MusicManager.bossSound === this.music) {
+      MusicManager.applyLiveMusicVolume();
+    }
+  }
 }

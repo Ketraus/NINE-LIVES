@@ -1,5 +1,5 @@
 import { playMeteorImpact, setupMeteorRockFx, updateMeteorRockFx, playMeteorAmbientRain } from '../../fx/MinotaurMeteorFx.js';
-import { playMinotaurDeathSequence } from '../../fx/MinotaurDeathFx.js';
+import MinotaurDeathFx from '../../fx/MinotaurDeathFx.js';
 import EventBus from '../../systems/EventBus.js';
 import { updateMinotaurDevControl } from '../../systems/MinotaurDevControl.js';
 import {
@@ -172,6 +172,8 @@ export default class Minotaur extends Enemy {
     this.isEnraged = false;
     this.rageHpThreshold = def.rageHpThreshold || 0;
     this._deathSequenceStarted = false;
+    this.deathFx = null;
+    this._deathRemovalRequested = false;
     // Transformação da fase 2 (ver _triggerRage/_beginTransformation): invulnerável do momento em
     // que a vida cruza o limiar até o fim da sequência (~2s), sem pausar o jogo.
     this.invulnerable = false;
@@ -248,31 +250,41 @@ export default class Minotaur extends Enemy {
 
   // Rage: entra em fúria quando a vida cai abaixo de def.rageHpThreshold (ver _triggerRage).
   _onHealthChange(current, max) {
+    if (this._deathSequenceStarted) return;
     if (!this.isEnraged && !this._tfPending && !this.transformFx &&
       this.rageHpThreshold > 0 && current <= max * this.rageHpThreshold) {
       this._triggerRage();
     }
   }
 
-  // Morte do boss é uma sequência própria: o objeto continua ativo por ~2,5s
-  // para a coreografia terminar. XP/score/drop e fade da música só acontecem
-  // no estouro final, em vez de cortarem o clímax no frame em que HP chega a 0.
-  die() {
+  // O encontro termina depois da poeira baixar. Só o Host entrega as recompensas.
+  die(ageMs = 0, origin = null) {
     if (!this.active || this._deathSequenceStarted) return;
     this._deathSequenceStarted = true;
     this.transformFx?.destroy();
     this.transformFx = null;
-    this.invulnerable = false;
+    this.invulnerable = true;
     this._tfPending = false;
 
     this.scene.tweens.killTweensOf(this);
-    const deathX = this.x;
-    const deathY = this.y;
+    const deathX = origin?.x ?? this.x;
+    const deathY = origin?.y ?? this.y;
     this._clearMeteors();
     this._clearLeap();
     this._clearBossTelegraph();
     this._cleanupSpecial();
     this._stopChargeFootsteps();
+    this.axeSprite = null;
+    this.networkAxeSprite = null;
+    this.networkMeteorGraphics = null;
+    this.axePhase = null;
+    this.meteorRainActive = false;
+    this._netChargeState = null;
+    this._netMeteors = [];
+    this.glowFx?.destroy();
+    this.glowFx = null;
+    this.furyFx?.destroy();
+    this.furyFx = null;
 
     this.bossState = 'dead';
     this.fleeing = false;
@@ -282,31 +294,34 @@ export default class Minotaur extends Enemy {
     this.isIdleVisual = true;
     if (this.body) this.body.enable = false;
     this.anims.stop();
+    this.isDisarmed = false;
+    this._refreshBossVisual();
+    this.setVisible(true).setAlpha(1).setScale(this.baseScale);
+    this._deathOrigin = { x: deathX, y: deathY };
 
-    playMinotaurDeathSequence(this.scene, this, () => {
-      if (!this.active) return;
-      EventBus.emit('enemy-died', {
-        enemyId: this.def.id,
-        networkId: this.networkId,
-        killerPlayerId: this.killerPlayerId || null,
-        x: deathX,
-        y: deathY,
-        xpReward: this.def.xpReward,
-        color: this.def.color
-      });
-      this.destroy();
-    });
+    this.deathFx = new MinotaurDeathFx(this.scene, this, () => this._completeDeath(), ageMs, this._deathOrigin);
   }
 
-  // Garante que meteoros e aura do salto somem junto quando o boss é destruído.
-  destroy(fromScene) {
-    this._clearMeteors();
-    this._clearLeap();
-    super.destroy(fromScene);
+  _completeDeath() {
+    if (!this.active || this._deathReported) return;
+    if (this.networkReplica) {
+      // Espera a confirmação do Host para não ser recriado pelo snapshot seguinte.
+      if (this._deathRemovalRequested) this.destroy();
+      return;
+    }
+    this._deathReported = true;
+    EventBus.emit('enemy-died', {
+      enemyId: this.def.id, networkId: this.networkId,
+      killerPlayerId: this.killerPlayerId || null,
+      x: this._deathOrigin.x, y: this._deathOrigin.y,
+      xpReward: this.def.xpReward, color: this.def.color
+    });
+    this.destroy();
   }
 
   // Chuva de Meteoros roda EM PARALELO a qualquer estado do corpo
   _adjustChaseSpeed(target, nowMs, speedMultiplier) {
+    if (this._deathSequenceStarted) return 0;
     this._updateMeteorRain(target, nowMs);
     // agressividade pós-salto: só um multiplicador temporário, nada é
     // alterado de forma permanente — passou leapAggroUntil, volta ao normal
@@ -317,6 +332,10 @@ export default class Minotaur extends Enemy {
   }
 
   _specialChase(target, nowMs) {
+    if (this._deathSequenceStarted) {
+      this.setVelocity(0, 0);
+      return true;
+    }
     updateMinotaurDevControl(this, target, nowMs);
     // Boss/Minotauro: mesma lógica do Elite acima — só assume o
     // Entrada: parado durante o flash/pop (ver entranceIdleMs); depois anda, mas
@@ -385,6 +404,12 @@ export default class Minotaur extends Enemy {
 
   preUpdate(time, delta) {
     super.preUpdate(time, delta);
+    if (this._deathSequenceStarted) {
+      // Uma réplica pode virar Host depois de terminar sua animação local.
+      if (this.deathFx?.done && !this.networkReplica) { this._completeDeath(); return; }
+      this.arenaFx?.update(time, delta);
+      return;
+    }
     if (this.active) {
       this._updateWeight(delta);
       if (this.transformFx) {
@@ -399,6 +424,10 @@ export default class Minotaur extends Enemy {
   }
 
   destroy(fromScene) {
+    this.deathFx?.destroy();
+    this.deathFx = null;
+    this._clearMeteors();
+    this._clearLeap();
     this.transformFx?.destroy();
     this.transformFx = null;
     this.glowFx?.destroy();
@@ -442,6 +471,11 @@ export default class Minotaur extends Enemy {
   }
 
   getNetworkVisualState(nowMs) {
+    if (this._deathSequenceStarted) return {
+      bossState: 'dead', isEnraged: this.isEnraged,
+      deathAge: this.deathFx?.t ?? 0,
+      deathX: this._deathOrigin.x, deathY: this._deathOrigin.y
+    };
     const cleaveProgress = this.bossState === 'cleave_pause'
       ? 1
       : this.bossState === 'cleave_telegraph'
@@ -489,6 +523,17 @@ export default class Minotaur extends Enemy {
 
   syncNetworkVisualState(state, nowMs) {
     if (!state || typeof state.bossState !== 'string') return;
+    // Começa a mesma cutscene localmente quando o Host anuncia a morte.
+    // Enquanto ela roda, snapshots seguintes não podem sobrescrever o squash/fade.
+    if (state.bossState === 'dead' && !this._deathSequenceStarted) {
+      this.isEnraged = state.isEnraged === true;
+      const origin = Number.isFinite(state.deathX) && Number.isFinite(state.deathY)
+        ? { x: state.deathX, y: state.deathY } : null;
+      this.die(state.deathAge, origin);
+      this._netPrevBossState = 'dead';
+      return;
+    }
+    if (this._deathSequenceStarted) return;
     // A dev reset can interrupt a transformation or windup on the host.
     if (Number.isSafeInteger(state.devRevision) && state.devRevision > (this._netDevRevision || 0)) {
       this._netDevRevision = this._devRevision = state.devRevision;
@@ -591,6 +636,15 @@ export default class Minotaur extends Enemy {
     } else {
       this.networkMeteorGraphics?.clear();
     }
+  }
+
+  // O pacote de morte pode chegar antes do fim da cutscene local na réplica.
+  _leave() {
+    if (this.deathFx && !this.deathFx.done) {
+      this._deathRemovalRequested = true;
+      return;
+    }
+    super._leave();
   }
 
   _syncChargeVisuals(state, previous, nowMs) {

@@ -347,7 +347,7 @@ export default class MultiplayerManager {
     const enemyCollider = this.scene.enemySpawner?.enemyCollisionCollider;
     if (enemyCollider && !this.isRoomHost) enemyCollider.active = false;
     this.remoteEnemies.forEach((enemy) => {
-      if (!enemy.active || !Number.isFinite(enemy.targetX)) return;
+      if (!enemy.active || enemy._deathSequenceStarted || !Number.isFinite(enemy.targetX)) return;
       const blend = Math.min(1, delta / ENEMY_SNAPSHOT_INTERVAL_MS);
       const dx = enemy.targetX - enemy.x;
       const dy = enemy.targetY - enemy.y;
@@ -1657,6 +1657,8 @@ export default class MultiplayerManager {
         enemy.targetX = x;
         enemy.targetY = y;
       }
+      // A cutscene controla pose, posição, animação e tint até a remoção confirmada.
+      if (enemy._deathSequenceStarted) return;
       enemy.targetX = x;
       enemy.targetY = y;
       enemy.healthSystem.current = Phaser.Math.Clamp(hpTenths / 10, 0, enemy.healthSystem.maxHp);

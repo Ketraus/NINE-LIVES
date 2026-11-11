@@ -11,7 +11,8 @@ export default class DamageSystem {
   // dano. Único ponto de bloqueio — contato, explosão, míssil, boss e Sealer
   // passam por aqui, inclusive golpes agendados que ainda estavam no ar.
   static _isDisarmedEnemyHit(attacker, target) {
-    return !!attacker?.def && !target?.def && attacker.scene?.enemiesDisarmed === true;
+    return !!attacker?.def && !target?.def &&
+      (attacker._deathSequenceStarted === true || attacker.scene?.enemiesDisarmed === true);
   }
 
   // Mesma ideia pro lado do jogador (GameScene.playerAttacksDisabled): arma,

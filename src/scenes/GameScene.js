@@ -717,7 +717,8 @@ export default class GameScene extends Phaser.Scene {
     this.runManager.registerKill();
     this.scoreManager.registerKill(enemyId);
     this._spawnDrops(event.drops, x, y, xpReward);
-    this._spawnDeathFx(x, y, color);
+    // O Minotauro já teve sua ruptura; não adiciona outro estouro sobre o machado.
+    if (enemyId !== 'minotaur') this._spawnDeathFx(x, y, color);
   }
 
   // Só o Host/solo sorteia; todos recebem os mesmos drops.
