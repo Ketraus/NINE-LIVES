@@ -12,6 +12,7 @@ const ROAR = 2050;
 const SILENCE = 3180;
 const BLAST = 3770;
 const LAND = 4870;
+const FINALE = 6150;
 const LEGACY_DEATH_END_MS = 6900;
 export const MINOTAUR_DEATH_END_MS = MINOTAUR_DEATH_INTRO_MS + LEGACY_DEATH_END_MS;
 const AQUA = 0x32e9d6;
@@ -77,6 +78,8 @@ export default class MinotaurDeathFx {
     this.sounds = new Set();
     this.pausedSounds = new Set();
     this.done = false;
+    this.finalPulse = 0;
+    this.emberAcc = 0;
     this.nextEvent = 0;
     this.nextLeak = Math.max(0, this.t - MINOTAUR_DEATH_INTRO_MS);
     this.dtEma = 16;
@@ -85,12 +88,18 @@ export default class MinotaurDeathFx {
     this.cracks = this.image('minotaur_death_cracks', 2.1).setPosition(this.x, this.footY);
     this.aura = this.image('tremor_glow', 8.5).setTint(AQUA);
     this.core = this.image('tremor_glow', 10.5).setTint(WHITE);
+    this.singularityHalo = this.image('tremor_glow', 9.9).setTint(AQUA);
+    this.singularity = this.image('tremor_glow', 11.1).setTint(WHITE);
     this.beam = this.image('tremor_beam', 8.8).setOrigin(0.5, 1).setTint(AQUA);
     this.rings = Array.from({ length: 5 }, () => this.image('minotaur_death_ring', 2.4));
     this.axe = this.image('minotaur_axe_thrown_rage', 15, false)
       .setOrigin(23 / 64, 40 / 64).setScale(2.8);
     this.mound = this.image('tremor_pebble_b', 8.2, false).setTint(0x364448)
       .setPosition(this.landX, this.landY + 3).setScale(4.4, 1.25);
+    this.axeGlow = this.image('tremor_glow', 8.0).setTint(AQUA);
+    this.axeRing = this.image('minotaur_death_ring', 7.9).setTint(AQUA);
+    this.finalFlareH = this.image('tremor_glow', 14).setTint(WHITE);
+    this.finalFlareV = this.image('tremor_glow', 14).setTint(WHITE);
     this.pool = Array.from({ length: this.lite ? 48 : 96 }, () => ({
       image: this.image('tremor_spark', 14), live: false, age: 0, life: 1,
       x: 0, y: 0, vx: 0, vy: 0, gravity: 0, drag: 0, spin: 0, scale: 1, alpha: 1, dust: false
@@ -130,7 +139,8 @@ export default class MinotaurDeathFx {
       [MINOTAUR_DEATH_INTRO_MS + ROAR, stale => { if (!stale) { this.sound('sfx_minotaur_cleave_roar', 0.95, 0.78); this.shake(430, 0.011); } }],
       [MINOTAUR_DEATH_INTRO_MS + SILENCE, () => this.stopSounds()],
       [MINOTAUR_DEATH_INTRO_MS + BLAST, stale => this.blast(stale)],
-      [MINOTAUR_DEATH_INTRO_MS + LAND, stale => this.land(stale)]
+      [MINOTAUR_DEATH_INTRO_MS + LAND, stale => this.land(stale)],
+      [MINOTAUR_DEATH_INTRO_MS + FINALE, stale => this.finale(stale)]
     ];
     this.intro = new MinotaurDeathIntro(this);
     this.tick = (_time, delta) => this.update(delta);
@@ -240,22 +250,75 @@ export default class MinotaurDeathFx {
     this.boss.setVisible(false);
     this.boss.shadow?.setVisible(false);
     if (stale) return;
+    this.finalPulse = 0;
     this.shake(650, 0.035);
     this.scene.cameras.main.flash(85, 215, 255, 245, true);
     this.sound('sfx_blastwave', 0.95, 0.82);
     this.sound('sfx_cyberus_explosion', 0.7, 0.7);
-    this.burst(this.x, this.y, this.lite ? 13 : 28, 'debris', 255);
-    this.burst(this.x, this.footY, this.lite ? 8 : 14, 'dust', 155);
-    this.burst(this.x, this.y, this.lite ? 12 : 25, 'spark', 350);
+    this.burst(this.x, this.y, this.lite ? 13 : 28, 'debris', 255,
+      { drag: 1.6, gravity: 70, life: [1100, 2200], scale: [0.7, 1.6] });
+    this.burst(this.x, this.footY, this.lite ? 8 : 14, 'dust', 155,
+      { drag: 0.8, gravity: -12, life: [1700, 2600], scale: [1.2, 2.4] });
+    this.burst(this.x, this.y, this.lite ? 12 : 25, 'spark', 350,
+      { drag: 1.2, gravity: -35, life: [1000, 1900], scale: [0.25, 0.75] });
+    this.burst(this.x, this.y, this.lite ? 5 : 11, 'spark', 150,
+      { drag: 0.4, gravity: -90, life: [1500, 2400], scale: [0.2, 0.5], tint: WHITE });
   }
 
   land(stale) {
     if (stale) return;
     this.sound('sfx_minotaur_heavy_axe_impact', 0.7, 0.92);
     this.sound('sfx_axe_dirt', 0.6, 0.85);
-    this.shake(200, 0.012);
-    this.burst(this.landX, this.landY, this.lite ? 5 : 9, 'dust', 60);
-    this.burst(this.landX, this.landY, this.lite ? 4 : 7, 'debris', 90);
+    this.shake(280, 0.016);
+    this.burst(this.landX, this.landY, this.lite ? 5 : 9, 'dust', 60,
+      { drag: 0.6, gravity: -18, life: [1500, 2300], scale: [1.2, 2.6] });
+    this.burst(this.landX, this.landY, this.lite ? 4 : 7, 'debris', 90,
+      { drag: 1.1, gravity: 45, life: [900, 1600], scale: [0.5, 1.2] });
+    this.burst(this.landX, this.landY, this.lite ? 4 : 8, 'spark', 130,
+      { drag: 0.5, gravity: -45, life: [1100, 1900], scale: [0.2, 0.5], tint: WHITE });
+  }
+
+  finale(stale) {
+    if (stale) return;
+    this.finalPulse = 1;
+    this.shake(360, 0.016);
+    this.scene.cameras.main.flash(75, 190, 245, 220, true);
+    this.sound('sfx_minotaur_heavy_axe_impact', 0.42, 0.56);
+    this.burst(this.landX, this.landY, this.lite ? 5 : 10, 'spark', 170,
+      { drag: 0.6, gravity: -70, life: [900, 1500], scale: [0.2, 0.55], tint: WHITE });
+    this.burst(this.landX, this.landY, this.lite ? 3 : 6, 'dust', 45,
+      { drag: 0.4, gravity: -8, life: [1100, 1800], scale: [1, 1.8] });
+  }
+
+  emitAfterglow(t, dt) {
+    if (t < BLAST || t > FINALE + 360 || this.dtEma >= 35) return;
+    this.emberAcc += dt;
+    const every = this.lite ? 150 : 78;
+    while (this.emberAcc >= every) {
+      this.emberAcc -= every;
+      if (!reserveFx(this.scene, 1)) return;
+      const particle = this.take();
+      if (!particle) return;
+      const age = clamp((t - BLAST) / 1800);
+      const angle = rand(0, TAU);
+      const radius = rand(20, 125) * (0.85 + age * 0.35);
+      const sx = this.x + Math.cos(angle) * radius;
+      const sy = this.y + Math.sin(angle) * radius * 0.64;
+      this.spawn(particle, sx, sy, {
+        texture: 'tremor_spark',
+        add: true,
+        tint: Math.random() < 0.28 ? WHITE : AQUA,
+        life: [700, 1350],
+        scale: [0.18, 0.48],
+        alpha: 0.72,
+        vx: Math.cos(angle) * rand(18, 58) - Math.sin(angle) * rand(8, 22),
+        vy: -rand(28, 95) + Math.sin(angle) * 16,
+        gravity: -22,
+        drag: 0.5,
+        spin: rand(-2, 2),
+        rotation: angle
+      });
+    }
   }
 
   update(delta) {
@@ -284,6 +347,8 @@ export default class MinotaurDeathFx {
       this.weapon(phaseT);
     }
     this.intro.update(this.t, dt);
+    this.finalPulse = Math.max(0, this.finalPulse - dt / 900);
+    this.emitAfterglow(phaseT, dt);
     const debrisAge = (phaseT - BLAST) / 1000;
     for (const piece of this.fragments) {
       piece.image.setVisible(debrisAge >= 0 && debrisAge < 1.15);
@@ -325,23 +390,32 @@ export default class MinotaurDeathFx {
   body(t) {
     if (t >= BLAST) return;
     const b = this.boss;
-    const kneel = smooth((t - 100) / 500);
+    const carry = 1 - smooth(t / 520);
+    const kneel = smooth((t - 120) / 620);
     const rise = smooth((t - (ROAR - 300)) / 450);
-    const strain = clamp((t - 600) / 2000);
+    const strain = clamp((t - 520) / 2300);
     const silence = t >= SILENCE;
-    const tremble = silence ? 0 : strain * this.motionK;
-    const sx = lerp(1, 1.09, kneel) - rise * 0.13;
-    const sy = lerp(1, 0.69, kneel) + rise * 0.43;
+    const tremble = silence
+      ? 0
+      : (3 * carry + (0.4 + 2.6 * smooth((t - 700) / 2300)) * (1 - carry)) * this.motionK;
+    // Começa exatamente na pose em que a introdução termina e só depois
+    // deixa o peso do colosso desabar, evitando um corte visível entre fases.
+    const sx = lerp(0.982, 1, 1 - carry) * (1 + 0.09 * kneel) - rise * 0.13;
+    const sy = lerp(1.055, 1, 1 - carry) * (1 - 0.31 * kneel) + rise * 0.43;
+    const settleX = lerp(-this.side * 30, 0, 1 - carry);
     b.setScale(this.scale * sx, this.scale * sy);
-    b.setPosition(this.x + Math.sin(t * 0.071) * tremble * 3,
+    b.setPosition(this.x + settleX + Math.sin(t * 0.071) * tremble * 3,
       this.footY - this.height * sy * b._shadowYFrac + Math.sin(t * 0.091) * tremble);
-    b.setRotation((kneel * 0.08 - rise * 0.13) * this.side * this.motionK);
+    b.setRotation((-this.side * 0.105 * carry + kneel * 0.08 - rise * 0.13) * this.motionK);
     b.setAlpha(1);
     if (t < 95 && this.flashK > 0.5) b.setTintFill(WHITE);
     else if (silence) b.setTint(0x457773);
     else b.clearTint();
-    b._tfGlow = silence ? 0 : strain * 1.3;
-    if (b.shadow?.active) b.shadow.setPosition(this.x, this.footY).setScale(1 + kneel * 0.12, 1);
+    b._tfGlow = silence ? 0 : strain * 1.3 + smooth((t - 1700) / 1000) * 0.35;
+    if (b.shadow?.active) {
+      b.shadow.setPosition(this.x + settleX, this.footY)
+        .setScale(1 + kneel * 0.12 + smooth((t - 1800) / 700) * 0.12, 1);
+    }
   }
 
   light(t) {
@@ -355,6 +429,20 @@ export default class MinotaurDeathFx {
     this.core.setVisible(true).setPosition(this.x, this.y - 8)
       .setScale(age < 0 ? (silent ? 0.18 : 0.3 + tension * 0.35) : 0.3 + out(age / 220) * 3.8)
       .setAlpha((age < 0 ? (silent ? 0.4 : tension * 0.65) : 1 - clamp(age / 240)) * this.flashK);
+    const pressure = smooth((t - 1250) / 1850);
+    const implosion = smooth((t - (SILENCE - 720)) / 720);
+    const collapseA = t < BLAST
+      ? 0.08 + pressure * 0.24 + implosion * 0.34
+      : shock * 0.78 + this.finalPulse * 0.42;
+    const collapseScale = t < BLAST
+      ? 0.7 + pressure * 0.85 - implosion * 0.45
+      : 0.22 + out(age / 260) * 2.7;
+    this.singularityHalo.setVisible(collapseA > 0.004).setPosition(this.x, this.y - 8)
+      .setScale(collapseScale * 1.9, collapseScale * 1.25)
+      .setAlpha(Math.min(0.8, collapseA * 0.7) * this.flashK);
+    this.singularity.setVisible(collapseA > 0.004).setPosition(this.x, this.y - 8)
+      .setScale(collapseScale * (0.55 + 0.12 * Math.sin(t * 0.035)), collapseScale)
+      .setAlpha(Math.min(1, collapseA * 1.25) * this.flashK);
     this.beam.setVisible(age >= 0 && age < 750).setPosition(this.x, this.footY)
       .setScale((0.6 + shock * 2) * this.flashK, 2.2).setAlpha(shock * 0.65 * this.flashK);
     this.scar.setVisible(age >= 0).setAlpha(0.85);
@@ -373,28 +461,54 @@ export default class MinotaurDeathFx {
     if (this.pipe) {
       const f = this.pipe.fx;
       f.focusX = this.x; f.focusY = this.y;
-      f.pinch = t < SILENCE ? tension * 0.018 * this.motionK : 0;
-      f.aberr = shock * 1.8 * this.flashK;
+      f.pinch = t < SILENCE ? tension * 0.018 * this.motionK : -this.finalPulse * 0.012 * this.motionK;
+      f.aberr = Math.max(shock * 1.8, this.finalPulse * 1.35) * this.flashK;
       f.flashA = 0; // flash único da câmera, já respeita a opção de acessibilidade.
-      this.lens.r = 0.015 + out(age / 850) * 0.85;
+      this.lens.r = 0.015 + out(age / 850) * 0.85 + this.finalPulse * 0.18;
       this.lens.a = age >= 0 && age < 850 ? (1 - age / 850) * 0.045 * this.motionK : 0;
+      this.lens.a += this.finalPulse * 0.05 * this.motionK;
     }
   }
 
   weapon(t) {
-    if (t < BLAST) return;
+    if (t < BLAST) {
+      this.axeGlow.setVisible(false);
+      this.axeRing.setVisible(false);
+      this.finalFlareH.setVisible(false);
+      this.finalFlareV.setVisible(false);
+      return;
+    }
     this.axe.setVisible(true);
     if (t < LAND) {
       const u = clamp((t - BLAST) / (LAND - BLAST));
       this.axe.setPosition(lerp(this.x, this.landX, u),
         lerp(this.y - 20, this.landY, u) - Math.sin(Math.PI * u) * 155)
         .setRotation(lerp(-TAU - 1.35, -1.35, smooth(u)));
+      this.axeGlow.setVisible(true).setPosition(this.axe.x, this.axe.y)
+        .setScale(0.5 + (1 - u) * 0.65).setAlpha((0.18 + (1 - u) * 0.28) * this.flashK);
+      this.axeRing.setVisible(false);
     } else {
       const age = (t - LAND) / 1000;
+      const pulse = 0.5 + 0.5 * Math.sin(age * 10.5);
       this.axe.setDepth(8.1).setPosition(this.landX, this.landY)
         .setRotation(-1.35 + Math.sin(age * 29) * Math.exp(-age * 6) * 0.16 * this.motionK);
       this.mound.setVisible(true);
+      this.axeGlow.setVisible(true).setPosition(this.landX, this.landY - 4)
+        .setScale(0.72 + pulse * 0.15 + this.finalPulse * 0.5, 0.52 + pulse * 0.1)
+        .setAlpha((0.16 + pulse * 0.08 + this.finalPulse * 0.3) * this.flashK);
+      this.axeRing.setVisible(true).setPosition(this.landX, this.landY)
+        .setScale(0.38 + pulse * 0.07 + this.finalPulse * 0.28,
+          (0.38 + pulse * 0.07 + this.finalPulse * 0.28) * 0.68)
+        .setAlpha((0.14 + pulse * 0.06 + this.finalPulse * 0.34) * this.flashK);
     }
+    const flareAge = t - FINALE;
+    const flareOn = flareAge >= 0 && flareAge < 360;
+    const flareU = clamp(flareAge / 360);
+    const flareA = (1 - flareU) ** 2 * this.finalPulse * this.flashK;
+    this.finalFlareH.setVisible(flareOn).setPosition(this.landX, this.landY - 8)
+      .setScale(2.5 + 8 * out(flareU), 0.02 + 0.18 * (1 - flareU)).setAlpha(flareA);
+    this.finalFlareV.setVisible(flareOn).setPosition(this.landX, this.landY - 8)
+      .setScale(0.02 + 0.16 * (1 - flareU), 1.8 + 4.5 * out(flareU)).setAlpha(flareA * 0.85);
   }
 
   destroy(keepRelic = false) {
