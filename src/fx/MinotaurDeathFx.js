@@ -6,12 +6,14 @@ import BossCinematicCamera from '../systems/BossCinematicCamera.js';
 import { ensureTremorTextures } from './MinotaurTremorFx.js';
 import { acquirePipe, releasePipe } from './MinotaurEntranceFx.js';
 import { reserveFx } from './FxBudget.js';
+import MinotaurDeathIntro, { MINOTAUR_DEATH_INTRO_MS } from './MinotaurDeathIntro.js';
 
 const ROAR = 2050;
 const SILENCE = 3180;
 const BLAST = 3770;
 const LAND = 4870;
-export const MINOTAUR_DEATH_END_MS = 6900;
+const LEGACY_DEATH_END_MS = 6900;
+export const MINOTAUR_DEATH_END_MS = MINOTAUR_DEATH_INTRO_MS + LEGACY_DEATH_END_MS;
 const AQUA = 0x32e9d6;
 const WHITE = 0xdffff7;
 const TAU = Math.PI * 2;
@@ -76,7 +78,7 @@ export default class MinotaurDeathFx {
     this.pausedSounds = new Set();
     this.done = false;
     this.nextEvent = 0;
-    this.nextLeak = this.t;
+    this.nextLeak = Math.max(0, this.t - MINOTAUR_DEATH_INTRO_MS);
     this.dtEma = 16;
     ensureTextures(scene);
     this.scar = this.image('minotaur_death_scar', 1.8, false).setPosition(this.x, this.footY);
@@ -91,7 +93,7 @@ export default class MinotaurDeathFx {
       .setPosition(this.landX, this.landY + 3).setScale(4.4, 1.25);
     this.pool = Array.from({ length: this.lite ? 48 : 96 }, () => ({
       image: this.image('tremor_spark', 14), live: false, age: 0, life: 1,
-      x: 0, y: 0, vx: 0, vy: 0, gravity: 0, spin: 0, scale: 1, alpha: 1, dust: false
+      x: 0, y: 0, vx: 0, vy: 0, gravity: 0, drag: 0, spin: 0, scale: 1, alpha: 1, dust: false
     }));
     // Fragmentos reais da silhueta, sem repetir o machado embutido na arte.
     const bodyKey = boss.isEnraged ? boss.idleTextureRageDisarmed : boss.idleTextureDisarmed;
@@ -121,15 +123,16 @@ export default class MinotaurDeathFx {
     this.musicVolume = this.music?.volume ?? 0;
     if (this.music) scene.tweens.killTweensOf(this.music);
     this.events = [
-      [0, stale => { if (!stale) { this.sound('sfx_minotaur_heavy_axe_impact', 0.9, 0.72); this.shake(210, 0.021); } }],
-      [480, stale => this.pulse(stale, 0.5)],
-      [980, stale => this.pulse(stale, 0.75)],
-      [1570, stale => this.pulse(stale, 1)],
-      [ROAR, stale => { if (!stale) { this.sound('sfx_minotaur_cleave_roar', 0.95, 0.78); this.shake(430, 0.011); } }],
-      [SILENCE, () => this.stopSounds()],
-      [BLAST, stale => this.blast(stale)],
-      [LAND, stale => this.land(stale)]
+      [MINOTAUR_DEATH_INTRO_MS, stale => { if (!stale) { this.sound('sfx_minotaur_heavy_axe_impact', 0.9, 0.72); this.shake(210, 0.021); } }],
+      [MINOTAUR_DEATH_INTRO_MS + 480, stale => this.pulse(stale, 0.5)],
+      [MINOTAUR_DEATH_INTRO_MS + 980, stale => this.pulse(stale, 0.75)],
+      [MINOTAUR_DEATH_INTRO_MS + 1570, stale => this.pulse(stale, 1)],
+      [MINOTAUR_DEATH_INTRO_MS + ROAR, stale => { if (!stale) { this.sound('sfx_minotaur_cleave_roar', 0.95, 0.78); this.shake(430, 0.011); } }],
+      [MINOTAUR_DEATH_INTRO_MS + SILENCE, () => this.stopSounds()],
+      [MINOTAUR_DEATH_INTRO_MS + BLAST, stale => this.blast(stale)],
+      [MINOTAUR_DEATH_INTRO_MS + LAND, stale => this.land(stale)]
     ];
+    this.intro = new MinotaurDeathIntro(this);
     this.tick = (_time, delta) => this.update(delta);
     this.shutdown = () => this.destroy();
     scene.events.on('update', this.tick);
@@ -167,25 +170,69 @@ export default class MinotaurDeathFx {
     this.burst(this.x, this.y, this.lite ? 5 : 9, 'spark', 120 * power);
   }
 
-  burst(x, y, count, kind, speed) {
+  take() {
+    const particle = this.pool.find((entry) => !entry.live);
+    if (!particle) return null;
+    particle.live = true;
+    particle.age = 0;
+    return particle;
+  }
+
+  spawn(particle, x, y, options = {}) {
+    if (!particle) return null;
+    const pick = (value, fallback) => {
+      if (Array.isArray(value)) return rand(value[0], value[1]);
+      return Number.isFinite(value) ? value : fallback;
+    };
+    const texture = options.texture || 'tremor_spark';
+    const additive = options.add !== false;
+    particle.live = true;
+    particle.age = 0;
+    particle.x = x;
+    particle.y = y;
+    particle.dust = options.dust === true;
+    particle.life = Math.max(1, pick(options.life, 1000));
+    particle.vx = pick(options.vx, 0);
+    particle.vy = pick(options.vy, 0);
+    particle.gravity = pick(options.gravity, 0);
+    particle.drag = Math.max(0, pick(options.drag, 0));
+    particle.spin = pick(options.spin, 0);
+    particle.scale = pick(options.scale, 1);
+    particle.alpha = pick(options.alpha, 1);
+    particle.image.setTexture(texture)
+      .setBlendMode(additive ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL)
+      .setTint(options.tint ?? AQUA)
+      .setPosition(x, y)
+      .setRotation(pick(options.rotation, 0))
+      .setScale(particle.scale)
+      .setAlpha(particle.alpha)
+      .setVisible(true);
+    return particle;
+  }
+
+  burst(x, y, count, kind, speed, options = {}) {
     let remaining = reserveFx(this.scene, count);
-    for (const p of this.pool) {
-      if (!remaining) break;
-      if (p.live) continue;
-      remaining--;
-      const a = rand(0, TAU), v = speed * rand(0.45, 1.1);
-      p.live = true; p.age = 0; p.x = x; p.y = y;
-      p.dust = kind === 'dust';
-      p.life = p.dust ? rand(1500, 2400) : rand(650, 1350);
-      p.vx = Math.cos(a) * v; p.vy = Math.sin(a) * v * 0.5 - (p.dust ? 8 : rand(40, 130));
-      p.gravity = p.dust ? 0 : 280;
-      p.spin = p.dust ? 0 : rand(-5, 5);
-      p.scale = p.dust ? rand(1.2, 2.3) : kind === 'debris' ? rand(0.7, 1.6) : rand(0.25, 0.65);
-      p.alpha = p.dust ? 0.38 : 0.95;
-      p.image.setTexture(p.dust ? 'tremor_dust' : kind === 'debris' ? 'tremor_shard_a' : 'tremor_spark')
-        .setBlendMode(kind === 'spark' ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL)
-        .setTint(p.dust ? 0x42565a : kind === 'debris' ? 0x527172 : AQUA)
-        .setPosition(x, y).setRotation(a).setVisible(true);
+    while (remaining-- > 0) {
+      const particle = this.take();
+      if (!particle) break;
+      const angle = rand(0, TAU);
+      const velocity = speed * rand(0.45, 1.1);
+      const dust = kind === 'dust';
+      this.spawn(particle, x, y, {
+        texture: options.texture || (dust ? 'tremor_dust' : kind === 'debris' ? 'tremor_shard_a' : 'tremor_spark'),
+        add: options.add ?? (kind === 'spark'),
+        tint: options.tint ?? (dust ? 0x42565a : kind === 'debris' ? 0x527172 : AQUA),
+        life: options.life ?? (dust ? [1500, 2400] : [650, 1350]),
+        vx: options.vx ?? Math.cos(angle) * velocity,
+        vy: options.vy ?? Math.sin(angle) * velocity * 0.5 - (dust ? 8 : rand(40, 130)),
+        gravity: options.gravity ?? (dust ? 0 : 280),
+        drag: options.drag ?? 0,
+        spin: options.spin ?? (dust ? 0 : rand(-5, 5)),
+        scale: options.scale ?? (dust ? [1.2, 2.3] : kind === 'debris' ? [0.7, 1.6] : [0.25, 0.65]),
+        alpha: options.alpha ?? (dust ? 0.38 : 0.95),
+        rotation: options.rotation ?? angle,
+        dust
+      });
     }
   }
 
@@ -228,10 +275,16 @@ export default class MinotaurDeathFx {
       const [at, fn] = this.events[this.nextEvent++];
       fn(this.t - at > 220);
     }
-    this.body();
-    this.light();
-    this.weapon();
-    const debrisAge = (this.t - BLAST) / 1000;
+    const phaseT = this.t - MINOTAUR_DEATH_INTRO_MS;
+    if (phaseT < 0) {
+      this.intro.body(this.t);
+    } else {
+      this.body(phaseT);
+      this.light(phaseT);
+      this.weapon(phaseT);
+    }
+    this.intro.update(this.t, dt);
+    const debrisAge = (phaseT - BLAST) / 1000;
     for (const piece of this.fragments) {
       piece.image.setVisible(debrisAge >= 0 && debrisAge < 1.15);
       if (debrisAge < 0 || debrisAge >= 1.15) continue;
@@ -239,8 +292,8 @@ export default class MinotaurDeathFx {
         this.y + piece.vy * debrisAge + 100 * debrisAge * debrisAge)
         .setRotation(piece.spin * debrisAge).setAlpha(1 - smooth(debrisAge / 1.15));
     }
-    if (this.t > 550 && this.t < SILENCE && this.t >= this.nextLeak && this.dtEma < 35) {
-      this.nextLeak = this.t + (this.lite ? 170 : 100);
+    if (phaseT > 550 && phaseT < SILENCE && phaseT >= this.nextLeak && this.dtEma < 35) {
+      this.nextLeak = phaseT + (this.lite ? 170 : 100);
       this.burst(this.x + rand(-20, 20), this.y + rand(-25, 18), 2, 'spark', 75);
     }
     for (const p of this.pool) {
@@ -248,13 +301,19 @@ export default class MinotaurDeathFx {
       p.age += dt;
       const u = clamp(p.age / p.life), seconds = dt / 1000;
       if (u === 1) { p.live = false; p.image.setVisible(false); continue; }
-      p.vy += p.gravity * seconds; p.x += p.vx * seconds; p.y += p.vy * seconds;
+      const drag = Math.max(0, 1 - p.drag * seconds);
+      p.vx *= drag;
+      p.vy *= drag;
+      p.vy += p.gravity * seconds;
+      p.x += p.vx * seconds;
+      p.y += p.vy * seconds;
       p.image.setPosition(p.x, p.y).setRotation(p.image.rotation + p.spin * seconds)
         .setScale(p.scale * (p.dust ? 1 + u * 2 : 1 - u * 0.35))
         .setAlpha(p.alpha * (1 - smooth(u)));
     }
     if (this.music && !this.music.pendingRemove && MusicManager.bossSound === this.music) {
-      this.music.setVolume(this.musicVolume * (1 - smooth((this.t - 350) / (SILENCE - 350))));
+      const musicT = this.t < MINOTAUR_DEATH_INTRO_MS ? this.t : SILENCE + phaseT;
+      this.music.setVolume(this.musicVolume * (1 - smooth((musicT - 350) / (SILENCE - 350))));
     }
     if (this.t >= MINOTAUR_DEATH_END_MS) {
       const callback = this.onComplete;
@@ -263,9 +322,9 @@ export default class MinotaurDeathFx {
     }
   }
 
-  body() {
-    if (this.t >= BLAST) return;
-    const b = this.boss, t = this.t;
+  body(t) {
+    if (t >= BLAST) return;
+    const b = this.boss;
     const kneel = smooth((t - 100) / 500);
     const rise = smooth((t - (ROAR - 300)) / 450);
     const strain = clamp((t - 600) / 2000);
@@ -285,8 +344,8 @@ export default class MinotaurDeathFx {
     if (b.shadow?.active) b.shadow.setPosition(this.x, this.footY).setScale(1 + kneel * 0.12, 1);
   }
 
-  light() {
-    const t = this.t, age = t - BLAST;
+  light(t) {
+    const age = t - BLAST;
     const tension = clamp((t - 450) / (SILENCE - 450));
     const silent = t >= SILENCE && t < BLAST;
     const shock = age >= 0 ? 1 - clamp(age / 600) : 0;
@@ -322,8 +381,7 @@ export default class MinotaurDeathFx {
     }
   }
 
-  weapon() {
-    const t = this.t;
+  weapon(t) {
     if (t < BLAST) return;
     this.axe.setVisible(true);
     if (t < LAND) {
