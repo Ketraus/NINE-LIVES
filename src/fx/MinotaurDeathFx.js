@@ -306,6 +306,10 @@ export default class MinotaurDeathFx {
   blast(stale) {
     this.boss.setVisible(false);
     this.boss.shadow?.setVisible(false);
+    // O corpo auxiliar recebe um flash branco antes da explosão. Ele também
+    // precisa desaparecer no BLAST, senão sobra uma silhueta branca enquanto
+    // os fragmentos já estão voando.
+    this.bodyGlow?.setVisible(false);
     this.launchFragments();
     // pedras que levitavam são arremessadas pra fora
     for (const p of this.pool_) {
@@ -536,7 +540,11 @@ export default class MinotaurDeathFx {
 
   body() {
     const t = this.t, b = this.boss;
-    if (t >= BLAST) { if (b.visible) { b.setVisible(false); b.shadow?.setVisible(false); } return; }
+    if (t >= BLAST) {
+      if (b.visible) { b.setVisible(false); b.shadow?.setVisible(false); }
+      this.bodyGlow?.setVisible(false);
+      return;
+    }
     const p = this.pose(t);
     const kneel = smooth((t - 140) / 520);
     const strain = clamp((t - 650) / (SILENCE - 650));
