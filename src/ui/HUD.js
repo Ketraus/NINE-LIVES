@@ -246,6 +246,7 @@ export default class HUD {
     this._buildXpBar();
     this._buildKillCounter();
     this._buildRunTimer();
+    this._buildSealerArenaWarning();
     this._buildBossBar();
     this._applyLargeHudText();
     this._buildGameOverText();
@@ -885,6 +886,67 @@ export default class HUD {
     this.uiContainer.add(this.timeText);
     this._registerHudText(this.timeText, 13);
     this._timerBossLayout = false;
+  }
+
+  _buildSealerArenaWarning() {
+    const width = Math.min(280, this.uiW - 32);
+    const x = (this.uiW - width) / 2;
+    const y = 50;
+    const panel = this.scene.add.graphics();
+    HUD._drawChamferedRect(panel, x, y, width, 36, 6, 0x080d12, 0.9, 0xff5366, 0.95);
+
+    this.sealerArenaFill = this.scene.add.graphics();
+    this.sealerArenaTitle = this.scene.add.text(x + 12, y + 11, 'ÁREA FECHANDO', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '8px',
+      color: '#ffd6da'
+    }).setOrigin(0, 0.5);
+    this.sealerArenaTimer = this.scene.add.text(x + width - 12, y + 11, '01:00', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '8px',
+      color: '#ff6675'
+    }).setOrigin(1, 0.5);
+    this.sealerArenaWarning = this.scene.add.container(0, 0)
+      .setScrollFactor(0)
+      .setDepth(110)
+      .setVisible(false)
+      .add([panel, this.sealerArenaFill, this.sealerArenaTitle, this.sealerArenaTimer]);
+    this.uiContainer.add(this.sealerArenaWarning);
+    this._sealerArenaTrack = { x: x + 12, y: y + 25, width: width - 24 };
+    this._sealerArenaRemainingSeconds = null;
+    this._sealerArenaClosed = null;
+    this._registerHudText(this.sealerArenaTitle, 8);
+    this._registerHudText(this.sealerArenaTimer, 8);
+  }
+
+  setSealerArenaProgress(progress, durationMs) {
+    if (!Number.isFinite(progress) || !Number.isFinite(durationMs) || durationMs <= 0) return;
+    const amount = Phaser.Math.Clamp(progress, 0, 1);
+    const remaining = Math.ceil((1 - amount) * durationMs / 1000);
+    const minutes = String(Math.floor(remaining / 60)).padStart(2, '0');
+    const seconds = String(remaining % 60).padStart(2, '0');
+
+    const closed = amount >= 1;
+    if (closed !== this._sealerArenaClosed) {
+      this._sealerArenaClosed = closed;
+      this.sealerArenaTitle.setText(closed ? 'ÁREA FECHADA // PERIGO' : 'ÁREA FECHANDO');
+    }
+    if (remaining !== this._sealerArenaRemainingSeconds) {
+      this._sealerArenaRemainingSeconds = remaining;
+      this.sealerArenaTimer.setText(`${minutes}:${seconds}`);
+    }
+
+    const { x, y, width } = this._sealerArenaTrack;
+    this.sealerArenaFill.clear();
+    this.sealerArenaFill.fillStyle(0xff4257, 0.95);
+    this.sealerArenaFill.fillRect(x, y, width * amount, 5);
+    this.sealerArenaWarning.setVisible(true);
+  }
+
+  clearSealerArenaWarning() {
+    this.sealerArenaWarning.setVisible(false);
+    this._sealerArenaRemainingSeconds = null;
+    this._sealerArenaClosed = null;
   }
 
   _setTimerLayout(hasBoss) {

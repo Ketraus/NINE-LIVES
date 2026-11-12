@@ -60,4 +60,34 @@ replica._drawArena = () => {};
 replica.syncArenaVisual(100, 200, 500, 0.25, 'player-2');
 assert.equal(replica.arenaBirthMs, -10000, 'replica reconstructs arena age for host migration');
 
+const drawCalls = [];
+const visual = Object.create(Sealer.prototype);
+visual.arenaCenter = { x: 100, y: 200 };
+visual.arenaMarkerPoints = Array.from({ length: 16 }, () => [
+  { x: 0, y: 0 },
+  { x: 0, y: 0 },
+  { x: 0, y: 0 }
+]);
+visual.arenaGraphics = {
+  clear: () => drawCalls.push('clear'),
+  fillStyle: () => {},
+  fillCircle: () => drawCalls.push('fill-circle'),
+  lineStyle: () => {},
+  strokeCircle: () => drawCalls.push('stroke-circle'),
+  fillPoints: () => drawCalls.push('inward-marker')
+};
+visual.scene = {
+  hud: {
+    setSealerArenaProgress(progress, duration) {
+      visual.warning = { progress, duration };
+    }
+  }
+};
+visual.def = { arenaShrinkDurationMs: 60000 };
+visual.arenaNextVisualUpdateAt = 0;
+visual._drawArena(400, 0.5, 1000, true);
+assert.equal(drawCalls.filter((call) => call === 'stroke-circle').length, 3, 'arena border has layered contrast');
+assert.equal(drawCalls.filter((call) => call === 'inward-marker').length, 16, 'boundary markers point toward the arena center');
+assert.deepEqual(visual.warning, { progress: 0.5, duration: 60000 }, 'HUD receives arena progress for its warning bar');
+
 console.log('Sealer multiplayer one-way barrier checks passed.');
