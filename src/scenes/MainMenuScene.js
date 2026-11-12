@@ -1,5 +1,6 @@
 import MusicManager from '../systems/MusicManager.js';
 import { UI_SCALE } from '../config/layout.js';
+import { EVALUATION_FORM_URL } from '../config/links.js';
 import MenuAtmosphereFx from '../fx/MenuAtmosphereFx.js';
 import RoomMenuUI from '../ui/RoomMenuUI.js';
 
@@ -215,10 +216,17 @@ export default class MainMenuScene extends Phaser.Scene {
     const clockX = this._isTouch ? width - 64 : width - 16; // celular: foge do botão de tela cheia
     this._clockText = this.add.text(clockX, my, '', { ...txt, color: '#8fb3bf' }).setOrigin(1, 0.5);
     const bl = this.add.text(16, height - my, `(C) ${CORP_NAME}`, txt).setOrigin(0, 0.5);
-    const barItems = [tl, this._clockText, bl];
-    if (!this._isTouch) {
-      barItems.push(this.add.text(width - 16, height - my, '', txt).setOrigin(1, 0.5));
-    }
+    const evaluationLink = this.add
+      .text(width - 16, height - my, 'AVALIAR JOGO', { ...txt, color: TEXT_IDLE })
+      .setOrigin(1, 0.5)
+      .setInteractive({ useHandCursor: true });
+    evaluationLink.on('pointerover', () => evaluationLink.setColor(TEXT_HOVER));
+    evaluationLink.on('pointerout', () => evaluationLink.setColor(TEXT_IDLE));
+    evaluationLink.on('pointerdown', () => {
+      this.sound.play('sfx_ui_click', { volume: 0.6 });
+      window.open(EVALUATION_FORM_URL, '_blank', 'noopener,noreferrer');
+    });
+    const barItems = [tl, this._clockText, bl, evaluationLink];
     this._barTexts = barItems;
     this.cineLayer.add([vig, this._bars, this._barDot, ...barItems]);
     this._setBarHeight(firstTime ? BAR_START_H : BAR_H);
