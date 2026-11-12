@@ -5,7 +5,6 @@ import { anchorToScreen } from '../config/layout.js';
 const BASE_RADIUS = 55;
 const KNOB_RADIUS = 26;
 const DEAD_ZONE_PX = 6; // evita "vazamento" de input com o dedo quase parado
-const ACTIVATION_ZONE_RATIO = 0.5; // só ativa tocando na metade esquerda da tela
 
 export default class TouchJoystick {
   constructor(scene) {
@@ -20,7 +19,6 @@ export default class TouchJoystick {
     scene.input.mouse?.disableContextMenu?.();
 
     const { width, height } = scene.scale;
-    this.zoneWidth = width * ACTIVATION_ZONE_RATIO;
 
     // Container fixo na tela (não rola com a câmera), acima do chão/inimigos
     this.uiContainer = scene.add.container(0, 0).setScrollFactor(0).setDepth(150);
@@ -54,11 +52,13 @@ export default class TouchJoystick {
     scene.input.on('pointercancel', this._onPointerUp);
     scene.game.canvas?.addEventListener('contextmenu', this._onContextMenu);
 
-    // esconde durante a tela de cartas/game over, igual o resto do HUD —
-    EventBus.on('levelup-opened', () => this._setVisible(false));
+    // Esconde durante a tela de cartas/game over, igual o resto do HUD. Ao
+    // abrir uma sobreposição, libera também o dedo para não deixar movimento
+    // preso ao fechar a tela.
+    EventBus.on('levelup-opened', () => this._release());
     EventBus.on('levelup-closed', () => this._setVisible(this.pointerId !== null));
     // menu de pausa (ver src/ui/PauseUI.js) — mesmo tratamento do level-up
-    EventBus.on('pause-opened', () => this._setVisible(false));
+    EventBus.on('pause-opened', () => this._release());
     EventBus.on('pause-closed', () => this._setVisible(this.pointerId !== null));
     EventBus.on('player-died', () => this._setVisible(false));
     EventBus.on('player-won', () => this._setVisible(false));
@@ -86,13 +86,22 @@ export default class TouchJoystick {
     this.knob.setVisible(visible);
   }
 
+  _isPointerOverInteractive(pointer) {
+    const hitObjects = this.scene.input.hitTestPointer?.(pointer) || [];
+    return hitObjects.some((gameObject) => {
+      if (gameObject === this.base || gameObject === this.knob || gameObject === this.uiContainer) return false;
+      return gameObject.visible !== false && gameObject.input?.enabled !== false;
+    });
+  }
+
   _onPointerDown(pointer) {
     // Ignore non-left mouse buttons; right-click must not activate the virtual joystick.
     if (this.scene.rightMouseDown) return;
     const button = pointer.event?.button ?? pointer.button;
     if (button !== 0) return;
     if (this.pointerId !== null) return; // já tem um dedo controlando o joystick
-    if (pointer.x > this.zoneWidth) return; // só ativa no lado esquerdo da tela
+    // Toques em pausa, cartas e outros controles continuam pertencendo à UI.
+    if (this._isPointerOverInteractive(pointer)) return;
 
     this.pointerId = pointer.id;
     this.baseX = pointer.x;
