@@ -2,6 +2,8 @@ import MusicManager from '../systems/MusicManager.js';
 import { UI_SCALE } from '../config/layout.js';
 import { EVALUATION_FORM_URL } from '../config/links.js';
 import MenuAtmosphereFx from '../fx/MenuAtmosphereFx.js';
+import MenuCorruptionFx from '../fx/MenuCorruptionFx.js';
+import GameProgress from '../systems/GameProgress.js';
 import RoomMenuUI from '../ui/RoomMenuUI.js';
 
 // paleta "terminal cyberpunk" pedida: fundo do botão quase transparente,
@@ -44,6 +46,13 @@ export default class MainMenuScene extends Phaser.Scene {
     this._transitioning = false; // trava clique duplo durante a saída
     this._roomSwitching = false;
     this.roomMenuOpen = false;
+
+    // Depois de terminar o jogo a energia do Leviatã chega até o fundo do
+    // menu (fx/MenuCorruptionFx.js). `corruptionReveal` vem da CreditsScene
+    // na 1ª vez: o menu começa normal e a corrupção toma a cidade aos poucos.
+    this._corrupted = GameProgress.isCorrupted();
+    this._corruptionReveal = this._corrupted && Boolean(data?.corruptionReveal);
+    this._postLevel = -1;
 
     // fade de entrada (chegando do Boot ou voltando da SettingsScene/pause)
     const firstTime = !MainMenuScene._introPlayed;
@@ -168,8 +177,20 @@ export default class MainMenuScene extends Phaser.Scene {
     // atmosfera (névoa, chuva fina, luzes da arte, hovercars) por cima do
     // fundo e por baixo do título
     this._atmos = new MenuAtmosphereFx(this, bg.width, bg.height, width, height);
-    this.menuLayer.addAt(this._atmos.anchored, 1);
-    this.menuLayer.addAt(this._atmos.layer, 2);
+
+    // menu corrompido (só se o jogo já foi terminado): o fundo vira OUTRA
+    // ARTE (a mesma cidade, corrompida) logo acima do fundo normal e abaixo
+    // da atmosfera/drones — ver fx/MenuCorruptionFx.js
+    this._corruption = null;
+    if (this._corrupted) {
+      this._corruption = new MenuCorruptionFx(this, bg, { level: this._corruptionReveal ? 0 : 1 });
+      this._atmos.onFeed = () => this._corruption.feed();
+      if (this._corruptionReveal) this._corruption.reveal();
+    }
+    let z = 1;
+    if (this._corruption) this._corruption.layers.forEach((img) => this.menuLayer.addAt(img, z++));
+    this.menuLayer.addAt(this._atmos.anchored, z++);
+    this.menuLayer.addAt(this._atmos.layer, z++);
     if (firstTime) this._atmos.setAlpha(0);
 
     // título: mesmo texto/fonte, agora com glow e "ghost" cromático que
@@ -182,8 +203,8 @@ export default class MainMenuScene extends Phaser.Scene {
     const ghostStyle = { fontFamily: PIXEL_FONT, fontSize: '30px' };
     const ghostA = this.add.text(tx, ty, label, { ...ghostStyle, color: '#00e5ff' }).setOrigin(0, 0.5);
     const ghostB = this.add.text(tx, ty, label, { ...ghostStyle, color: '#ff2d95' }).setOrigin(0, 0.5);
-    this.menuLayer.addAt(ghostA, 3);
-    this.menuLayer.addAt(ghostB, 4);
+    this.menuLayer.addAt(ghostA, z++);
+    this.menuLayer.addAt(ghostB, z++);
     this._titleObjs = { title, ghostA, ghostB, tx };
     this._ghost = { off: firstTime ? 8 : 2, a: firstTime ? 0 : 0.5 };
 
@@ -344,7 +365,13 @@ export default class MainMenuScene extends Phaser.Scene {
     p.y += (p.ty - p.y) * f;
     const sc = this._bgBase.scale * (1 + this._zoom.v + Math.sin(time / 9000) * 0.004);
     this._bg.setScale(sc).setPosition(this._bgBase.x + p.x, this._bgBase.y + p.y);
+    const corLevel = this._corruption ? this._corruption.level : 0;
+    this._atmos.setCorruption(corLevel);
     this._atmos.update(time, delta, this._bg, p.x, p.y);
+    if (this._corruption) {
+      this._corruption.update(time, delta, this._bg);
+      this._applyCorruptionPost(corLevel);
+    }
 
     // ghost cromático respirando + glitch curtinho e raro (sem flash)
     const { title, ghostA, ghostB, tx } = this._titleObjs;
@@ -491,6 +518,16 @@ export default class MainMenuScene extends Phaser.Scene {
     this._flickerFx.setRate(4).setAmount(0.05);
 
     this.events.once('shutdown', () => cam.resetPostPipeline());
+  }
+
+  // Menu corrompido: só um pouco mais de bloom e de aberração cromática (a
+  // energia "vaza" luz, sem mudar o desenho). Acompanha o nível da corrupção,
+  // então a transição também escala isso. Só mexe quando o nível muda.
+  _applyCorruptionPost(level) {
+    if (Math.abs(level - this._postLevel) < 0.004) return;
+    this._postLevel = level;
+    this._bloomFx?.setThreshold(0.72 - 0.06 * level).setIntensity(0.18 + 0.08 * level);
+    this._chromaticAberrationFx?.setMaxShift(1.5 + 0.6 * level);
   }
 
   _buildBackground(width, height) {

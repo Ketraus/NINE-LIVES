@@ -381,6 +381,9 @@ export default class PreloadScene extends Phaser.Scene {
 
     // fundo do menu principal (ver MainMenuScene) — foto 1024x1024,
     this.load.image('menu_bg', 'assets/ui/menu_bg.jpg');
+    // menu depois de terminar o jogo: mesma cidade, corrompida (fx/MenuCorruptionFx.js)
+    this.load.image('menu_bg_corrupted', 'assets/ui/menu_bg_corrupted.jpg');
+    this.load.image('menu_bg_corrupted_glow', 'assets/ui/menu_bg_corrupted_glow.png');
 
     // mapa feito no Tiled
     this.load.tilemapTiledJSON('map', 'assets/maps/map.json');

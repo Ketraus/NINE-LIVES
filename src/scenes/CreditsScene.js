@@ -1,5 +1,6 @@
 import credits from '../../data/credits.js';
 import gameVersion from '../../data/gameVersion.js';
+import GameProgress from '../systems/GameProgress.js';
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const SCROLL_PX_PER_S = 38;
@@ -21,6 +22,11 @@ export default class CreditsScene extends Phaser.Scene {
 
   init(data) {
     this._customCards = data?.cards?.length ? data.cards : null; // ex.: final beta da SNCT (SnctEnding)
+    // Terminou o jogo: a partir de agora o menu principal aparece corrompido
+    // (energia do Leviatã no fundo — ver fx/MenuCorruptionFx.js). Na 1ª vez o
+    // menu faz a transição "a energia chegou" (corruptionReveal).
+    this._firstCompletion = !GameProgress.hasCompletedGame();
+    GameProgress.markGameCompleted();
   }
 
   create() {
@@ -148,6 +154,8 @@ export default class CreditsScene extends Phaser.Scene {
     if (this._leaving) return;
     this._leaving = true;
     this.cameras.main.fadeOut(FADE_OUT_MS, 0, 0, 0);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start('MainMenuScene'));
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () =>
+      this.scene.start('MainMenuScene', { corruptionReveal: this._firstCompletion })
+    );
   }
 }
