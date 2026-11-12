@@ -13,6 +13,13 @@ import { playMinotaurChargeSwing } from '../../fx/MinotaurChargeSwingFx.js';
 import { CHARGE_SWEEP, cancelChargeVisuals } from '../../fx/MinotaurChargeVisuals.js';
 import { recordChargeEvent, chargeEventSnapshot, readChargeEvents } from '../../fx/MinotaurChargeEvents.js';
 import {
+  MAX_NETWORK_FX_AGE_MS,
+  minotaurFxEventSnapshot,
+  readMinotaurFxEvents,
+  recordMinotaurFxEvent,
+  rememberMinotaurFxEvent
+} from '../../fx/MinotaurNetworkFxEvents.js';
+import {
   createMinotaurAxeFxState,
   cleanupMinotaurAxeFx,
   resetMinotaurAxeTrail,
@@ -87,8 +94,6 @@ const AXE_STUCK_PULSE_SCALE_URGENT = 0.3;
 const AXE_TELEGRAPH_COLOR = 0xffcc00;
 // Chuva de Meteoros (habilidade do rage, ver _updateMeteorRain e afins)
 const METEOR_WARN_COLOR = 0x27d8c8;
-const METEOR_ROCK_COLOR = 0x128e9a;
-const METEOR_CORE_COLOR = 0xbafff1;
 const METEOR_FALL_OFFSET_X = -300; // de onde o meteoro "nasce" em relação ao ponto de impacto
 const METEOR_FALL_OFFSET_Y = -820; // queda longa e diagonal: o meteoro cruza a tela bem rápido (tempo/aviso/dano iguais)
 const METEOR_SHAKE_MS = 140;
@@ -199,10 +204,16 @@ export default class Minotaur extends Enemy {
     this.chargeFxLastTrailAt = 0;
     this.chargeFxStepSide = 1;
     this.chargeFxStep = 0;
+    this._netAxePhase = null;
+    this._netAxeChargeTimeLeft = 0;
+    this._netAxeBeepPlayed = false;
+    this._netAxeChargeAt = 0;
+    this._networkFxReceivedSequence = 0;
     // Machado Arremessado: ver _startAxeThrow e afins. axeSprite é o
     this.axeSprite = null;
     this.networkAxeSprite = null;
-    this.networkMeteorGraphics = null;
+    this.networkMeteors = new Map();
+    this.nextMeteorNetworkId = 0;
     // Trilha do machado (outbound/stuck/raise/return, ou null) — roda EM
     // PARALELO ao bossState (corpo), ver _updateAxeTrack.
     this.axePhase = null;
@@ -276,7 +287,6 @@ export default class Minotaur extends Enemy {
     this._stopChargeFootsteps();
     this.axeSprite = null;
     this.networkAxeSprite = null;
-    this.networkMeteorGraphics = null;
     this.axePhase = null;
     this.meteorRainActive = false;
     this._netChargeState = null;
@@ -417,6 +427,7 @@ export default class Minotaur extends Enemy {
         if (this.transformFx.done) this.transformFx = null;
       }
       this.glowFx?.update(time);
+      this._updateNetworkMeteorVisuals(time);
       // fúria pós-salto: roda em qualquer estado do corpo (ataques, recuperação, perseguição)
       this.furyFx?.update(time, delta, this._isLeapAggro() ? this.leapAggroUntil - this.scene.time.now : 0);
       this.arenaFx?.update(time, delta);
@@ -427,6 +438,7 @@ export default class Minotaur extends Enemy {
     this.deathFx?.destroy();
     this.deathFx = null;
     this._clearMeteors();
+    this._clearNetworkMeteors();
     this._clearLeap();
     this.transformFx?.destroy();
     this.transformFx = null;
@@ -465,7 +477,7 @@ export default class Minotaur extends Enemy {
     cleanupMinotaurAxeFx(this.axeFxState);
     this.axeSprite?.destroy();
     this.networkAxeSprite?.destroy();
-    this.networkMeteorGraphics?.destroy();
+    this._clearNetworkMeteors();
     // Boss: os passos em loop da Investida também, senão ficam tocando
     this._stopChargeFootsteps();
   }
@@ -484,11 +496,15 @@ export default class Minotaur extends Enemy {
     const stompProgress = this.bossState === 'stomp_raise'
       ? Phaser.Math.Clamp(1 - (this.stompRaiseUntil - nowMs) / this.stompRaiseDurationMs, 0, 1)
       : 0;
+    const leapProgress = this.bossState === 'leap_crouch'
+      ? Phaser.Math.Clamp(1 - (this.leapPhaseUntil - nowMs) / this.def.leapWindupMs, 0, 1)
+      : 0;
 
     return {
       bossState: this.bossState,
       devRevision: this._devRevision || 0,
       chargeFx: chargeEventSnapshot(this, nowMs),
+      fxEvents: minotaurFxEventSnapshot(this, nowMs),
       chargeTimeLeft: Math.max(0, Math.round(
         (this.bossState === 'charge_telegraph' ? this.bossChargeTelegraphUntil :
           this.bossState === 'charge_dash' ? this.bossChargeDashUntil :
@@ -504,6 +520,12 @@ export default class Minotaur extends Enemy {
       cleaveAngle: this.cleaveAngle,
       cleaveProgress,
       stompProgress,
+      leapProgress,
+      axePhase: this.axePhase,
+      axeChargeTimeLeft: this.axePhase === 'stuck' ? Math.max(0, this.axeChargeEndAt - nowMs) : 0,
+      axeChargeDuration: this.axePhase === 'stuck' ? Math.max(0, this.axeChargeEndAt - this.axeChargeStartAt) : 0,
+      axeBeepPlayed: this.axeBeepPlayed === true,
+      axeBeepTimeLeft: this.axeBeepPlayed ? Math.max(0, this.axeStuckUntil - nowMs) : 0,
       axe: this.axeSprite?.visible ? {
         x: this.axeSprite.x,
         y: this.axeSprite.y,
@@ -513,10 +535,8 @@ export default class Minotaur extends Enemy {
       meteors: this.meteors.slice(0, 20).map((meteor) => [
         meteor.x,
         meteor.y,
-        meteor.warn.scale,
-        meteor.warn.alpha,
-        meteor.rock.x,
-        meteor.rock.y
+        meteor.networkId,
+        meteor.networkProgress || 0
       ])
     };
   }
@@ -544,14 +564,6 @@ export default class Minotaur extends Enemy {
       this._netPrevBossState = null;
     }
     const previousBossState = this._netPrevBossState;
-    // Pisão no cliente: o dano é do host, então o impacto visual (cratera, poeira...)
-    // toca aqui quando o estado sai de 'stomp_raise'. Tremor só se estiver perto.
-    if (this._netPrevBossState === 'stomp_raise' && state.bossState !== 'stomp_raise') {
-      const p = this.scene.player;
-      const near = p && Phaser.Math.Distance.Between(p.x, p.y, this.x, this.y) < 450;
-      setMinotaurStompFxRage(this.isEnraged);
-      playMinotaurStomp(this.scene, this.x, this.y, this.def.stompImpactRadius, { q: 0.6, shake: near ? 0.6 : 0 });
-    }
     // Transformação: o Host manda bossState 'transform' e a réplica toca a MESMA sequência
     // localmente (visual/áudio). Invulnerabilidade vem do Host (inv) pra não mostrar dano falso.
     this.invulnerable = state.inv === 1 || state.bossState === 'transform';
@@ -585,7 +597,7 @@ export default class Minotaur extends Enemy {
 
     const telegraphStates = [
       'charge_telegraph', 'charge_swing_telegraph', 'axe_telegraph',
-      'cleave_telegraph', 'cleave_pause', 'stomp_raise'
+      'cleave_telegraph', 'cleave_pause', 'stomp_raise', 'leap_crouch'
     ];
     if (telegraphStates.includes(state.bossState)) {
       if (!this.bossTelegraphGraphics) this.bossTelegraphGraphics = this.scene.add.graphics().setDepth(4);
@@ -596,6 +608,8 @@ export default class Minotaur extends Enemy {
         this._drawCleaveTelegraph(state.cleaveProgress);
       } else if (state.bossState === 'stomp_raise') {
         this._drawStompTelegraph(nowMs, state.stompProgress);
+      } else if (state.bossState === 'leap_crouch') {
+        this._drawLeapTelegraph(nowMs, state.leapProgress);
       }
     } else {
       this._clearBossTelegraph();
@@ -616,26 +630,233 @@ export default class Minotaur extends Enemy {
       this.networkAxeSprite?.setVisible(false);
     }
 
-    const meteors = Array.isArray(state.meteors)
-      ? state.meteors.slice(0, 20).filter((meteor) => Array.isArray(meteor) && meteor.length === 6 && meteor.every(Number.isFinite))
-      : [];
-    this._netMeteors = meteors; // avisos de meteoro vindos do Host (a arena instável desvia deles)
-    if (meteors.length > 0) {
-      if (!this.networkMeteorGraphics) this.networkMeteorGraphics = this.scene.add.graphics().setDepth(15);
-      this.networkMeteorGraphics.clear();
-      meteors.forEach(([x, y, scale, alpha, rockX, rockY]) => {
-        this.networkMeteorGraphics.fillStyle(METEOR_WARN_COLOR, 0.35 * alpha);
-        this.networkMeteorGraphics.fillCircle(x, y, this.def.meteorImpactRadius * scale);
-        this.networkMeteorGraphics.lineStyle(3, METEOR_WARN_COLOR, 0.9 * alpha);
-        this.networkMeteorGraphics.strokeCircle(x, y, this.def.meteorImpactRadius * scale);
-        this.networkMeteorGraphics.fillStyle(METEOR_ROCK_COLOR, 1);
-        this.networkMeteorGraphics.fillCircle(rockX, rockY, 16);
-        this.networkMeteorGraphics.fillStyle(METEOR_CORE_COLOR, 1);
-        this.networkMeteorGraphics.fillCircle(rockX, rockY, 8);
-      });
-    } else {
-      this.networkMeteorGraphics?.clear();
+    this._syncNetworkAxeVisualState(state, nowMs);
+    this._syncNetworkMeteors(state.meteors, nowMs);
+    this._syncNetworkFxEvents(state.fxEvents, nowMs);
+  }
+
+  _syncNetworkFxEvents(events, nowMs) {
+    const pending = readMinotaurFxEvents(events, this._networkFxReceivedSequence);
+    for (const event of pending) {
+      rememberMinotaurFxEvent(this, event, nowMs);
+      this._networkFxReceivedSequence = event[0];
+      const age = event[7];
+      if (age > MAX_NETWORK_FX_AGE_MS) continue;
+
+      const [, kind, x, y, a, b, rage] = event;
+      const currentRage = this.isEnraged;
+      this.isEnraged = rage === 1;
+      try {
+        switch (kind) {
+          case 'cleave':
+            this._playCleaveImpactFx(x, y, a);
+            break;
+          case 'stomp':
+            this._playStompImpactFx(x, y, rage === 1, true);
+            break;
+          case 'leap':
+            this._playLeapLandingFx(x, y, a);
+            break;
+          case 'leap-takeoff':
+            this.scene.cameras.main.shake(LEAP_TAKEOFF_SHAKE_MS, LEAP_TAKEOFF_SHAKE_INTENSITY);
+            this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
+            this._flashCircle(x, y, 100, this._telegraphPalette().main);
+            break;
+          case 'axe-launch':
+            resetMinotaurAxeTrail(this.axeFxState, x, y, nowMs);
+            playMinotaurAxeLaunchFx(this.scene, x, y, a, b, rage === 1);
+            this.scene.cameras.main.shake(AXE_THROW_SHAKE_MS, AXE_THROW_SHAKE_INTENSITY);
+            this.scene.sound.play('sfx_axe_throw', { volume: 0.7 });
+            break;
+          case 'axe-beep':
+            playMinotaurAxeBeepFx(this.scene, this.axeFxState, x, y, rage === 1);
+            this.scene.sound.play('sfx_axe_beep', { volume: 0.7 });
+            break;
+          case 'axe-explosion':
+            playMinotaurAxeExplosionFx(
+              this.scene,
+              this.axeFxState,
+              x,
+              y,
+              a,
+              rage === 1,
+              () => {
+                if (!this.scene?.sys?.isActive()) return;
+                this.scene.cameras.main.shake(AXE_EXPLOSION_SHAKE_MS, AXE_EXPLOSION_SHAKE_INTENSITY);
+                const colors = rage === 1 ? [110, 255, 238] : [238, 96, 255];
+                this.scene.cameras.main.flash(AXE_EXPLOSION_FLASH_MS, ...colors);
+                this.scene.sound.play('sfx_axe_explosion', { volume: 0.7 });
+              }
+            );
+            break;
+          case 'axe-catch':
+            playMinotaurAxeCatchFx(this.scene, x, y, rage === 1);
+            break;
+          case 'meteor-impact': {
+            const length = Math.hypot(METEOR_FALL_OFFSET_X, METEOR_FALL_OFFSET_Y) || 1;
+            this.scene.cameras.main.shake(METEOR_SHAKE_MS, METEOR_SHAKE_INTENSITY);
+            this.scene.sound.play('sfx_axe_explosion', { volume: 0.35 });
+            playMeteorImpact(this.scene, x, y, this.def.meteorImpactRadius, {
+              x: -METEOR_FALL_OFFSET_X / length,
+              y: -METEOR_FALL_OFFSET_Y / length
+            });
+            break;
+          }
+        }
+      } finally {
+        this.isEnraged = currentRage;
+      }
     }
+  }
+
+  _syncNetworkAxeVisualState(state, nowMs) {
+    const phase = typeof state.axePhase === 'string' ? state.axePhase : null;
+    const enteredPhase = phase !== this._netAxePhase;
+    if (enteredPhase && phase === 'stuck' && this.networkAxeSprite?.visible) {
+      const duration = Number.isFinite(state.axeChargeDuration) ? state.axeChargeDuration : 0;
+      const remaining = Number.isFinite(state.axeChargeTimeLeft) ? state.axeChargeTimeLeft : 0;
+      this._netAxeChargeAt = nowMs - Math.max(0, duration - remaining);
+      this.scene.cameras.main.shake(AXE_IMPACT_SHAKE_MS, AXE_IMPACT_SHAKE_INTENSITY);
+      this.scene.sound.play('sfx_axe_dirt', { volume: 0.5 });
+      this.scene.sound.play('sfx_axe_impact', { volume: 0.85 });
+      playMinotaurAxeImpactFx(
+        this.scene,
+        this.axeFxState,
+        this.networkAxeSprite,
+        this.axeTargetX,
+        this.axeTargetY,
+        this.def.axeThrowImpactRadius,
+        this.isEnraged
+      );
+    }
+    this._netAxePhase = phase;
+    this._netAxeChargeTimeLeft = Number.isFinite(state.axeChargeTimeLeft)
+      ? Math.max(0, state.axeChargeTimeLeft) : 0;
+    this._netAxeBeepPlayed = state.axeBeepPlayed === true;
+
+    if (phase === 'stuck' && this.networkAxeSprite?.visible) {
+      const duration = Number.isFinite(state.axeChargeDuration) ? state.axeChargeDuration : 0;
+      this._netAxeChargeAt = nowMs - Math.max(0, duration - this._netAxeChargeTimeLeft);
+      const pulse = 0.5 + 0.5 * Math.sin(nowMs / (this._netAxeBeepPlayed ? 48 : 90));
+      this.networkAxeSprite.setScale(AXE_SPRITE_SCALE * (1 + 0.08 * pulse));
+      if (pulse > 0.5) this.networkAxeSprite.setTintFill(0xffffff);
+      else this.networkAxeSprite.clearTint();
+      this._netAxeChargeTimeLeft = Math.max(0, duration - (nowMs - this._netAxeChargeAt));
+      updateMinotaurAxeChargeFx(
+        this.scene,
+        this.axeFxState,
+        this.axeTargetX,
+        this.axeTargetY,
+        nowMs,
+        this._netAxeChargeAt,
+        this._netAxeChargeAt + Math.max(1, duration),
+        this._netAxeBeepPlayed
+      );
+    } else {
+      this.networkAxeSprite?.setScale(AXE_SPRITE_SCALE).clearTint();
+      if ((phase === 'outbound' || phase === 'return') && this.networkAxeSprite?.visible) {
+        emitMinotaurAxeTrail(
+          this.scene,
+          this.axeFxState,
+          this.networkAxeSprite,
+          nowMs,
+          this.isEnraged,
+          phase === 'return'
+        );
+      }
+    }
+  }
+
+  _syncNetworkMeteors(networkState, nowMs) {
+    const meteors = Array.isArray(networkState)
+      ? networkState.slice(0, 20).filter((meteor) =>
+        Array.isArray(meteor) && meteor.length === 4 &&
+        meteor.slice(0, 2).every(Number.isFinite) &&
+        Number.isSafeInteger(meteor[2]) &&
+        Number.isFinite(meteor[3])
+      )
+      : [];
+    this._netMeteors = meteors;
+    const activeIds = new Set(meteors.map((meteor) => meteor[2]));
+    for (const [id, meteor] of this.networkMeteors) {
+      if (activeIds.has(id)) continue;
+      meteor.warn.destroy();
+      meteor.tail.destroy();
+      meteor.rock.destroy();
+      this.networkMeteors.delete(id);
+    }
+
+    for (const [x, y, id, progress] of meteors) {
+      const t = Phaser.Math.Clamp(progress, 0, 1);
+      const scale = Phaser.Math.Linear(0.35, 1, t);
+      const fallT = Phaser.Math.Clamp((t - 0.55) / 0.45, 0, 1);
+      const fall = Math.pow(fallT, 1.25);
+      const rockX = x + METEOR_FALL_OFFSET_X * (1 - fall);
+      const rockY = y + METEOR_FALL_OFFSET_Y * (1 - fall);
+      let meteor = this.networkMeteors.get(id);
+      if (!meteor) {
+        const warn = this.scene.add.circle(x, y, this.def.meteorImpactRadius, METEOR_WARN_COLOR, 0.35)
+          .setStrokeStyle(3, METEOR_WARN_COLOR, 0.9).setDepth(4).setScale(scale);
+        const tail = this.scene.add.graphics().setDepth(14);
+        const glow = this.scene.add.image(-2, -1, 'hit_fx').setScale(0.3).setTint(0x38d8cb)
+          .setAlpha(0.48).setBlendMode(Phaser.BlendModes.ADD);
+        const sprite = this.scene.add.image(0, 0, 'minotaur_meteor_aqua', 0).setScale(0.88);
+        const headGlow = this.scene.add.image(-7, -8, 'hit_fx').setScale(0.13, 0.3)
+          .setTint(0xeaffff).setAlpha(0.75).setRotation(-0.35).setBlendMode(Phaser.BlendModes.ADD);
+        const rock = this.scene.add.container(rockX, rockY, [glow, sprite, headGlow]).setDepth(15);
+        meteor = { x, y, warn, tail, rock, sprite, glow, headGlow };
+        setupMeteorRockFx(this.scene, meteor);
+        this.networkMeteors.set(id, meteor);
+      }
+      meteor.x = x;
+      meteor.y = y;
+      meteor.networkProgress = t;
+      meteor.networkProgressAt = nowMs;
+    }
+  }
+
+  _updateNetworkMeteorVisuals(nowMs) {
+    if (!this.networkMeteors?.size) return;
+    const length = Math.hypot(METEOR_FALL_OFFSET_X, METEOR_FALL_OFFSET_Y) || 1;
+    for (const meteor of this.networkMeteors.values()) {
+      const progress = Phaser.Math.Clamp(
+        meteor.networkProgress + Math.max(0, nowMs - meteor.networkProgressAt) / this.def.meteorFallMs,
+        0,
+        1
+      );
+      const blink = 0.5 + 0.5 * Math.sin(nowMs / 60);
+      const fallT = Phaser.Math.Clamp((progress - 0.55) / 0.45, 0, 1);
+      const fall = Math.pow(fallT, 1.25);
+      const rockX = meteor.x + METEOR_FALL_OFFSET_X * (1 - fall);
+      const rockY = meteor.y + METEOR_FALL_OFFSET_Y * (1 - fall);
+      meteor.warn.setPosition(meteor.x, meteor.y)
+        .setScale(Phaser.Math.Linear(0.35, 1, progress))
+        .setAlpha(Phaser.Math.Linear(0.25, 0.6, blink));
+      meteor.rock.setPosition(rockX, rockY)
+        .setRotation(progress * 5.6)
+        .setScale(Phaser.Math.Linear(0.62, 0.95, fallT));
+      meteor.sprite.setFrame(Math.min(3, Math.floor(nowMs / 85) % 4));
+      updateMeteorRockFx(
+        this.scene,
+        meteor,
+        rockX,
+        rockY,
+        fallT,
+        nowMs,
+        -METEOR_FALL_OFFSET_X / length,
+        -METEOR_FALL_OFFSET_Y / length
+      );
+    }
+  }
+
+  _clearNetworkMeteors() {
+    for (const meteor of this.networkMeteors?.values() || []) {
+      meteor.warn.destroy();
+      meteor.tail.destroy();
+      meteor.rock.destroy();
+    }
+    this.networkMeteors?.clear();
+    this._netMeteors = [];
   }
 
   // O pacote de morte pode chegar antes do fim da cutscene local na réplica.
@@ -1269,6 +1490,7 @@ export default class Minotaur extends Enemy {
     this.axeSprite.setPosition(this.x, this.y).setRotation(0).setScale(AXE_SPRITE_SCALE).clearTint().setVisible(true);
     resetMinotaurAxeTrail(this.axeFxState, this.x, this.y, nowMs);
     playMinotaurAxeLaunchFx(this.scene, this.x, this.y, this.axeTargetX, this.axeTargetY, this.isEnraged);
+    recordMinotaurFxEvent(this, 'axe-launch', this.x, this.y, this.axeTargetX, this.axeTargetY, nowMs);
     this._setDisarmed(true); // machado saiu da mão — troca pra sprite sem ele
     this.scene.cameras.main.shake(AXE_THROW_SHAKE_MS, AXE_THROW_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_axe_throw', { volume: 0.7 });
@@ -1319,6 +1541,7 @@ export default class Minotaur extends Enemy {
       this.axeBeepPlayed = true;
       this.axeStuckUntil = nowMs + this._playTimedSfx('sfx_axe_beep', 0.7);
       playMinotaurAxeBeepFx(this.scene, this.axeFxState, this.axeTargetX, this.axeTargetY, this.isEnraged);
+      recordMinotaurFxEvent(this, 'axe-beep', this.axeTargetX, this.axeTargetY, 0, 0, nowMs);
     }
     if (this.axeBeepPlayed && nowMs >= this.axeStuckUntil) this._explodeAxe(target, nowMs);
   }
@@ -1353,6 +1576,15 @@ export default class Minotaur extends Enemy {
   _explodeAxe(target, nowMs) {
     if (this.axePhase === 'detonating') return;
     this.axePhase = 'detonating';
+    recordMinotaurFxEvent(
+      this,
+      'axe-explosion',
+      this.axeTargetX,
+      this.axeTargetY,
+      this.def.axeThrowExplosionRadius,
+      0,
+      nowMs
+    );
     const devRevision = this._devRevision || 0;
     this.axeSprite.setScale(AXE_SPRITE_SCALE).clearTint();
 
@@ -1501,6 +1733,7 @@ export default class Minotaur extends Enemy {
   // Passo 12: some o machado e volta a perseguir normalmente, com o
   _endAxeThrow(nowMs) {
     playMinotaurAxeCatchFx(this.scene, this.x, this.y, this.isEnraged);
+    recordMinotaurFxEvent(this, 'axe-catch', this.x, this.y, 0, 0, nowMs);
     this.axeSprite?.setVisible(false);
     this._setDisarmed(false); // pegou o machado de volta — volta pro sprite com ele
     // NÃO mexe no bossState: o corpo pode estar no meio de uma investida ou
@@ -1526,6 +1759,7 @@ export default class Minotaur extends Enemy {
     for (let i = this.meteors.length - 1; i >= 0; i--) {
       const m = this.meteors[i];
       const t = Phaser.Math.Clamp((nowMs - m.startAt) / (m.impactAt - m.startAt), 0, 1);
+      m.networkProgress = t;
 
       // aviso: cresce até o raio final e pisca
       const blink = 0.5 + 0.5 * Math.sin(nowMs / 60);
@@ -1589,12 +1823,25 @@ export default class Minotaur extends Enemy {
     const rock = this.scene.add.container(0, 0, [glow, sprite, headGlow]).setDepth(15);
     rock.setPosition(x + METEOR_FALL_OFFSET_X, y + METEOR_FALL_OFFSET_Y);
 
-    const meteor = { x, y, warn, rock, tail, sprite, glow, headGlow, startAt: nowMs, impactAt: nowMs + this.def.meteorFallMs };
+    const meteor = {
+      networkId: ++this.nextMeteorNetworkId,
+      x,
+      y,
+      warn,
+      rock,
+      tail,
+      sprite,
+      glow,
+      headGlow,
+      startAt: nowMs,
+      impactAt: nowMs + this.def.meteorFallMs
+    };
     setupMeteorRockFx(this.scene, meteor);
     this.meteors.push(meteor);
   }
 
   _impactMeteor(m, target, nowMs) {
+    recordMinotaurFxEvent(this, 'meteor-impact', m.x, m.y, 0, 0, nowMs);
     m.warn.destroy();
     m.tail?.destroy();
     m.rock.destroy();
@@ -1691,20 +1938,24 @@ export default class Minotaur extends Enemy {
     this._moveTo(0, 0);
     const p = Phaser.Math.Clamp(1 - (this.leapPhaseUntil - nowMs) / this.def.leapWindupMs, 0, 1);
     this.setScale(this.baseScale * (1 + 0.15 * p), this.baseScale * (1 - 0.2 * p));
+    this._drawLeapTelegraph(nowMs, p);
+    if (nowMs >= this.leapPhaseUntil) this._startLeapRise(nowMs);
+  }
+
+  _drawLeapTelegraph(nowMs, progress) {
     // Anel convergente: geometria atualizada a 25 FPS; alpha/escala do sprite
     // continuam suaves. Evita clear()+strokeCircle em 60/120 FPS.
     const g = this.bossTelegraphGraphics;
     const palette = this._telegraphPalette();
-    g.setAlpha(0.55 + 0.45 * p);
+    g.setAlpha(0.55 + 0.45 * progress);
     const key = `leap:${this.isEnraged ? 1 : 0}`;
     if (this._prepareDynamicTelegraph(key, nowMs)) {
       g.clear();
       g.lineStyle(6, palette.dark, 0.45);
-      g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, p));
+      g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, progress));
       g.lineStyle(3, palette.bright, 1);
-      g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, p) - 3);
+      g.strokeCircle(this.x, this.y, Phaser.Math.Linear(230, 70, progress) - 3);
     }
-    if (nowMs >= this.leapPhaseUntil) this._startLeapRise(nowMs);
   }
 
   // Passo 2: decola — sobe esticando até sair da câmera
@@ -1720,6 +1971,7 @@ export default class Minotaur extends Enemy {
     this.scene.cameras.main.shake(LEAP_TAKEOFF_SHAKE_MS, LEAP_TAKEOFF_SHAKE_INTENSITY);
     this.scene.sound.play('sfx_minotaur_charge_impact', { volume: 0.8 });
     this._flashCircle(this.leapGroundX, this.leapGroundY, 100, this._telegraphPalette().main);
+    recordMinotaurFxEvent(this, 'leap-takeoff', this.leapGroundX, this.leapGroundY, 0, 0, nowMs);
   }
 
   _updateLeapRise(nowMs) {
@@ -1803,11 +2055,33 @@ export default class Minotaur extends Enemy {
     this._clearBossTelegraph();
 
     const radius = this.def.leapImpactRadius;
+    recordMinotaurFxEvent(this, 'leap', lx, ly, radius, 0, nowMs);
+    this._playLeapLandingFx(lx, ly, radius);
+    const dx = target.x - lx;
+    const dy = target.y - ly;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= radius && target.active && !target.healthSystem?.isDead()) {
+      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.leapDamage), this, nowMs);
+      const len = dist || 1;
+      const dirX = dist ? dx / len : 0;
+      const dirY = dist ? dy / len : 1;
+      target.applyKnockback?.(dirX, dirY, this.def.leapKnockbackForce, nowMs, this.def.leapKnockbackDurationMs);
+    }
+
+    this.leapAggroUntil = nowMs + this.def.leapAggroMs;
+    this.leapReadyAt = nowMs + this.def.leapCooldownMs;
+    this.leapPhaseUntil = nowMs + this.def.leapRecoverMs;
+    this.bossState = 'leap_recover';
+    this._moveTo(0, 0);
+  }
+
+  _playLeapLandingFx(lx, ly, radius) {
     const cam = this.scene.cameras.main;
     cam.shake(LEAP_LANDING_SHAKE_MS, LEAP_LANDING_SHAKE_INTENSITY);
     cam.flash(160, 255, 140, 60);
     this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
     this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.9 });
+    this.scene.sound.play('sfx_minotaur_cleave_roar', { volume: 0.9 });
     playMinotaurFuryBurst(this.scene, this, lx, ly, radius); // rugido: clarão, anel no raio do impacto, ondas e chamas
     this._showAxeExplosionFx(lx, ly, radius);
     const ring = this.scene.add
@@ -1823,25 +2097,6 @@ export default class Minotaur extends Enemy {
       ease: 'Cubic.easeOut',
       onComplete: () => ring.destroy()
     });
-
-    const dx = target.x - lx;
-    const dy = target.y - ly;
-    const dist = Math.hypot(dx, dy);
-    if (dist <= radius && target.active && !target.healthSystem?.isDead()) {
-      DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.leapDamage), this, nowMs);
-      const len = dist || 1;
-      const dirX = dist ? dx / len : 0;
-      const dirY = dist ? dy / len : 1;
-      target.applyKnockback?.(dirX, dirY, this.def.leapKnockbackForce, nowMs, this.def.leapKnockbackDurationMs);
-    }
-
-    // "Ele ficou puto porque eu fugi": ruge e entra em agressividade
-    this.scene.sound.play('sfx_minotaur_cleave_roar', { volume: 0.9 });
-    this.leapAggroUntil = nowMs + this.def.leapAggroMs;
-    this.leapReadyAt = nowMs + this.def.leapCooldownMs;
-    this.leapPhaseUntil = nowMs + this.def.leapRecoverMs;
-    this.bossState = 'leap_recover';
-    this._moveTo(0, 0);
   }
 
   _updateLeapRecover(nowMs) {
@@ -1940,13 +2195,8 @@ export default class Minotaur extends Enemy {
   // Passos 6-9: CORTE de verdade — dano altíssimo em todo mundo dentro do
   _executeCleave(target, nowMs) {
     this._clearBossTelegraph();
-    // whoosh do machado cortando o ar + impacto pesado juntos — é o golpe
-    // mais forte do Minotauro, o feedback tem que condizer
-    this.scene.sound.play('sfx_minotaur_axe_whoosh', { volume: 0.8 });
-    this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
-    this.scene.cameras.main.shake(CLEAVE_SHAKE_MS, CLEAVE_SHAKE_INTENSITY);
-    this.scene.cameras.main.flash(CLEAVE_FLASH_MS, 170, 60, 255);
-    this._showCleaveExecuteFx();
+    recordMinotaurFxEvent(this, 'cleave', this.x, this.y, this.cleaveAngle, 0, nowMs);
+    this._playCleaveImpactFx(this.x, this.y, this.cleaveAngle);
     if (target.active && !target.healthSystem?.isDead()) {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
       const angleTo = Math.atan2(target.y - this.y, target.x - this.x);
@@ -1964,19 +2214,27 @@ export default class Minotaur extends Enemy {
   // voando espalhados dentro do ângulo do corte. Bem mais chamativo que o
   // flash simples de antes (ver _executeAxe/_showAxeExplosionFx pro
   // mesmo espírito aplicado à explosão do machado).
-  _showCleaveExecuteFx() {
+  _playCleaveImpactFx(x, y, angle) {
+    this.scene.sound.play('sfx_minotaur_axe_whoosh', { volume: 0.8 });
+    this.scene.sound.play('sfx_minotaur_heavy_axe_impact', { volume: 0.95 });
+    this.scene.cameras.main.shake(CLEAVE_SHAKE_MS, CLEAVE_SHAKE_INTENSITY);
+    this.scene.cameras.main.flash(CLEAVE_FLASH_MS, 170, 60, 255);
+    this._showCleaveExecuteFx(x, y, angle);
+  }
+
+  _showCleaveExecuteFx(x = this.x, y = this.y, angle = this.cleaveAngle) {
     const half = Phaser.Math.DegToRad(this.def.cleaveHalfAngleDeg);
 
     // FX roxo novo (src/fx/MinotaurCleaveFx.js); o antigo abaixo fica de reserva
     if (hasMinotaurCleaveFx(this.scene)) {
       setMinotaurCleaveFxRage(this.isEnraged);
-      playMinotaurCleave(this.scene, this.x, this.y, this.cleaveAngle, this.def.cleaveRange, half);
+      playMinotaurCleave(this.scene, x, y, angle, this.def.cleaveRange, half);
       return;
     }
 
     const flash = this.scene.add.graphics().setDepth(21).setBlendMode(Phaser.BlendModes.ADD);
     flash.fillStyle(0xffffff, 0.95);
-    flash.slice(this.x, this.y, this.def.cleaveRange, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    flash.slice(x, y, this.def.cleaveRange, angle - half, angle + half, false);
     flash.fillPath();
     this.scene.tweens.add({
       targets: flash,
@@ -1988,7 +2246,7 @@ export default class Minotaur extends Enemy {
 
     const afterglow = this.scene.add.graphics().setDepth(19);
     afterglow.fillStyle((this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR), 0.5);
-    afterglow.slice(this.x, this.y, this.def.cleaveRange * 1.05, this.cleaveAngle - half, this.cleaveAngle + half, false);
+    afterglow.slice(x, y, this.def.cleaveRange * 1.05, angle - half, angle + half, false);
     afterglow.fillPath();
     this.scene.tweens.add({
       targets: afterglow,
@@ -1999,12 +2257,12 @@ export default class Minotaur extends Enemy {
     });
 
     for (let i = 0; i < 2; i++) {
-      const angle = this.cleaveAngle + Phaser.Math.FloatBetween(-half * 0.6, half * 0.6);
+      const shardAngle = angle + Phaser.Math.FloatBetween(-half * 0.6, half * 0.6);
       const line = this.scene.add.graphics().setDepth(20).setBlendMode(Phaser.BlendModes.ADD);
       line.lineStyle(6, 0xffffff, 0.9);
       line.beginPath();
-      line.moveTo(this.x, this.y);
-      line.lineTo(this.x + Math.cos(angle) * this.def.cleaveRange, this.y + Math.sin(angle) * this.def.cleaveRange);
+      line.moveTo(x, y);
+      line.lineTo(x + Math.cos(shardAngle) * this.def.cleaveRange, y + Math.sin(shardAngle) * this.def.cleaveRange);
       line.strokePath();
       this.scene.tweens.add({
         targets: line,
@@ -2016,27 +2274,27 @@ export default class Minotaur extends Enemy {
       });
     }
 
-    this._spawnCleaveShards(half);
+    this._spawnCleaveShards(half, x, y, angle);
   }
 
   // Estilhaços dentro do ângulo do corte (mesma técnica das outras
   // habilidades, ver _spawnAxeExplosionShards)
-  _spawnCleaveShards(half) {
+  _spawnCleaveShards(half, x = this.x, y = this.y, angle = this.cleaveAngle) {
     for (let i = 0; i < CLEAVE_SHARD_COUNT; i++) {
-      const angle = this.cleaveAngle + Phaser.Math.FloatBetween(-half, half);
+      const shardAngle = angle + Phaser.Math.FloatBetween(-half, half);
       const dist = this.def.cleaveRange * Phaser.Math.FloatBetween(0.55, 1.05);
       const tint = i % 2 === 0 ? (this.isEnraged ? 0x19bcb1 : CLEAVE_COLOR) : 0xffffff;
       const shard = this.scene.add
-        .image(this.x, this.y, 'hit_fx')
+        .image(x, y, 'hit_fx')
         .setDepth(20)
         .setBlendMode(Phaser.BlendModes.ADD)
         .setTint(tint)
         .setScale(Phaser.Math.FloatBetween(0.4, 0.75))
-        .setRotation(angle);
+        .setRotation(shardAngle);
       this.scene.tweens.add({
         targets: shard,
-        x: this.x + Math.cos(angle) * dist,
-        y: this.y + Math.sin(angle) * dist,
+        x: x + Math.cos(shardAngle) * dist,
+        y: y + Math.sin(shardAngle) * dist,
         alpha: 0,
         scale: 0.1,
         duration: Phaser.Math.Between(280, 420),
@@ -2121,14 +2379,8 @@ export default class Minotaur extends Enemy {
   // PISA: dano baixo em área pequena ao redor dele + knockback MUITO
   _resolveStomp(target, nowMs) {
     this._clearBossTelegraph();
-    this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.7 });
-    // FX roxo novo (src/fx/MinotaurStompFx.js: explosão, cratera, poeira, detritos, tremor);
-    // o visual simples antigo fica de reserva se o FX não carregou
-    setMinotaurStompFxRage(this.isEnraged);
-    if (!playMinotaurStomp(this.scene, this.x, this.y, this.def.stompImpactRadius)) {
-      this.scene.cameras.main.shake(STOMP_SHAKE_MS, STOMP_SHAKE_INTENSITY);
-      this._flashCircle(this.x, this.y, this.def.stompImpactRadius, (this.isEnraged ? 0xbafff1 : STOMP_IMPACT_COLOR));
-    }
+    recordMinotaurFxEvent(this, 'stomp', this.x, this.y, this.def.stompImpactRadius, 0, nowMs);
+    this._playStompImpactFx(this.x, this.y, this.isEnraged, false);
     const dist = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
     if (dist <= this.def.stompImpactRadius && target.active && !target.healthSystem?.isDead()) {
       DamageSystem.applyWeaponHit(target, this._bossDamage(this.def.stompDamage), this, nowMs);
@@ -2141,5 +2393,17 @@ export default class Minotaur extends Enemy {
     }
     this.bossState = 'chasing';
     this.stompReadyAt = nowMs + this._bossCooldown(this.def.stompCooldownMs);
+  }
+
+  _playStompImpactFx(x, y, rage, replica) {
+    this.scene.sound.play('sfx_minotaur_stomp', { volume: 0.7 });
+    setMinotaurStompFxRage(rage);
+    const player = this.scene.player;
+    const near = player && Phaser.Math.Distance.Between(player.x, player.y, x, y) < 450;
+    const options = replica ? { q: 0.6, shake: near ? 0.6 : 0 } : undefined;
+    if (!playMinotaurStomp(this.scene, x, y, this.def.stompImpactRadius, options)) {
+      if (!replica || near) this.scene.cameras.main.shake(STOMP_SHAKE_MS, STOMP_SHAKE_INTENSITY);
+      this._flashCircle(x, y, this.def.stompImpactRadius, rage ? 0xbafff1 : STOMP_IMPACT_COLOR);
+    }
   }
 }
