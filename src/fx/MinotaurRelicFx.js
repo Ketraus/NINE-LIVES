@@ -11,6 +11,7 @@ import { reserveFx } from './FxBudget.js';
 export const RELIC_AXE_SCALE = 3.5;   // era 2.8
 const AXE_KEY = 'minotaur_axe_thrown_rage';
 const SHIMMER_KEY = 'minotaur_relic_axe_energy';
+let nextShimmerId = 1;
 const TAU = Math.PI * 2;
 const AQUA = [50, 233, 214];
 const WHITE = [223, 255, 247];
@@ -26,6 +27,10 @@ export default class MinotaurRelicFx {
     this.axe = axe; this.axeGlow = axeGlow; this.mound = mound;
     this.landX = landX; this.landY = landY;
     this.lite = lite;
+    // Cada relíquia precisa ser dona da própria textura. Remover uma chave
+    // global aqui enquanto outra relíquia ainda usa o Frame antigo deixa
+    // frame.source nulo e quebra o renderer WebGL a cada frame.
+    this.shimmerKey = `${SHIMMER_KEY}_${nextShimmerId++}`;
     this.calm = SettingsManager.getReducedFlashes() ? 0.4 : 1;
     this.motionK = SettingsManager.getReducedMotion() ? 0.18 : 1;
     this.age = Math.max(0, age0);   // ms desde o pouso
@@ -70,12 +75,11 @@ export default class MinotaurRelicFx {
         if (a < 200 || !((g - r >= 35 && m >= 70) || m >= 190)) continue;   // só a energia do machado
         this.pixels.push({ i: i * 4, r, g, b, light: m >= 190, ph: rand(0, TAU), sp: rand(2.2, 6.5) / 1000 });
       }
-      if (scene.textures.exists(SHIMMER_KEY)) scene.textures.remove(SHIMMER_KEY);
-      this.tex = scene.textures.createCanvas(SHIMMER_KEY, W, H);
+      this.tex = scene.textures.createCanvas(this.shimmerKey, W, H);
       this.ctx = this.tex.getContext();
       this.data = this.ctx.createImageData(W, H);
       this.tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-      this.shimmer = this.image(SHIMMER_KEY, 8.2).setOrigin(23 / 64, 40 / 64);
+      this.shimmer = this.image(this.shimmerKey, 8.2).setOrigin(23 / 64, 40 / 64);
     } catch (error) {
       this.shimmer = null;
       console.warn('[MinotaurRelicFx] Brilho do machado indisponível', error);
@@ -204,7 +208,7 @@ export default class MinotaurRelicFx {
     for (const image of this.extras) if (image.scene) image.destroy();
     this.extras.length = 0;
     this.sparks.length = 0;
-    if (this.tex && this.scene.textures.exists(SHIMMER_KEY)) this.scene.textures.remove(SHIMMER_KEY);
+    if (this.tex && this.scene.textures.exists(this.shimmerKey)) this.scene.textures.remove(this.shimmerKey);
     this.tex = null;
   }
 }
