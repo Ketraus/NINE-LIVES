@@ -17,6 +17,11 @@ export default class Sealer extends Enemy {
     this.arenaNextVisualUpdateAt = 0;
     this.arenaNextCrushTickAt = 0;
     this.arenaEnteredPlayerIds = new Set();
+    this.arenaMarkerPoints = Array.from({ length: 16 }, () => [
+      { x: 0, y: 0 },
+      { x: 0, y: 0 },
+      { x: 0, y: 0 }
+    ]);
     // Movimento em "rajadas" (ver _updateSealerMovement/_decideSealerMoveDi…
     this.sealerMoveDir = { x: 0, y: 0 };
     this.sealerNextDecisionAt = 0;
@@ -36,6 +41,7 @@ export default class Sealer extends Enemy {
   _cleanupSpecial() {
     // Sealer: o anel da arena não é filho do sprite (é um Graphics à
     this.arenaGraphics?.destroy();
+    this.scene.hud?.clearSealerArenaWarning();
   }
 
   // Sealer (def.sealer = true): forma uma arena circular fixa no mundo,
@@ -206,11 +212,41 @@ export default class Sealer extends Enemy {
     // Interpolação manual evita criar dois Phaser.Display.Color + resultado
     // em toda atualização visual.
     const p = Phaser.Math.Clamp(t, 0, 1);
+    this.scene.hud?.setSealerArenaProgress(p, this.def.arenaShrinkDurationMs);
     const r = Math.round(0x9b + (0xff - 0x9b) * p);
     const gr = Math.round(0x30 + (0x1a - 0x30) * p);
     const b = Math.round(0xff + (0x1a - 0xff) * p);
     const stroke = (r << 16) | (gr << 8) | b;
-    g.lineStyle(6, stroke, 0.85);
+    const pulse = 0.75 + 0.25 * Math.sin(nowMs / 220);
+
+    g.fillStyle(stroke, 0.035 + 0.02 * p);
+    g.fillCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
+    g.lineStyle(16, 0x100b1a, 0.82);
     g.strokeCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
+    g.lineStyle(8, stroke, 0.6 + 0.2 * pulse);
+    g.strokeCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
+    g.lineStyle(3, 0xffffff, 0.58 + 0.28 * pulse);
+    g.strokeCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
+
+    g.fillStyle(0xffffff, 0.68 + 0.25 * pulse);
+    for (let i = 0; i < this.arenaMarkerPoints.length; i++) {
+      const angle = (i / this.arenaMarkerPoints.length) * Math.PI * 2;
+      const nx = Math.cos(angle);
+      const ny = Math.sin(angle);
+      const tx = -ny;
+      const ty = nx;
+      const tipDistance = radius - 18;
+      const baseDistance = radius + 1;
+      const baseX = this.arenaCenter.x + nx * baseDistance;
+      const baseY = this.arenaCenter.y + ny * baseDistance;
+      const points = this.arenaMarkerPoints[i];
+      points[0].x = this.arenaCenter.x + nx * tipDistance;
+      points[0].y = this.arenaCenter.y + ny * tipDistance;
+      points[1].x = baseX + tx * 6;
+      points[1].y = baseY + ty * 6;
+      points[2].x = baseX - tx * 6;
+      points[2].y = baseY - ty * 6;
+      g.fillPoints(points, true);
+    }
   }
 }

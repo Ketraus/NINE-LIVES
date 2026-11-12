@@ -1,6 +1,7 @@
 import EventBus from '../systems/EventBus.js';
 import { SURVIVAL_MULTIPLIER_MAX, COMPLETION_BONUS } from '../roguelike/ScoreManager.js';
 import { UI_SCALE } from '../config/layout.js';
+import { EVALUATION_FORM_URL } from '../config/links.js';
 
 // Tela de resultado: entra depois do "VOCÊ MORREU"/vitória (HUD emite
 // 'gameover-shown' / 'win-shown'). Uma etapa por vez, nada sobreposto:
@@ -407,7 +408,7 @@ export default class ResultUI {
         return;
       }
       if (!waitText) {
-        waitText = this._txt(cx, H - 190, 'AGUARDANDO O GRUPO TERMINAR...', 10, COLOR.dim);
+        waitText = this._txt(cx, H - 242, 'AGUARDANDO O GRUPO TERMINAR...', 10, COLOR.dim);
       }
     };
     const toMenu = () => {
@@ -416,9 +417,14 @@ export default class ResultUI {
       this._sfx('sfx_ui_click', 0.6);
       this.scene.scene.start('MainMenuScene');
     };
+    const evaluate = () => {
+      this._sfx('sfx_ui_click', 0.6);
+      window.open(EVALUATION_FORM_URL, '_blank', 'noopener,noreferrer');
+    };
 
-    this._button(cx, H - 142, won ? 'ESCOLHER ARMA' : 'REINICIAR', primary);
-    this._button(cx, H - 90, 'MENU', toMenu);
+    this._button(cx, H - 194, won ? 'ESCOLHER ARMA' : 'REINICIAR', primary);
+    this._button(cx, H - 142, 'MENU', toMenu);
+    this._button(cx, H - 90, 'AVALIAR JOGO', evaluate);
 
     if (!this.scene.sys.game.device.input.touch) {
       const hint = this._txt(cx, H - 30, won ? 'OU PRESSIONE R PARA ESCOLHER OUTRA ARMA' : 'OU PRESSIONE R PARA REINICIAR', 8, COLOR.dim);
