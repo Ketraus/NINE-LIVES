@@ -21,6 +21,8 @@ import SettingsManager from './SettingsManager.js';
 //     véu, pra continuar luminosa na escuridão
 //
 // Cratera e fendas ficam até o fim da cena (nada se desfaz).
+// As fendas principais atravessam o enquadramento por inteiro: suas pontas
+// ficam fora do mundo visível, como rachaduras de algo enorme sob o chão.
 //
 // Ganchos: begin(start, target) [VictoryFinale.start], surge() [4ª pancada],
 // clear() [corte pro silêncio], update(delta) [GameScene].
@@ -48,8 +50,8 @@ const MAIN_COUNT = 4; // fendas soltas ao longo do trajeto (além das que saem d
 const SEGMENTS_MAIN = 30;
 const BRANCHES_PER_MAIN_MIN = 0;
 const BRANCHES_PER_MAIN_MAX = 1;
-const LENGTH_MIN = 1.0; // × largura da tela (mundo)
-const LENGTH_MAX = 2.0;
+const LENGTH_MIN = 2.8; // × largura da tela (mundo), antes dividido ao redor da raiz
+const LENGTH_MAX = 3.8;
 const WIDTH_MIN = 0.022; // × largura da tela
 const WIDTH_MAX = 0.042;
 const WIDTH_NEAR_TARGET_BOOST = 0.7;
@@ -296,7 +298,12 @@ export default class VictoryCracks {
       const baseAngle = toward + rand(-ANGLE_SPREAD, ANGLE_SPREAD);
       const length = rand(LENGTH_MIN, LENGTH_MAX) * U * Phaser.Math.Linear(1, 1.25, f);
       const width = rand(WIDTH_MIN, WIDTH_MAX) * U * (1 + f * WIDTH_NEAR_TARGET_BOOST);
-      const main = this._makeFissure(root, baseAngle, length, width, SEGMENTS_MAIN, bounds);
+      const start = {
+        x: root.x - Math.cos(baseAngle) * length * 0.5,
+        y: root.y - Math.sin(baseAngle) * length * 0.5
+      };
+      const segments = Math.ceil(SEGMENTS_MAIN * length / (U * 2.4));
+      const main = this._makeFissure(start, baseAngle, length, width, segments, null);
       main.rootDist = along;
       this.fissures.push(main);
       this._addVents(main);
