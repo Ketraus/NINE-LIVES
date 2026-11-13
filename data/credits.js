@@ -16,7 +16,7 @@ export default {
 
   // Encerramento da versão SNCT (data/gameVersion.js): cartões sobre preto,
   // um de cada vez (fade in -> fica -> fade out). Cada cartão: `title`
-  // (opcional, maior) e `lines`. Depois do último volta pro menu.
+  // (opcional, maior) e `lines`. Depois do último, pede avaliação antes do menu.
   // Mensagem do final da versão beta da SNCT (run que acaba antes do
   // Minotauro, ver systems/SnctEnding.js): um cartão só, as duas linhas juntas.
   snctBetaEnding: [

@@ -1,6 +1,7 @@
 import credits from '../../data/credits.js';
 import gameVersion from '../../data/gameVersion.js';
 import GameProgress from '../systems/GameProgress.js';
+import { EVALUATION_FORM_URL } from '../config/links.js';
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const SCROLL_PX_PER_S = 38;
@@ -14,7 +15,7 @@ const CARD_GAP_MS = 900; // preto puro entre um cartão e o próximo
 const SKIP_UNLOCK_MS = 3500; // só dá pra pular depois disso (ninguém pula sem querer)
 
 // Créditos em silêncio sobre preto (conteúdo em data/credits.js). Ao fim — ou
-// ao pular — volta pro menu principal.
+// ao pular — pede a avaliação antes de liberar o retorno ao menu principal.
 export default class CreditsScene extends Phaser.Scene {
   constructor() {
     super('CreditsScene');
@@ -77,7 +78,14 @@ export default class CreditsScene extends Phaser.Scene {
 
   _wireSkip() {
     const skip = () => {
-      if (this._elapsedMs >= SKIP_UNLOCK_MS) this._leave();
+      if (this._elapsedMs < SKIP_UNLOCK_MS || this._evaluationPromptShown) return;
+      if (this._cardsMode) {
+        this.tweens.killAll();
+        this.time.removeAllEvents();
+        this._activeCard?.destroy();
+        this._activeCard = null;
+      }
+      this._showEvaluationPrompt();
     };
     this.input.on('pointerdown', skip);
     this.input.keyboard?.on('keydown', skip);
@@ -89,13 +97,14 @@ export default class CreditsScene extends Phaser.Scene {
     const cards = this._customCards || credits.snctEpilogue;
     let index = 0;
     const next = () => {
-      if (this._leaving) return;
+      if (this._leaving || this._evaluationPromptShown) return;
       if (index >= cards.length) {
-        this.time.delayedCall(600, () => this._leave());
+        this.time.delayedCall(600, () => this._showEvaluationPrompt());
         return;
       }
       const card = cards[index++];
       const container = this.add.container(width / 2, height / 2).setAlpha(0);
+      this._activeCard = container;
       let y = card.title ? -(card.lines.length * 12) - 26 : -(card.lines.length * 24) / 2;
       if (card.title) {
         const title = this.add
@@ -146,12 +155,50 @@ export default class CreditsScene extends Phaser.Scene {
       this.roll.y -= (SCROLL_PX_PER_S * delta) / 1000;
     } else {
       this._holdMs += delta;
-      if (this._holdMs >= END_HOLD_MS) this._leave();
+      if (this._holdMs >= END_HOLD_MS) this._showEvaluationPrompt();
     }
   }
 
+  _showEvaluationPrompt() {
+    if (this._evaluationPromptShown) return;
+    this._evaluationPromptShown = true;
+
+    const { width, height } = this.scale;
+    const centerX = width / 2;
+    const buttonY = height * 0.76;
+    const prompt = this.add.text(centerX, buttonY - 38, 'AVALIE O JOGO PARA VOLTAR AO MENU', {
+      fontFamily: PIXEL_FONT,
+      fontSize: '10px',
+      color: '#dfe3ea',
+      align: 'center'
+    }).setOrigin(0.5);
+    const background = this.add.rectangle(centerX, buttonY, 360, 48, 0x0b171c, 0.96)
+      .setStrokeStyle(2, 0x4fd1ff, 1);
+    const label = this.add.text(centerX, buttonY, 'AVALIAR JOGO', {
+      fontFamily: PIXEL_FONT,
+      fontSize: '11px',
+      color: '#4fd1ff',
+      align: 'center'
+    }).setOrigin(0.5);
+    const hitArea = this.add.rectangle(centerX, buttonY, 360, 48, 0xffffff, 0)
+      .setInteractive({ useHandCursor: true });
+
+    hitArea.on('pointerover', () => background.setFillStyle(0x10232b, 1));
+    hitArea.on('pointerout', () => background.setFillStyle(0x0b171c, 0.96));
+    hitArea.on('pointerdown', () => {
+      if (!this._evaluationOpened) {
+        window.open(EVALUATION_FORM_URL, '_blank', 'noopener,noreferrer');
+        this._evaluationOpened = true;
+        prompt.setText('APÓS AVALIAR, VOLTE AQUI.');
+        label.setText('JÁ AVALIEI — VOLTAR AO MENU');
+        return;
+      }
+      this._leave();
+    });
+  }
+
   _leave() {
-    if (this._leaving) return;
+    if (this._leaving || !this._evaluationOpened) return;
     this._leaving = true;
     this.cameras.main.fadeOut(FADE_OUT_MS, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () =>
