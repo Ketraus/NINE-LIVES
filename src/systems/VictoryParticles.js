@@ -2,8 +2,8 @@
 // da pancada (VictoryImpact chama start() no corte sonoro) e seguem até a cena
 // acabar:
 //
-//   "Uma. Duas. Dezenas. Centenas." — a densidade nasce quase imperceptível e
-//   cresce até o ambiente inteiro ter o fenômeno (curva em RAMP_MS).
+//   "Uma. Duas. Dezenas." — a densidade nasce quase imperceptível e cresce
+//   aos poucos, sem encobrir o cenário (curva em RAMP_MS).
 //   Não caem como poeira: sobem devagar, acelerando de leve ao longo da vida,
 //   como se algo puxasse a essência do mundo pra cima.
 //   Tons de azul profundo com ciano discreto, pontos minúsculos e levemente
@@ -25,8 +25,8 @@ const DEPTH = 110; // acima do véu escuro (depth 99): as partículas continuam 
 const RAMP_MS = 30000; // do primeiro ponto até a densidade cheia
 const RAMP_EXPONENT = 1.5; // curva: lenta no começo, forte no fim
 const MIN_ON_SCREEN = 2; // "uma. duas."
-const MAX_ON_SCREEN = 340; // "centenas" na densidade cheia
-const HARD_CAP = 560; // teto de segurança (multiplicadores incluídos)
+const MAX_ON_SCREEN = 90; // mantém o cenário visível mesmo no fim da travessia
+const HARD_CAP = 180; // teto de segurança (multiplicadores incluídos)
 
 const LIFE_MIN_MS = 5000;
 const LIFE_MAX_MS = 9000;

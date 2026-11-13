@@ -46,14 +46,14 @@ const DEPARTURE_DELAY_MS = 7000; // ~10:10 -> ~10:17: a câmera começa a se mod
 const COLD_KICK = 0.35; // a luz oscila (escurece e esfria mais) a cada golpe
 
 // partículas: "agora em maior quantidade"
-const PARTICLE_SURGE_MULT = 2;
+const PARTICLE_SURGE_MULT = 1.2;
 const PARTICLE_SURGE_MS = 6000;
 
 // corrupção violeta (pulsos globais, cada inimigo reage com atraso próprio)
 const PULSE_START_MS = 700;
-const PULSE_MIN_MS = 700;
-const PULSE_MAX_MS = 2300;
-const PULSE_CHANCE = 0.6; // fração dos inimigos visíveis que reage a cada pulso
+const PULSE_MIN_MS = 1500;
+const PULSE_MAX_MS = 3000;
+const PULSE_CHANCE = 0.35; // fração dos inimigos visíveis que reage a cada pulso
 const PULSE_SPREAD_MS = 240; // atraso aleatório por inimigo (onda irregular)
 const PULSE_STEPS = [
   { color: 0xd2a8ff, ms: 90 },
@@ -68,9 +68,9 @@ const PULSE_STEPS_STRONG = [
 
 // falhas luminosas das máquinas
 const GLITCH_START_MS = 1300;
-const GLITCH_MIN_MS = 350;
-const GLITCH_MAX_MS = 1400;
-const GLITCH_GROUP_CHANCE = 0.25; // às vezes vários juntos ("respondem a um sinal")
+const GLITCH_MIN_MS = 1100;
+const GLITCH_MAX_MS = 2400;
+const GLITCH_GROUP_CHANCE = 0.12; // falhas pontuais, sem competir com as fissuras
 const GLITCH_STEPS = [
   { color: 0xd6f6ff, fill: true, ms: 55 },
   { color: null, ms: 45 },
@@ -80,9 +80,9 @@ const GLITCH_STEPS = [
 // reflexos ciano no terreno
 const GLINT_KEY = 'victory_glint';
 const GLINT_START_MS = 1800;
-const GLINT_MIN_MS = 900;
-const GLINT_MAX_MS = 2600;
-const GLINT_MAX_ALIVE = 3;
+const GLINT_MIN_MS = 2200;
+const GLINT_MAX_MS = 4000;
+const GLINT_MAX_ALIVE = 1;
 const GLINT_DEPTH = 9; // acima das camadas do mapa (depth = índice), logo abaixo do jogador (10)
 const GLINT_TINTS = [0x4fd0ff, 0x7fe6ff, 0x3aa8ff];
 
@@ -165,11 +165,11 @@ export default class VictorySecondThump {
 
     const boost = this.corruptionBoost;
     if (t >= this._nextPulseAt) {
-      this._nextPulseAt = t + Phaser.Math.Between(PULSE_MIN_MS, PULSE_MAX_MS) * Phaser.Math.Linear(1, 0.45, boost);
+      this._nextPulseAt = t + Phaser.Math.Between(PULSE_MIN_MS, PULSE_MAX_MS) * Phaser.Math.Linear(1, 0.7, boost);
       this._corruptionPulse();
     }
     if (t >= this._nextGlitchAt) {
-      this._nextGlitchAt = t + Phaser.Math.Between(GLITCH_MIN_MS, GLITCH_MAX_MS) * Phaser.Math.Linear(1, 0.4, boost);
+      this._nextGlitchAt = t + Phaser.Math.Between(GLITCH_MIN_MS, GLITCH_MAX_MS) * Phaser.Math.Linear(1, 0.75, boost);
       this._glitch();
     }
     if (t >= this._nextGlintAt) {
@@ -220,7 +220,7 @@ export default class VictorySecondThump {
   }
 
   _corruptionPulse() {
-    const chance = Phaser.Math.Linear(PULSE_CHANCE, 0.95, this.corruptionBoost);
+    const chance = Phaser.Math.Linear(PULSE_CHANCE, 0.6, this.corruptionBoost);
     const steps = this.corruptionBoost > 0.4 ? PULSE_STEPS_STRONG : PULSE_STEPS;
     this._visibleEnemies().forEach((enemy) => {
       if (Math.random() > chance) return;
@@ -233,9 +233,9 @@ export default class VictorySecondThump {
   _glitch() {
     const list = this._visibleEnemies();
     if (!list.length) return;
-    const count = Math.random() < Phaser.Math.Linear(GLITCH_GROUP_CHANCE, 0.5, this.corruptionBoost)
-      ? Phaser.Math.Between(4, 7)
-      : Phaser.Math.Between(1, 3);
+    const count = Math.random() < Phaser.Math.Linear(GLITCH_GROUP_CHANCE, 0.2, this.corruptionBoost)
+      ? Phaser.Math.Between(2, 3)
+      : 1;
     Phaser.Utils.Array.Shuffle(list).slice(0, count).forEach((enemy) => this._tintSequence(enemy, GLITCH_STEPS));
   }
 

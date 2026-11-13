@@ -44,10 +44,10 @@ const DEPTH_ENERGY = 111;
 const DEPTH_FLASH = 112;
 
 // ---------------------------------------------------------------- fendas
-const MAIN_COUNT = 7; // fendas soltas ao longo do trajeto (além das que saem das crateras)
+const MAIN_COUNT = 4; // fendas soltas ao longo do trajeto (além das que saem das crateras)
 const SEGMENTS_MAIN = 30;
-const BRANCHES_PER_MAIN_MIN = 1;
-const BRANCHES_PER_MAIN_MAX = 2;
+const BRANCHES_PER_MAIN_MIN = 0;
+const BRANCHES_PER_MAIN_MAX = 1;
 const LENGTH_MIN = 1.0; // × largura da tela (mundo)
 const LENGTH_MAX = 2.0;
 const WIDTH_MIN = 0.022; // × largura da tela
@@ -59,8 +59,8 @@ const LEAD_DISTANCE = 0.9; // fenda solta dispara quando a câmera chega a essa 
 const GROW_MIN_MS = 1100;
 const GROW_MAX_MS = 1900;
 const SURGE_STARTS = 2;
-const VENTS_MIN = 2; // pontos onde a fenda "respira" energia mais forte
-const VENTS_MAX = 3;
+const VENTS_MIN = 1; // pontos onde a fenda "respira" energia mais forte
+const VENTS_MAX = 2;
 
 // ---------------------------------------------------------------- crateras
 const CRATER_VARIANTS = 3;
@@ -68,13 +68,13 @@ const CRATER_TEX = 192;
 const CRATER_INTRO_MS = 520;
 const CRATER_RADIUS_MIN = 0.085; // × largura da tela
 const CRATER_RADIUS_MAX = 0.13;
-const CRATER_FISSURES_MIN = 2;
-const CRATER_FISSURES_MAX = 3;
+const CRATER_FISSURES_MIN = 1;
+const CRATER_FISSURES_MAX = 2;
 const CRATER_HIT = { peak: 0.024, tau: 560, kick: 0.6 };
 
 // ---------------------------------------------------------------- energia
-const CAP_DESKTOP = 560;
-const CAP_TOUCH = 300;
+const CAP_DESKTOP = 260;
+const CAP_TOUCH = 160;
 
 // ---------------------------------------------------------------- cores
 const PURPLE_DEEP = 0x3a0c6e;
@@ -307,7 +307,7 @@ export default class VictoryCracks {
   _buildCraters(bounds) {
     const U = this._unit;
     const player = this.scene.player;
-    const count = Phaser.Math.Clamp(Math.round(this._pathLen / (U * 0.5)), 5, 11);
+    const count = Phaser.Math.Clamp(Math.round(this._pathLen / (U * 0.85)), 3, 6);
     for (let k = 0; k < count; k++) {
       const f = count > 1 ? k / (count - 1) : 1;
       for (let attempt = 0; attempt < 10; attempt++) {

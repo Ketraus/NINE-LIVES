@@ -220,7 +220,7 @@ export default class VictoryImpact {
       tint: { onEmit: () => (Math.random() < 0.5 ? 0x9aa3b2 : 0x7e8796) },
       emitting: false
     }).setDepth(15);
-    dust.explode(75);
+    dust.explode(45);
     killLater(dust, 3800);
 
     const chips = scene.add.particles(0, 0, CHIP_TEXTURE, {
@@ -235,7 +235,7 @@ export default class VictoryImpact {
       tint: { onEmit: pickChipColor },
       emitting: false
     }).setDepth(16);
-    chips.explode(120);
+    chips.explode(70);
     killLater(chips, 2200);
 
     // chuvisco de detritos: cai do topo da tela por ~2,6 s
@@ -249,9 +249,9 @@ export default class VictoryImpact {
       scale: { min: 0.6, max: 1.4 },
       alpha: { start: 0.9, end: 0 },
       tint: { onEmit: pickChipColor },
-      frequency: 22,
+      frequency: 45,
       quantity: 1,
-      duration: 2600
+      duration: 1800
     }).setDepth(16);
     killLater(trickle, 5200);
   }

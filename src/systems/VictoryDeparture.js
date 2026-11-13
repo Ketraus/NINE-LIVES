@@ -26,10 +26,10 @@ const LEAVE_AFTER_THUMP_MS = 1300; // a câmera começa a abandonar o gato
 // travessia
 const THUMP4_AT_PROGRESS = 0.45;
 const THUMP4 = { peak: 0.03, tau: 1500, kick: 0.8 }; // pancada que ROLA: decai devagar
-const PARTICLE_DENSITY_START = 2; // multiplicador deixado pelo surge da Cena 03
-const PARTICLE_DENSITY_END = 3.4;
-const PARTICLE_SPEED_END = 1.6;
-const PARTICLE_TRAIL_END = 0.35;
+const PARTICLE_DENSITY_START = 1.2; // aumento sutil durante a travessia
+const PARTICLE_DENSITY_END = 1.5;
+const PARTICLE_SPEED_END = 1.25;
+const PARTICLE_TRAIL_END = 0.08;
 const COLD_MAX_END = 0.92; // sombras se aprofundando
 const TEXTURE_FADE_IN_MS = 3000;
 
