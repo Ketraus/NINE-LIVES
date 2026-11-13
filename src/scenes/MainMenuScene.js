@@ -4,6 +4,7 @@ import { EVALUATION_FORM_URL } from '../config/links.js';
 import MenuAtmosphereFx from '../fx/MenuAtmosphereFx.js';
 import MenuCorruptionFx from '../fx/MenuCorruptionFx.js';
 import GameProgress from '../systems/GameProgress.js';
+import MenuMusicFx from '../systems/MenuMusicFx.js';
 import { THEME_NORMAL, getMenuTheme } from '../config/menuTheme.js';
 import RoomMenuUI from '../ui/RoomMenuUI.js';
 
@@ -68,6 +69,16 @@ export default class MainMenuScene extends Phaser.Scene {
     this.cameras.main.fadeIn(firstTime ? INTRO_FADE_MS : ENTER_FADE_MS, 0, 0, 0);
 
     MusicManager.play(this, 'music_menu');
+    // Theme 2: a mesma música, mais profunda e com glitches raros (ver
+    // systems/MenuMusicFx.js). Ao trocar de tema ela muda aos poucos.
+    MenuMusicFx.set(this._corrupted, { rampMs: this._corruptionReveal ? (this._fastReveal ? 3000 : 5000) : 1500 });
+    const onMusicGlitch = () => {
+      this._glitchUntil = this.time.now + 140; // o título glitcha junto com a música
+    };
+    MenuMusicFx.onGlitch = onMusicGlitch;
+    this.events.once('shutdown', () => {
+      if (MenuMusicFx.onGlitch === onMusicGlitch) MenuMusicFx.onGlitch = null;
+    });
 
     // tudo que precisa sumir junto na transição (ver _playExitTransition)
     this.menuLayer = this.add.container(0, 0);

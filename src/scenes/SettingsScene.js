@@ -3,6 +3,7 @@ import SettingsManager from '../systems/SettingsManager.js';
 import EventBus from '../systems/EventBus.js';
 import { UI_SCALE } from '../config/layout.js';
 import GameProgress from '../systems/GameProgress.js';
+import MenuMusicFx from '../systems/MenuMusicFx.js';
 import MenuCorruptionFx from '../fx/MenuCorruptionFx.js';
 import { THEME_NORMAL, getMenuTheme } from '../config/menuTheme.js';
 
@@ -48,6 +49,7 @@ export default class SettingsScene extends Phaser.Scene {
 
     const corrupted = GameProgress.isCorrupted();
     T = getMenuTheme(corrupted);
+    if (!this.overlay) MenuMusicFx.set(corrupted); // mesma música do menu, no tema escolhido
 
     const bg = this.add.image(width / 2, height / 2, 'menu_bg');
     const scale = Math.max(width / bg.width, height / bg.height);
