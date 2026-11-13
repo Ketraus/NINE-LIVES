@@ -37,6 +37,16 @@ export default class MainMenuScene extends Phaser.Scene {
   }
 
   create(data) {
+    // O Phaser guarda os dados do último start/restart e entrega de novo quando
+    // a cena abre sem dados (ex.: voltando da Settings ou do jogo). Por isso os
+    // avisos de "uma vez só" (transição do tema, notice) são lidos aqui e
+    // apagados, senão repetiriam toda vez que o jogador voltasse ao menu.
+    const once = { reveal: Boolean(data?.corruptionReveal), fast: Boolean(data?.fastReveal), notice: data?.notice };
+    if (data) {
+      data.corruptionReveal = false;
+      data.fastReveal = false;
+      data.notice = undefined;
+    }
     const { width, height } = this.scale;
 
     this._transitioning = false; // trava clique duplo durante a saída
@@ -48,8 +58,8 @@ export default class MainMenuScene extends Phaser.Scene {
     // na 1ª vez: o menu começa normal e a corrupção toma a cidade aos poucos.
     this._corrupted = GameProgress.isCorrupted();
     T = getMenuTheme(this._corrupted);
-    this._fastReveal = Boolean(data?.fastReveal);
-    this._corruptionReveal = this._corrupted && Boolean(data?.corruptionReveal);
+    this._fastReveal = once.fast;
+    this._corruptionReveal = this._corrupted && once.reveal;
     this._postLevel = -1;
 
     // fade de entrada (chegando do Boot ou voltando da SettingsScene/pause)
@@ -123,7 +133,7 @@ export default class MainMenuScene extends Phaser.Scene {
     });
 
     // aviso vindo de outra cena (ex.: sala cheia / senha incorreta)
-    if (data?.notice) this._showNotice(data.notice);
+    if (once.notice) this._showNotice(once.notice);
   }
 
   // Aviso curto no rodapé, some sozinho.
