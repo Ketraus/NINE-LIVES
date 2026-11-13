@@ -393,8 +393,11 @@ export default class ResultUI {
   _buildButtons() {
     const { cx, H } = this;
     const won = !!this.scene.hasWon;
+    const requiresEvaluation = Boolean(this.scene.multiplayer?.isMultiplayer);
     let acted = false;
     let waitText = null;
+    let evaluationOpened = false;
+    let menuButton;
     // Multiplayer: se o grupo ainda joga, REINICIAR só entra na fila de espera
     // e NÃO trava o botão MENU (antes os dois compartilhavam o mesmo "acted" e
     // o jogador morto ficava preso no limbo, sem conseguir sair).
@@ -412,7 +415,7 @@ export default class ResultUI {
       }
     };
     const toMenu = () => {
-      if (acted) return;
+      if (acted || (requiresEvaluation && !evaluationOpened)) return;
       acted = true;
       this._sfx('sfx_ui_click', 0.6);
       this.scene.scene.start('MainMenuScene');
@@ -420,10 +423,19 @@ export default class ResultUI {
     const evaluate = () => {
       this._sfx('sfx_ui_click', 0.6);
       window.open(EVALUATION_FORM_URL, '_blank', 'noopener,noreferrer');
+      if (requiresEvaluation && !evaluationOpened) {
+        evaluationOpened = true;
+        menuButton.labelText.setText('MENU').setColor('#8fb3bf').setAlpha(1);
+        menuButton.hitArea.setInteractive({ useHandCursor: true });
+      }
     };
 
     this._button(cx, H - 194, won ? 'ESCOLHER ARMA' : 'REINICIAR', primary);
-    this._button(cx, H - 142, 'MENU', toMenu);
+    menuButton = this._button(cx, H - 142, requiresEvaluation ? 'AVALIE PARA MENU' : 'MENU', toMenu);
+    if (requiresEvaluation) {
+      menuButton.labelText.setColor(COLOR.dim).setAlpha(0.65);
+      menuButton.hitArea.disableInteractive();
+    }
     this._button(cx, H - 90, 'AVALIAR JOGO', evaluate);
 
     if (!this.scene.sys.game.device.input.touch) {
@@ -478,6 +490,8 @@ export default class ResultUI {
     hit.on('pointerdown', onSelect);
 
     box.add([panel, arrow, text, hit]);
+    box.labelText = text;
+    box.hitArea = hit;
     this.stage.add(box);
     this.scene.tweens.add({ targets: box, alpha: 1, duration: 300 });
     return box;
