@@ -7,9 +7,10 @@ export default {
   title: 'NINE LIVES',
   subtitle: '',
   sections: [
-    // exemplo:
-    // { heading: 'GAME DESIGN & PROGRAMAÇÃO', lines: ['Seu Nome'] },
-    // { heading: 'ARTE E MÚSICA', lines: ['Nome'] }
+    { heading: 'CRIAÇÃO E DIREÇÃO', lines: ['Miguel Kraus Trindade & Ketlin Araujo dos Santos'] },
+    { heading: 'DESENVOLVIMENTO E PROGRAMAÇÃO', lines: ['Miguel Kraus Trindade'] },
+    { heading: 'DIREÇÃO ARTÍSTICA E SPRITES', lines: ['Miguel Kraus Trindade & Ketlin Araujo dos Santos'] },
+    { heading: 'SELEÇÃO E CURADORIA MUSICAL', lines: ['Ketlin Araujo dos Santos'] }
   ],
   closing: 'OBRIGADO POR JOGAR.',
 
