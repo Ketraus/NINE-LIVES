@@ -107,6 +107,7 @@ export default class VictoryDeparture {
       VictoryAudio.playRollingQuake(scene);
       VictoryAudio.startTexture(scene, TEXTURE_FADE_IN_MS); // o som passa a ter outra natureza
       thump?.addHit(THUMP4);
+      scene.victoryCracks?.surge(); // as próximas fissuras saltam com a pancada
     }
     if (this._thump4Played) VictoryAudio.setTextureLevel(0.2 + 0.9 * p);
   }

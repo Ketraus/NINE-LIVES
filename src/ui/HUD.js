@@ -168,11 +168,15 @@ const VICTORY_MSG_SPACING_END = 2;
 const VICTORY_MSG_RISE_PX = 12;
 // Escurecimento da cinemática (ver systems/VictoryTremor.js): do preto azulado
 // (estranheza) ao azul profundo pulsante (catástrofe). Sem tons vermelhos.
+// Os véus de tela cheia vivem no espaço da câmera e tremem junto com ela; com o
+// tremor forte (até ~10% da tela) um retângulo "W+8" deixava a borda à mostra
+// (o quadrado azulado balançando). Maiores que a tela, a borda nunca aparece.
+const VICTORY_OVERLAY_BLEED = 1.6;
 const VICTORY_DARK_MAX_ALPHA = 0.55;
 const VICTORY_DARK_CAP_ALPHA = 0.82; // teto com o overdrive
 const VICTORY_DARK_KICK_ALPHA = 0.16; // escurecimento extra no instante de cada baque (× level)
 const VICTORY_DARK_COLOR_START = 0x05070c;
-const COLD_GRADE_COLOR = 0x5a7cc4; // multiplicador final da Cena 03: tira o vermelho/verde, deixa o azul
+const COLD_GRADE_COLOR = 0xe2e8f5; // multiplicador final da Cena 03: quase neutro, só um respiro frio (era 0x5a7cc4, forte demais: abafava as cores dos efeitos)
 const VICTORY_DARK_COLOR_END = 0x041224; // azul profundo (roteiro) — nada de vermelho/vinho
 const BIG_MESSAGE_FADE_IN_MS = 650;
 const BIG_MESSAGE_START_SCALE = 0.85;
@@ -1284,8 +1288,8 @@ export default class HUD {
     const W = this.scene.scale.width;
     const H = this.scene.scale.height;
     this.victoryFinaleGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(300);
-    this.victoryFlash = this.scene.add.rectangle(W / 2, H / 2, W + 8, H + 8, 0xffffff, 1).setScrollFactor(0).setAlpha(0);
-    this.victoryBlack = this.scene.add.rectangle(W / 2, H / 2, W + 8, H + 8, 0x000000, 1).setScrollFactor(0).setAlpha(0);
+    this.victoryFlash = this.scene.add.rectangle(W / 2, H / 2, W * VICTORY_OVERLAY_BLEED, H * VICTORY_OVERLAY_BLEED, 0xffffff, 1).setScrollFactor(0).setAlpha(0);
+    this.victoryBlack = this.scene.add.rectangle(W / 2, H / 2, W * VICTORY_OVERLAY_BLEED, H * VICTORY_OVERLAY_BLEED, 0x000000, 1).setScrollFactor(0).setAlpha(0);
     this.victoryFinaleGroup.add([this.victoryFlash, this.victoryBlack]);
     this._applyZoomCompensation(this.victoryFinaleGroup, 1);
   }
@@ -1380,7 +1384,7 @@ export default class HUD {
     const H = this.scene.scale.height;
     this.victoryDarkGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(99).setVisible(false);
     this.victoryDark = this.scene.add
-      .rectangle(W / 2, H / 2, W + 8, H + 8, VICTORY_DARK_COLOR_START, 1)
+      .rectangle(W / 2, H / 2, W * VICTORY_OVERLAY_BLEED, H * VICTORY_OVERLAY_BLEED, VICTORY_DARK_COLOR_START, 1)
       .setScrollFactor(0)
       .setAlpha(0);
     this.victoryDarkGroup.add(this.victoryDark);
@@ -1395,7 +1399,7 @@ export default class HUD {
     const H = this.scene.scale.height;
     this.victoryColdGroup = this.scene.add.container(0, 0).setScrollFactor(0).setDepth(98).setVisible(false);
     this.victoryColdRect = this.scene.add
-      .rectangle(W / 2, H / 2, W + 8, H + 8, 0xffffff, 1)
+      .rectangle(W / 2, H / 2, W * VICTORY_OVERLAY_BLEED, H * VICTORY_OVERLAY_BLEED, 0xffffff, 1)
       .setScrollFactor(0)
       .setBlendMode(Phaser.BlendModes.MULTIPLY);
     this.victoryColdGroup.add(this.victoryColdRect);

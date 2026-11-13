@@ -51,6 +51,7 @@ export default class VictoryFinale {
     VictoryAudio.startDrone(scene, DRONE_FADE_IN_MS);
 
     const target = this._resolveTarget();
+    scene.victoryCracks?.begin(cam.midPoint, target); // fissuras do Leviatã ao longo do trajeto
 
     cam.pan(target.x, target.y, TRAVEL_MS, PAN_EASE, true, (camera, progress) => {
       scene.victoryTremor?.setOverdrive(progress);
@@ -91,6 +92,7 @@ export default class VictoryFinale {
 
     // corte seco: tremor, drone e baques param — e a primeira linha volta
     scene.victoryTremor?.stop();
+    scene.victoryCracks?.clear();
     VictoryAudio.stopDrone(80);
     scene.cameras.main.resetFX();
     hud?.showVictoryLineInstant();
