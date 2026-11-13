@@ -2,14 +2,13 @@ import MusicManager from '../systems/MusicManager.js';
 import SettingsManager from '../systems/SettingsManager.js';
 import EventBus from '../systems/EventBus.js';
 import { UI_SCALE } from '../config/layout.js';
+import GameProgress from '../systems/GameProgress.js';
+import MenuCorruptionFx from '../fx/MenuCorruptionFx.js';
+import { THEME_NORMAL, getMenuTheme } from '../config/menuTheme.js';
 
-// mesma paleta "terminal cyberpunk" do MainMenuScene — ver comentários lá
-const PANEL_FILL = 0x061014;
-const PANEL_FILL_ALPHA = 0.55;
-const BORDER_IDLE = 0x3d5a66;
-const BORDER_HOVER = 0x8fd6ff;
-const TEXT_IDLE = '#8fb3bf';
-const TEXT_HOVER = '#e8f6ff';
+// mesma paleta do MainMenuScene (config/menuTheme.js): Theme 1 normal ou
+// Theme 2 corrompido, conforme o que o jogador escolheu no menu
+let T = THEME_NORMAL;
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const CHAMFER = 8;
 
@@ -22,8 +21,6 @@ const TRACK_WIDTH = Math.round(240 * UI_SCALE);
 const TRACK_HEIGHT = Math.round(6 * UI_SCALE);
 const HANDLE_WIDTH = Math.round(10 * UI_SCALE);
 const HANDLE_HEIGHT = Math.round(20 * UI_SCALE);
-const TRACK_COLOR = 0x1c2a2f;
-const FILL_COLOR = 0x8fd6ff;
 
 export default class SettingsScene extends Phaser.Scene {
   constructor() {
@@ -49,16 +46,22 @@ export default class SettingsScene extends Phaser.Scene {
       this.cameras.main.fadeIn(SCENE_FADE_MS, 0, 0, 0);
     }
 
+    const corrupted = GameProgress.isCorrupted();
+    T = getMenuTheme(corrupted);
+
     const bg = this.add.image(width / 2, height / 2, 'menu_bg');
     const scale = Math.max(width / bg.width, height / bg.height);
     bg.setScale(scale);
-    this.add.rectangle(width / 2, height / 2, width, height, 0x05080a, 0.55); // escurece pra sliders ficarem legíveis
+    this._bg = bg;
+    // Theme 2: mesma cidade corrompida e a mesma energia viva do menu, por trás
+    this._corruption = corrupted ? new MenuCorruptionFx(this, bg, { level: 1 }) : null;
+    this.add.rectangle(width / 2, height / 2, width, height, T.veil, 0.55); // escurece pra sliders ficarem legíveis
 
     this.add
       .text(width / 2, height * 0.16, 'SETTINGS', {
         fontFamily: PIXEL_FONT,
         fontSize: `${Math.round(22 * UI_SCALE)}px`,
-        color: '#cfefff'
+        color: T.title
       })
       .setOrigin(0.5)
       .setShadow(2, 2, '#000000', 2, false, true);
@@ -90,7 +93,7 @@ export default class SettingsScene extends Phaser.Scene {
       .text(accessibilityX, accessibilityY - Math.round(42 * UI_SCALE), 'ACESSIBILIDADE', {
         fontFamily: PIXEL_FONT,
         fontSize: `${Math.round(9 * UI_SCALE)}px`,
-        color: TEXT_HOVER
+        color: T.textHover
       })
       .setOrigin(0.5);
 
@@ -118,6 +121,10 @@ export default class SettingsScene extends Phaser.Scene {
     this._setupRetroFx();
   }
 
+  update(time, delta) {
+    this._corruption?.update(time, delta, this._bg);
+  }
+
   _buildFullscreenButton(x, y) {
     const button = this._buildToggle(x, y, 'TELA CHEIA', this.scale.isFullscreen, () => {
       if (this.scale.isFullscreen) this.scale.stopFullscreen();
@@ -143,13 +150,13 @@ export default class SettingsScene extends Phaser.Scene {
     const height = Math.round(32 * UI_SCALE);
     const container = this.add.container(x, y);
     const panel = this.add
-      .rectangle(0, 0, width, height, PANEL_FILL, PANEL_FILL_ALPHA)
-      .setStrokeStyle(1, BORDER_IDLE);
+      .rectangle(0, 0, width, height, T.panelFill, T.panelAlpha)
+      .setStrokeStyle(1, T.borderIdle);
     const labelText = this.add
-      .text(-width / 2 + 10 * UI_SCALE, 0, label, { fontFamily: PIXEL_FONT, fontSize: `${Math.round(8 * UI_SCALE)}px`, color: TEXT_IDLE })
+      .text(-width / 2 + 10 * UI_SCALE, 0, label, { fontFamily: PIXEL_FONT, fontSize: `${Math.round(8 * UI_SCALE)}px`, color: T.textIdle })
       .setOrigin(0, 0.5);
     const stateText = this.add
-      .text(width / 2 - 10 * UI_SCALE, 0, '', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(8 * UI_SCALE)}px`, color: TEXT_IDLE })
+      .text(width / 2 - 10 * UI_SCALE, 0, '', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(8 * UI_SCALE)}px`, color: T.textIdle })
       .setOrigin(1, 0.5);
     const hitArea = this.add
       .rectangle(0, 0, width, height, 0xffffff, 0)
@@ -157,12 +164,12 @@ export default class SettingsScene extends Phaser.Scene {
 
     let enabled = Boolean(initialValue);
     const render = () => {
-      stateText.setText(enabled ? 'ON' : 'OFF').setColor(enabled ? TEXT_HOVER : TEXT_IDLE);
-      panel.setStrokeStyle(1, enabled ? BORDER_HOVER : BORDER_IDLE);
+      stateText.setText(enabled ? 'ON' : 'OFF').setColor(enabled ? T.textHover : T.textIdle);
+      panel.setStrokeStyle(1, enabled ? T.borderHover : T.borderIdle);
     };
 
     hitArea.on('pointerover', () => {
-      panel.setStrokeStyle(1, BORDER_HOVER);
+      panel.setStrokeStyle(1, T.borderHover);
       this.sound.play('sfx_hover', { volume: 0.4 });
     });
     hitArea.on('pointerout', render);
@@ -210,26 +217,26 @@ export default class SettingsScene extends Phaser.Scene {
     const container = this.add.container(x, y);
 
     const labelText = this.add
-      .text(0, -20 * UI_SCALE, label, { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: TEXT_IDLE })
+      .text(0, -20 * UI_SCALE, label, { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: T.textIdle })
       .setOrigin(0.5);
 
     const trackLeft = -TRACK_WIDTH / 2;
-    const track = this.add.rectangle(0, 6 * UI_SCALE, TRACK_WIDTH, TRACK_HEIGHT, TRACK_COLOR).setOrigin(0, 0.5);
+    const track = this.add.rectangle(0, 6 * UI_SCALE, TRACK_WIDTH, TRACK_HEIGHT, T.track).setOrigin(0, 0.5);
     track.x = trackLeft;
 
-    const fill = this.add.rectangle(trackLeft, 6 * UI_SCALE, TRACK_WIDTH * initialValue, TRACK_HEIGHT, FILL_COLOR).setOrigin(0, 0.5);
+    const fill = this.add.rectangle(trackLeft, 6 * UI_SCALE, TRACK_WIDTH * initialValue, TRACK_HEIGHT, T.borderHover).setOrigin(0, 0.5);
 
     const percentText = this.add
       .text(TRACK_WIDTH / 2 + 34 * UI_SCALE, 6 * UI_SCALE, `${Math.round(initialValue * 100)}%`, {
         fontFamily: PIXEL_FONT,
         fontSize: `${Math.round(11 * UI_SCALE)}px`,
-        color: TEXT_IDLE
+        color: T.textIdle
       })
       .setOrigin(0.5);
 
     const handle = this.add
-      .rectangle(trackLeft + TRACK_WIDTH * initialValue, 6 * UI_SCALE, HANDLE_WIDTH, HANDLE_HEIGHT, 0xe8f6ff)
-      .setStrokeStyle(1, BORDER_HOVER)
+      .rectangle(trackLeft + TRACK_WIDTH * initialValue, 6 * UI_SCALE, HANDLE_WIDTH, HANDLE_HEIGHT, T.handle)
+      .setStrokeStyle(1, T.borderHover)
       .setInteractive({ useHandCursor: true, draggable: true });
     this.input.setDraggable(handle);
 
@@ -297,15 +304,15 @@ export default class SettingsScene extends Phaser.Scene {
     const container = this.add.container(x, y);
 
     const panel = this.add.graphics();
-    this._drawPanel(panel, w, h, BORDER_IDLE);
+    this._drawPanel(panel, w, h, T.borderIdle);
 
     const caret = this.add
-      .text(-w / 2 + 12 * UI_SCALE, 0, '>', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: TEXT_HOVER })
+      .text(-w / 2 + 12 * UI_SCALE, 0, '>', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: T.textHover })
       .setOrigin(0, 0.5)
       .setVisible(false);
 
     const text = this.add
-      .text(4 * UI_SCALE, 0, 'VOLTAR', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: TEXT_IDLE })
+      .text(4 * UI_SCALE, 0, 'VOLTAR', { fontFamily: PIXEL_FONT, fontSize: `${Math.round(11 * UI_SCALE)}px`, color: T.textIdle })
       .setOrigin(0.5);
 
     const hitArea = this.add.rectangle(0, 0, w, h, 0xffffff, 0).setInteractive({ useHandCursor: true });
@@ -314,8 +321,8 @@ export default class SettingsScene extends Phaser.Scene {
 
     hitArea.on('pointerover', () => {
       panel.clear();
-      this._drawPanel(panel, w, h, BORDER_HOVER);
-      text.setColor(TEXT_HOVER);
+      this._drawPanel(panel, w, h, T.borderHover);
+      text.setColor(T.textHover);
       caret.setVisible(true);
       caret.setAlpha(1);
       blinkTween = this.tweens.add({
@@ -329,8 +336,8 @@ export default class SettingsScene extends Phaser.Scene {
     });
     hitArea.on('pointerout', () => {
       panel.clear();
-      this._drawPanel(panel, w, h, BORDER_IDLE);
-      text.setColor(TEXT_IDLE);
+      this._drawPanel(panel, w, h, T.borderIdle);
+      text.setColor(T.textIdle);
       caret.setVisible(false);
       if (blinkTween) {
         blinkTween.stop();
@@ -371,7 +378,7 @@ export default class SettingsScene extends Phaser.Scene {
       { x: -w / 2, y: h / 2 - c },
       { x: -w / 2, y: -h / 2 + c }
     ];
-    g.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
+    g.fillStyle(T.panelFill, T.panelAlpha);
     g.fillPoints(points, true);
     g.lineStyle(1, borderColor, 1);
     g.strokePoints(points, true);

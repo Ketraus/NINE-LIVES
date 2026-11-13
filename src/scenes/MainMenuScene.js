@@ -4,42 +4,10 @@ import { EVALUATION_FORM_URL } from '../config/links.js';
 import MenuAtmosphereFx from '../fx/MenuAtmosphereFx.js';
 import MenuCorruptionFx from '../fx/MenuCorruptionFx.js';
 import GameProgress from '../systems/GameProgress.js';
+import { THEME_NORMAL, getMenuTheme } from '../config/menuTheme.js';
 import RoomMenuUI from '../ui/RoomMenuUI.js';
 
 // paleta "terminal cyberpunk" pedida: fundo do botão quase transparente,
-const THEME_NORMAL = {
-  panelFill: 0x061014,
-  panelAlpha: 0.55,
-  borderIdle: 0x3d5a66,
-  borderHover: 0x8fd6ff,
-  textIdle: '#8fb3bf',
-  textHover: '#e8f6ff',
-  title: '#cfefff',
-  titleGlow: '#2a8fc0',
-  ghostA: '#00e5ff',
-  ghostB: '#ff2d95',
-  dim: '#5f808c',
-  clock: '#8fb3bf',
-  dot: 0x8fd6ff
-};
-// menu corrompido (depois de zerar o jogo): mesma estrutura, paleta violeta.
-// Painel um pouco mais escuro e texto claro pra os botões continuarem
-// legíveis contra o brilho roxo do fundo; o glow do título é contido.
-const THEME_CORRUPT = {
-  panelFill: 0x0a0514,
-  panelAlpha: 0.7,
-  borderIdle: 0x5d3f8a,
-  borderHover: 0xc59bff,
-  textIdle: '#c4aee6',
-  textHover: '#f6eeff',
-  title: '#efe4ff',
-  titleGlow: '#7a35d8',
-  ghostA: '#8f5cff',
-  ghostB: '#ff3fb4',
-  dim: '#8a72b0',
-  clock: '#ad96d2',
-  dot: 0xc59bff
-};
 let T = THEME_NORMAL;
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const CHAMFER = 8; // corte dos cantos, em px — visual de placa tecnológica
@@ -79,7 +47,8 @@ export default class MainMenuScene extends Phaser.Scene {
     // menu (fx/MenuCorruptionFx.js). `corruptionReveal` vem da CreditsScene
     // na 1ª vez: o menu começa normal e a corrupção toma a cidade aos poucos.
     this._corrupted = GameProgress.isCorrupted();
-    T = this._corrupted ? THEME_CORRUPT : THEME_NORMAL;
+    T = getMenuTheme(this._corrupted);
+    this._fastReveal = Boolean(data?.fastReveal);
     this._corruptionReveal = this._corrupted && Boolean(data?.corruptionReveal);
     this._postLevel = -1;
 
@@ -214,7 +183,7 @@ export default class MainMenuScene extends Phaser.Scene {
     if (this._corrupted) {
       this._corruption = new MenuCorruptionFx(this, bg, { level: this._corruptionReveal ? 0 : 1 });
       this._atmos.onFeed = () => this._corruption.feed();
-      if (this._corruptionReveal) this._corruption.reveal();
+      if (this._corruptionReveal) this._corruption.reveal({ fast: this._fastReveal });
     }
     let z = 1;
     if (this._corruption) this._corruption.layers.forEach((img) => this.menuLayer.addAt(img, z++));
@@ -277,6 +246,28 @@ export default class MainMenuScene extends Phaser.Scene {
       window.open(EVALUATION_FORM_URL, '_blank', 'noopener,noreferrer');
     });
     const barItems = [tl, this._clockText, bl, evaluationLink];
+
+    // Botão ESCONDIDO de tema (só depois de zerar o jogo): mostra o tema atual
+    // bem apagado no rodapé; clicar troca pro outro (Theme 1 = normal,
+    // Theme 2 = corrompido).
+    if (GameProgress.hasCompletedGame()) {
+      const label = this._corrupted ? 'THEME 2' : 'THEME 1';
+      const themeBtn = this.add
+        .text(width / 2, height - my, label, { ...txt, color: T.dim })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+      themeBtn._baseAlpha = 0.28;
+      themeBtn.on('pointerover', () => {
+        themeBtn._baseAlpha = 1;
+        themeBtn.setColor(T.textHover).setAlpha(1);
+      });
+      themeBtn.on('pointerout', () => {
+        themeBtn._baseAlpha = 0.28;
+        themeBtn.setColor(T.dim).setAlpha(0.28);
+      });
+      themeBtn.on('pointerdown', () => this._switchTheme());
+      barItems.push(themeBtn);
+    }
     this._barTexts = barItems;
     this.cineLayer.add([vig, this._bars, this._barDot, ...barItems]);
     this._setBarHeight(firstTime ? BAR_START_H : BAR_H);
@@ -290,6 +281,39 @@ export default class MainMenuScene extends Phaser.Scene {
     }
 
     if (firstTime) this._playIntro({ title, ghostA, ghostB, sub, label });
+  }
+
+  // Troca Theme 1 <-> Theme 2 com uma transição pra cada sentido:
+  //  - normal -> corrompido: some pra preto rapidinho e a energia chega
+  //    (mesma transição "a energia chegou", versão curta);
+  //  - corrompido -> normal: a energia dá um clarão e recua, a cidade original
+  //    reaparece e a tela escurece rapidinho antes do menu normal voltar.
+  _switchTheme() {
+    if (this._transitioning || this.roomMenuOpen || this._roomSwitching) return;
+    this._transitioning = true;
+    this.sound.play('sfx_ui_click', { volume: 0.6 });
+    const cam = this.cameras.main;
+    if (this._corrupted) {
+      const finish = () => {
+        cam.once('camerafadeoutcomplete', () => {
+          GameProgress.setTheme('normal');
+          this.scene.restart();
+        });
+        cam.fadeOut(380, 0, 0, 0);
+      };
+      if (this._corruption) {
+        this._corruption.recede();
+        this.time.delayedCall(1150, finish);
+      } else {
+        finish();
+      }
+    } else {
+      cam.once('camerafadeoutcomplete', () => {
+        GameProgress.setTheme('corrupted');
+        this.scene.restart({ corruptionReveal: true, fastReveal: true });
+      });
+      cam.fadeOut(320, 0, 0, 0);
+    }
   }
 
   _setBarHeight(h) {
@@ -429,7 +453,7 @@ export default class MainMenuScene extends Phaser.Scene {
 
     // barras: texto, ponto de status pulsando devagar e relógio do terminal
     const a = this._barsUi.a;
-    this._barTexts.forEach((o) => o.setAlpha(a));
+    this._barTexts.forEach((o) => o.setAlpha(a * (o._baseAlpha ?? 1)));
     this._barDot.setAlpha(a * (0.45 + 0.55 * (0.5 + 0.5 * Math.sin(time / 500))));
     if (time - this._clockT > 500) {
       this._clockT = time;

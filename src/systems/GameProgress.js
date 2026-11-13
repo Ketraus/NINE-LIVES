@@ -11,25 +11,38 @@
 
 const STORAGE_KEY = 'nineLivesProgress';
 
-let memory = { leviathanAwakened: false };
+// theme: 'corrupted' (Theme 2) ou 'normal' (Theme 1). Depois de terminar o jogo
+// o menu começa no Theme 2, e o jogador pode alternar (botão escondido no menu).
+let memory = { leviathanAwakened: false, theme: 'corrupted' };
 
-function readStored() {
+function readAll() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return Boolean(JSON.parse(raw).leviathanAwakened);
+    if (raw) {
+      const d = JSON.parse(raw);
+      return { leviathanAwakened: Boolean(d.leviathanAwakened), theme: d.theme === 'normal' ? 'normal' : 'corrupted' };
+    }
   } catch (e) {
     /* sem localStorage: usa a memória da sessão */
   }
-  return memory.leviathanAwakened;
+  return { ...memory };
 }
 
-function writeStored(value) {
-  memory.leviathanAwakened = value;
+function writeAll(next) {
+  memory = { ...next };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ leviathanAwakened: value }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch (e) {
     /* idem */
   }
+}
+
+function readStored() {
+  return readAll().leviathanAwakened;
+}
+
+function writeStored(value) {
+  writeAll({ ...readAll(), leviathanAwakened: value });
 }
 
 // ?corrupted=1|true|(vazio) -> true; ?corrupted=0|false -> false; ausente -> null
@@ -47,7 +60,18 @@ const GameProgress = {
   // o menu deve aparecer corrompido? (URL manda; senão vale o que foi salvo)
   isCorrupted() {
     const override = readUrlOverride();
-    return override === null ? readStored() : override;
+    if (override !== null) return override;
+    const d = readAll();
+    return d.leviathanAwakened && d.theme === 'corrupted';
+  },
+
+  // tema escolhido pelo jogador ('corrupted' | 'normal'); só vale depois de zerar
+  getTheme() {
+    return readAll().theme;
+  },
+
+  setTheme(theme) {
+    writeAll({ ...readAll(), theme: theme === 'normal' ? 'normal' : 'corrupted' });
   },
 
   // o jogador realmente terminou o jogo alguma vez? (ignora o override da URL)
@@ -60,18 +84,18 @@ const GameProgress = {
   },
 
   reset() {
-    writeStored(false);
+    writeAll({ leviathanAwakened: false, theme: 'corrupted' });
   }
 };
 
 if (typeof window !== 'undefined') {
   window.nineLivesProgress = {
     preview() {
-      writeStored(true);
+      writeAll({ leviathanAwakened: true, theme: 'corrupted' });
       window.__nineLivesGame?.scene.start('MainMenuScene', { corruptionReveal: true });
     },
     reset() {
-      writeStored(false);
+      writeAll({ leviathanAwakened: false, theme: 'corrupted' });
     },
     mark() {
       writeStored(true);

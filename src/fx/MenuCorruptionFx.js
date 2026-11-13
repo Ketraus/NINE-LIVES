@@ -296,14 +296,15 @@ export default class MenuCorruptionFx {
 
   // Transição "a energia chegou até aqui": o menu começa normal, a câmera
   // sente um golpe grave e a cidade corrompida toma o fundo aos poucos.
-  reveal() {
+  // `fast`: usado ao trocar de tema pelo botão escondido (começa quase na hora)
+  reveal({ fast = false } = {}) {
     this.level = 0;
     this._applyLevel(0, 0);
     const scene = this.scene;
-    scene.time.delayedCall(1500, () => {
+    scene.time.delayedCall(fast ? 350 : 1500, () => {
       if (!scene.sys?.isActive()) return;
       this._surge = 1.3;
-      scene.cameras.main.shake(1100, 0.0035, true);
+      scene.cameras.main.shake(fast ? 900 : 1100, 0.0035, true);
       try {
         if (scene.cache.audio.exists('sfx_cyberus_explosion')) {
           scene.sound.play('sfx_cyberus_explosion', { volume: 0.45, rate: 0.35 });
@@ -311,7 +312,22 @@ export default class MenuCorruptionFx {
       } catch (e) {
         /* sem áudio: segue sem som */
       }
-      scene.tweens.add({ targets: this, level: 1, duration: 5200, ease: 'Sine.easeInOut' });
+      scene.tweens.add({ targets: this, level: 1, duration: fast ? 2600 : 5200, ease: 'Sine.easeInOut' });
+    });
+  }
+
+  // Volta pro menu normal: a energia dá um último clarão e recua de volta pro
+  // mar, deixando a cidade original aparecer por baixo. `onDone` ao terminar.
+  recede(onDone) {
+    const scene = this.scene;
+    this._surge = 1;
+    scene.cameras.main.shake(700, 0.002, true);
+    scene.tweens.add({
+      targets: this,
+      level: 0,
+      duration: 1500,
+      ease: 'Sine.easeInOut',
+      onComplete: () => onDone?.()
     });
   }
 
