@@ -36,11 +36,22 @@ export default class Sealer extends Enemy {
   _cancelActionsForFlee() {
     // Sealer é imóvel de propósito (ver constructor) — sem isto ele
     this.body.setImmovable(false);
+    this._clearArena();
   }
 
   _cleanupSpecial() {
-    // Sealer: o anel da arena não é filho do sprite (é um Graphics à
+    this._clearArena();
+  }
+
+  _clearArena() {
     this.arenaGraphics?.destroy();
+    this.arenaGraphics = null;
+    this.arenaCenter = null;
+    this.arenaBirthMs = null;
+    this.arenaRadius = null;
+    this.arenaProgress = 0;
+    this.arenaTargetPlayerId = null;
+    this.arenaEnteredPlayerIds.clear();
     this.scene.hud?.clearSealerArenaWarning();
   }
 
@@ -186,7 +197,10 @@ export default class Sealer extends Enemy {
   }
 
   syncArenaVisual(centerX, centerY, radius, progress, targetPlayerId) {
-    if (![centerX, centerY, radius, progress].every(Number.isFinite)) return;
+    if (![centerX, centerY, radius, progress].every(Number.isFinite)) {
+      this._clearArena();
+      return;
+    }
     this.arenaCenter = { x: centerX, y: centerY };
     this.arenaTargetPlayerId = typeof targetPlayerId === 'string' ? targetPlayerId : null;
     this.arenaRadius = radius;
@@ -203,10 +217,9 @@ export default class Sealer extends Enemy {
   _drawArena(radius, t, nowMs = this.scene.time.now, force = false) {
     const g = this.arenaGraphics;
     if (!g || !this.arenaCenter) return;
-    // O anel encolhe por vários segundos; reconstruir o Graphics a cada frame
-    // não muda a leitura e custa caro. 30 FPS visuais são mais que suficientes.
+    const isTouch = this.scene.sys?.game?.device?.input?.touch === true;
     if (!force && nowMs < this.arenaNextVisualUpdateAt) return;
-    this.arenaNextVisualUpdateAt = nowMs + 33;
+    this.arenaNextVisualUpdateAt = nowMs + (isTouch ? 66 : 33);
 
     g.clear();
     // Interpolação manual evita criar dois Phaser.Display.Color + resultado
@@ -219,8 +232,10 @@ export default class Sealer extends Enemy {
     const stroke = (r << 16) | (gr << 8) | b;
     const pulse = 0.75 + 0.25 * Math.sin(nowMs / 220);
 
-    g.fillStyle(stroke, 0.035 + 0.02 * p);
-    g.fillCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
+    if (!isTouch) {
+      g.fillStyle(stroke, 0.035 + 0.02 * p);
+      g.fillCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
+    }
     g.lineStyle(16, 0x100b1a, 0.82);
     g.strokeCircle(this.arenaCenter.x, this.arenaCenter.y, radius);
     g.lineStyle(8, stroke, 0.6 + 0.2 * pulse);

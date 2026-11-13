@@ -60,6 +60,39 @@ replica._drawArena = () => {};
 replica.syncArenaVisual(100, 200, 500, 0.25, 'player-2');
 assert.equal(replica.arenaBirthMs, -10000, 'replica reconstructs arena age for host migration');
 
+let arenaDestroyed = false;
+let warningCleared = false;
+const fleeingSealer = Object.create(Sealer.prototype);
+fleeingSealer.body = { setImmovable(value) { this.immovable = value; } };
+fleeingSealer.arenaCenter = { x: 100, y: 200 };
+fleeingSealer.arenaBirthMs = 1000;
+fleeingSealer.arenaRadius = 250;
+fleeingSealer.arenaProgress = 0.5;
+fleeingSealer.arenaTargetPlayerId = 'player-1';
+fleeingSealer.arenaGraphics = { destroy() { arenaDestroyed = true; } };
+fleeingSealer.arenaEnteredPlayerIds = new Set(['player-1']);
+fleeingSealer.scene = { hud: { clearSealerArenaWarning() { warningCleared = true; } } };
+fleeingSealer._cancelActionsForFlee();
+assert.equal(fleeingSealer.body.immovable, false);
+assert.equal(arenaDestroyed, true, 'fleeing destroys the arena graphics immediately');
+assert.equal(warningCleared, true, 'fleeing clears the arena warning');
+assert.equal(fleeingSealer.arenaCenter, null, 'fleeing clears replicated arena state');
+assert.equal(fleeingSealer.arenaEnteredPlayerIds.size, 0, 'fleeing clears player boundary state');
+
+let syncedArenaDestroyed = false;
+const replicaWithArena = Object.create(Sealer.prototype);
+replicaWithArena.arenaCenter = { x: 100, y: 200 };
+replicaWithArena.arenaBirthMs = 1000;
+replicaWithArena.arenaRadius = 250;
+replicaWithArena.arenaProgress = 0.5;
+replicaWithArena.arenaTargetPlayerId = 'player-1';
+replicaWithArena.arenaGraphics = { destroy() { syncedArenaDestroyed = true; } };
+replicaWithArena.arenaEnteredPlayerIds = new Set(['player-1']);
+replicaWithArena.scene = { hud: { clearSealerArenaWarning() {} } };
+replicaWithArena.syncArenaVisual(null, null, null, null, null);
+assert.equal(syncedArenaDestroyed, true, 'a snapshot without an arena clears the replica');
+assert.equal(replicaWithArena.arenaCenter, null);
+
 const drawCalls = [];
 const visual = Object.create(Sealer.prototype);
 visual.arenaCenter = { x: 100, y: 200 };
@@ -89,5 +122,27 @@ visual._drawArena(400, 0.5, 1000, true);
 assert.equal(drawCalls.filter((call) => call === 'stroke-circle').length, 3, 'arena border has layered contrast');
 assert.equal(drawCalls.filter((call) => call === 'inward-marker').length, 16, 'boundary markers point toward the arena center');
 assert.deepEqual(visual.warning, { progress: 0.5, duration: 60000 }, 'HUD receives arena progress for its warning bar');
+
+const touchDrawCalls = [];
+const touchVisual = Object.create(Sealer.prototype);
+touchVisual.arenaCenter = { x: 100, y: 200 };
+touchVisual.arenaMarkerPoints = visual.arenaMarkerPoints.map((points) => points.map(() => ({ x: 0, y: 0 })));
+touchVisual.arenaGraphics = {
+  clear() {},
+  fillStyle() {},
+  fillCircle() { touchDrawCalls.push('fill-circle'); },
+  lineStyle() {},
+  strokeCircle() {},
+  fillPoints() {}
+};
+touchVisual.scene = {
+  sys: { game: { device: { input: { touch: true } } } },
+  hud: { setSealerArenaProgress() {} }
+};
+touchVisual.def = { arenaShrinkDurationMs: 60000 };
+touchVisual.arenaNextVisualUpdateAt = 0;
+touchVisual._drawArena(400, 0.5, 1000, true);
+assert.equal(touchDrawCalls.includes('fill-circle'), false, 'touch devices skip the expensive arena fill');
+assert.equal(touchVisual.arenaNextVisualUpdateAt, 1066, 'touch devices redraw the arena at a lower rate');
 
 console.log('Sealer multiplayer one-way barrier checks passed.');
