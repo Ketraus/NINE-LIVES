@@ -7,12 +7,40 @@ import GameProgress from '../systems/GameProgress.js';
 import RoomMenuUI from '../ui/RoomMenuUI.js';
 
 // paleta "terminal cyberpunk" pedida: fundo do botão quase transparente,
-const PANEL_FILL = 0x061014;
-const PANEL_FILL_ALPHA = 0.55;
-const BORDER_IDLE = 0x3d5a66;
-const BORDER_HOVER = 0x8fd6ff;
-const TEXT_IDLE = '#8fb3bf';
-const TEXT_HOVER = '#e8f6ff';
+const THEME_NORMAL = {
+  panelFill: 0x061014,
+  panelAlpha: 0.55,
+  borderIdle: 0x3d5a66,
+  borderHover: 0x8fd6ff,
+  textIdle: '#8fb3bf',
+  textHover: '#e8f6ff',
+  title: '#cfefff',
+  titleGlow: '#2a8fc0',
+  ghostA: '#00e5ff',
+  ghostB: '#ff2d95',
+  dim: '#5f808c',
+  clock: '#8fb3bf',
+  dot: 0x8fd6ff
+};
+// menu corrompido (depois de zerar o jogo): mesma estrutura, paleta violeta.
+// Painel um pouco mais escuro e texto claro pra os botões continuarem
+// legíveis contra o brilho roxo do fundo; o glow do título é contido.
+const THEME_CORRUPT = {
+  panelFill: 0x0a0514,
+  panelAlpha: 0.7,
+  borderIdle: 0x5d3f8a,
+  borderHover: 0xc59bff,
+  textIdle: '#c4aee6',
+  textHover: '#f6eeff',
+  title: '#efe4ff',
+  titleGlow: '#7a35d8',
+  ghostA: '#8f5cff',
+  ghostB: '#ff3fb4',
+  dim: '#8a72b0',
+  clock: '#ad96d2',
+  dot: 0xc59bff
+};
+let T = THEME_NORMAL;
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const CHAMFER = 8; // corte dos cantos, em px — visual de placa tecnológica
 
@@ -51,6 +79,7 @@ export default class MainMenuScene extends Phaser.Scene {
     // menu (fx/MenuCorruptionFx.js). `corruptionReveal` vem da CreditsScene
     // na 1ª vez: o menu começa normal e a corrupção toma a cidade aos poucos.
     this._corrupted = GameProgress.isCorrupted();
+    T = this._corrupted ? THEME_CORRUPT : THEME_NORMAL;
     this._corruptionReveal = this._corrupted && Boolean(data?.corruptionReveal);
     this._postLevel = -1;
 
@@ -70,10 +99,10 @@ export default class MainMenuScene extends Phaser.Scene {
       .text(width / 2, height * 0.28, 'NINE LIVES', {
         fontFamily: PIXEL_FONT,
         fontSize: '30px',
-        color: '#cfefff'
+        color: T.title
       })
       .setOrigin(0.5)
-      .setShadow(0, 0, '#2a8fc0', 12, false, true);
+      .setShadow(0, 0, T.titleGlow, 12, false, true);
 
     const button = this._buildTerminalButton(width / 2, height * 0.6, 220, 40, 'JOGAR', () =>
       this._start()
@@ -201,8 +230,8 @@ export default class MainMenuScene extends Phaser.Scene {
     const tx = cx - title.width / 2;
     title.setPosition(tx, ty);
     const ghostStyle = { fontFamily: PIXEL_FONT, fontSize: '30px' };
-    const ghostA = this.add.text(tx, ty, label, { ...ghostStyle, color: '#00e5ff' }).setOrigin(0, 0.5);
-    const ghostB = this.add.text(tx, ty, label, { ...ghostStyle, color: '#ff2d95' }).setOrigin(0, 0.5);
+    const ghostA = this.add.text(tx, ty, label, { ...ghostStyle, color: T.ghostA }).setOrigin(0, 0.5);
+    const ghostB = this.add.text(tx, ty, label, { ...ghostStyle, color: T.ghostB }).setOrigin(0, 0.5);
     this.menuLayer.addAt(ghostA, z++);
     this.menuLayer.addAt(ghostB, z++);
     this._titleObjs = { title, ghostA, ghostB, tx };
@@ -213,7 +242,7 @@ export default class MainMenuScene extends Phaser.Scene {
       .text(cx, ty + 36, 'TERMINAL DE ACESSO // NL-OS v2.04', {
         fontFamily: PIXEL_FONT,
         fontSize: '8px',
-        color: '#5f808c',
+        color: T.dim,
         letterSpacing: 2
       })
       .setOrigin(0.5)
@@ -230,19 +259,19 @@ export default class MainMenuScene extends Phaser.Scene {
       vig.strokeRect(-i * 10 + 13, -i * 10 + 13, width + i * 20 - 26, height + i * 20 - 26);
     }
     this._bars = this.add.graphics();
-    const txt = { fontFamily: PIXEL_FONT, fontSize: '8px', color: '#5f808c' };
+    const txt = { fontFamily: PIXEL_FONT, fontSize: '8px', color: T.dim };
     const my = BAR_H / 2;
-    this._barDot = this.add.rectangle(18, my, 6, 6, 0x8fd6ff);
+    this._barDot = this.add.rectangle(18, my, 6, 6, T.dot);
     const tl = this.add.text(32, my, 'NL-OS // TERMINAL 01', txt).setOrigin(0, 0.5);
     const clockX = this._isTouch ? width - 64 : width - 16; // celular: foge do botão de tela cheia
-    this._clockText = this.add.text(clockX, my, '', { ...txt, color: '#8fb3bf' }).setOrigin(1, 0.5);
+    this._clockText = this.add.text(clockX, my, '', { ...txt, color: T.clock }).setOrigin(1, 0.5);
     const bl = this.add.text(16, height - my, `(C) ${CORP_NAME}`, txt).setOrigin(0, 0.5);
     const evaluationLink = this.add
-      .text(width - 16, height - my, 'AVALIAR JOGO', { ...txt, color: TEXT_IDLE })
+      .text(width - 16, height - my, 'AVALIAR JOGO', { ...txt, color: T.textIdle })
       .setOrigin(1, 0.5)
       .setInteractive({ useHandCursor: true });
-    evaluationLink.on('pointerover', () => evaluationLink.setColor(TEXT_HOVER));
-    evaluationLink.on('pointerout', () => evaluationLink.setColor(TEXT_IDLE));
+    evaluationLink.on('pointerover', () => evaluationLink.setColor(T.textHover));
+    evaluationLink.on('pointerout', () => evaluationLink.setColor(T.textIdle));
     evaluationLink.on('pointerdown', () => {
       this.sound.play('sfx_ui_click', { volume: 0.6 });
       window.open(EVALUATION_FORM_URL, '_blank', 'noopener,noreferrer');
@@ -270,7 +299,7 @@ export default class MainMenuScene extends Phaser.Scene {
     g.fillStyle(0x000000, 1);
     g.fillRect(0, 0, width, h);
     g.fillRect(0, height - h, width, h);
-    g.fillStyle(BORDER_IDLE, 0.5);
+    g.fillStyle(T.borderIdle, 0.5);
     g.fillRect(0, h, width, 1);
     g.fillRect(0, height - h - 1, width, 1);
   }
@@ -420,7 +449,7 @@ export default class MainMenuScene extends Phaser.Scene {
     const x0 = this._pips.cx - total / 2;
     const cy = this._pips.y;
 
-    g.lineStyle(1, BORDER_IDLE, 0.5);
+    g.lineStyle(1, T.borderIdle, 0.5);
     g.lineBetween(x0 - 14, cy, x0 - 104, cy);
     g.lineBetween(x0 + total + 14, cy, x0 + total + 104, cy);
 
@@ -429,14 +458,14 @@ export default class MainMenuScene extends Phaser.Scene {
       const x = x0 + i * (w + gap);
       const y = cy - h / 2;
       const lit = Phaser.Math.Clamp(this._pips.lit - i, 0, 1);
-      g.fillStyle(PANEL_FILL, 0.9);
+      g.fillStyle(T.panelFill, 0.9);
       g.fillRect(x, y, w, h);
       if (lit > 0) {
         const wave = lit >= 1 ? Math.max(0, 1 - Math.abs(i - wavePos) / 1.6) * 0.4 : 0;
-        g.fillStyle(BORDER_HOVER, 0.55 * lit + wave);
+        g.fillStyle(T.borderHover, 0.55 * lit + wave);
         g.fillRect(x + 1, y + 1, (w - 2) * lit, h - 2);
       }
-      g.lineStyle(1, lit >= 1 ? BORDER_HOVER : BORDER_IDLE, lit >= 1 ? 0.8 : 1);
+      g.lineStyle(1, lit >= 1 ? T.borderHover : T.borderIdle, lit >= 1 ? 0.8 : 1);
       g.strokeRect(x, y, w, h);
     }
   }
@@ -543,15 +572,15 @@ export default class MainMenuScene extends Phaser.Scene {
     const container = this.add.container(x, y);
 
     const panel = this.add.graphics();
-    this._drawPanel(panel, w, h, BORDER_IDLE);
+    this._drawPanel(panel, w, h, T.borderIdle);
 
     const caret = this.add
-      .text(-w / 2 + 14, 0, '>', { fontFamily: PIXEL_FONT, fontSize: '12px', color: TEXT_HOVER })
+      .text(-w / 2 + 14, 0, '>', { fontFamily: PIXEL_FONT, fontSize: '12px', color: T.textHover })
       .setOrigin(0, 0.5)
       .setVisible(false);
 
     const text = this.add
-      .text(4, 0, label, { fontFamily: PIXEL_FONT, fontSize: '12px', color: TEXT_IDLE })
+      .text(4, 0, label, { fontFamily: PIXEL_FONT, fontSize: '12px', color: T.textIdle })
       .setOrigin(0.5);
 
     const hitArea = this.add
@@ -562,8 +591,8 @@ export default class MainMenuScene extends Phaser.Scene {
 
     const setHover = (hovering) => {
       panel.clear();
-      this._drawPanel(panel, w, h, hovering ? BORDER_HOVER : BORDER_IDLE);
-      text.setColor(hovering ? TEXT_HOVER : TEXT_IDLE);
+      this._drawPanel(panel, w, h, hovering ? T.borderHover : T.borderIdle);
+      text.setColor(hovering ? T.textHover : T.textIdle);
       caret.setVisible(hovering);
 
       if (hovering) {
@@ -608,7 +637,7 @@ export default class MainMenuScene extends Phaser.Scene {
       { x: -w / 2, y: h / 2 - c },
       { x: -w / 2, y: -h / 2 + c }
     ];
-    g.fillStyle(PANEL_FILL, PANEL_FILL_ALPHA);
+    g.fillStyle(T.panelFill, T.panelAlpha);
     g.fillPoints(points, true);
     g.lineStyle(1, borderColor, 1);
     g.strokePoints(points, true);
