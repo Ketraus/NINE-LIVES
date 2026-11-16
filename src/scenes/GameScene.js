@@ -820,30 +820,30 @@ export default class GameScene extends Phaser.Scene {
     if (!sprite || !sprite.active) return false;
     const kind = sprite.getData('pickupKind');
     const value = sprite.getData('pickupValue');
+    const mapMagnet = sprite.getData('mapMagnet') === true;
     sprite.destroy();
+    let rewardRecipient = byPlayerId;
+    let rewardValue = value;
     if (kind === 'magnet') {
-      this._collectSharedMagnetXp();
+      this._activateMapXpMagnet();
+    } else if (kind === 'xp' && mapMagnet) {
+      const sharedReward = this._collectSharedMagnetXpOrb(value);
+      rewardRecipient = sharedReward.recipients;
+      rewardValue = sharedReward.share;
     } else if (byPlayerId === this.multiplayer?.playerId) {
       this.grantPickupReward(kind, value);
     }
-    this.multiplayer?.broadcastPickupRemoval(pickupId, byPlayerId, kind, value);
+    this.multiplayer?.broadcastPickupRemoval(pickupId, rewardRecipient, kind, rewardValue);
     return true;
   }
 
-  // O host consome cada gema uma vez e fixa os destinatários no registro
-  // reenviado. XP fracionário preserva a divisão igual sem perder sobras.
-  _collectSharedMagnetXp() {
+  // O Host fixa os destinatários no registro reenviado. XP fracionário
+  // preserva a divisão igual sem perder sobras.
+  _collectSharedMagnetXpOrb(value) {
     const recipients = this.multiplayer.getAlivePlayerIds();
-    if (!recipients.length) return;
-    const orbs = this.xpOrbGroup.getChildren().filter((orb) => orb.active);
-    for (const orb of orbs) {
-      const id = orb.getData('pickupId');
-      const share = orb.getData('pickupValue') / recipients.length;
-      orb.destroy();
-      if (recipients.includes(this.multiplayer.playerId)) this.grantPickupReward('xp', share);
-      this.multiplayer.broadcastPickupRemoval(id, recipients, 'xp', share);
-    }
-    this._playMagnetCollectFx(orbs.length);
+    const share = recipients.length ? value / recipients.length : 0;
+    if (recipients.includes(this.multiplayer.playerId)) this.grantPickupReward('xp', share);
+    return { recipients, share };
   }
 
   grantPickupReward(kind, value) {

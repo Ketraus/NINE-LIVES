@@ -1066,14 +1066,17 @@ export default class MultiplayerManager {
       message.hostTerm !== this.hostTerm || !this.getAlivePlayerIds().includes(playerId)) return;
     const pickup = this.scene.pickupsById.get(message.pickupId);
     if (pickup?.active) {
-      const remote = this.remotePlayers.get(playerId);
-      // A atração curta é visual em cada cliente. Aceitar a posição original
-      // ou a atual tolera esse deslocamento e até 100 ms de atraso de posição.
-      const distance = Math.min(
-        Math.hypot(remote.targetX - pickup.x, remote.targetY - pickup.y),
-        Math.hypot(remote.targetX - pickup.getData('pickupSpawnX'), remote.targetY - pickup.getData('pickupSpawnY'))
-      );
-      if (!Number.isFinite(distance) || distance > 200) return;
+      const mapMagnet = pickup.getData('mapMagnet') === true;
+      if (!mapMagnet) {
+        const remote = this.remotePlayers.get(playerId);
+        // A atração curta é visual em cada cliente. Aceitar a posição original
+        // ou a atual tolera esse deslocamento e até 100 ms de atraso de posição.
+        const distance = Math.min(
+          Math.hypot(remote.targetX - pickup.x, remote.targetY - pickup.y),
+          Math.hypot(remote.targetX - pickup.getData('pickupSpawnX'), remote.targetY - pickup.getData('pickupSpawnY'))
+        );
+        if (!Number.isFinite(distance) || distance > 200) return;
+      }
     }
     if (!this.scene.hostCollectPickup(message.pickupId, playerId)) {
       // já foi coletado (ou nunca existiu): manda o cliente limpar o fantasma, sem recompensa
@@ -1114,7 +1117,7 @@ export default class MultiplayerManager {
       this.appliedPickupRemovals.add(pickupId);
       this.scene.removeNetworkPickup?.(pickupId);
       if (kind === 'magnet') {
-        this.scene._playMagnetCollectFx?.(0);
+        this.scene._activateMapXpMagnet?.();
         return;
       }
       const rewarded = byPlayerId === this.playerId ||
