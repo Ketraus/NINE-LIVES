@@ -41,15 +41,25 @@ export default class BossCinematicCamera {
           saved.offsetX, saved.offsetY);
       }
     };
-    if (immediate) { restore(); return; }
+    if (immediate) {
+      cam.panEffect.reset();
+      restore();
+      return;
+    }
     this.returning = saved;
     const target = saved.target?.active ? saved.target : saved;
+    const finishReturn = () => {
+      if (this.saved || this.returning !== saved) return;
+      this.returning = null;
+      this.watchdog?.remove(false);
+      this.watchdog = null;
+      cam.panEffect.reset();
+      restore();
+    };
+    this.watchdog = this.scene.time.delayedCall(BOSS_CAMERA_TRAVEL_MS + 1000, finishReturn);
     cam.pan(target.x, target.y, BOSS_CAMERA_TRAVEL_MS, 'Cubic.easeInOut', true,
       (_camera, progress) => {
-        if (progress === 1 && !this.saved && this.returning === saved) {
-          this.returning = null;
-          restore();
-        }
+        if (progress >= 1) finishReturn();
       });
   }
 }
