@@ -314,7 +314,7 @@ export default class GameScene extends Phaser.Scene {
 
   // Emite o tempo de run decorrido (em segundos inteiros) só quando ele
   _updateRunTimer() {
-    if (this.lobbyGateActive) return; // relógio só corre depois do "pronto" de todos
+    if (this.lobbyGateActive || this.victorySequenceStarted) return; // relógio só corre até a vitória começar
     if (this.isGameOver) {
       // Host morto continua dono do relógio do grupo: se os outros sobreviverem
       // até o fim, a vitória do grupo ainda precisa ser declarada por ele.
@@ -407,28 +407,24 @@ export default class GameScene extends Phaser.Scene {
   applyGroupMatchState(state) {
     if (state === 'won') {
       this.groupWon = true;
-      if (!this.isGameOver) this._triggerWin();
+      this._pendingGroupRestart = false;
+      if (this.isGameOver) {
+        this.isGameOver = false;
+        this.hud?.dismissForGroupVictory();
+        this.resultUI?.dismissForGroupVictory();
+      }
+      this._beginVictorySequence();
     } else if (state === 'lost') {
       if (!this.isGameOver) this.player.die();
     }
-    // quem já apertou "reiniciar" esperando o grupo terminar segue agora
-    if (this._pendingGroupRestart) {
+    // Após derrota do grupo, quem já pediu reinício segue para o fluxo normal.
+    if (state === 'lost' && this._pendingGroupRestart) {
       this._pendingGroupRestart = false;
       this.time.delayedCall(250, () => this._restartOrGoToWeaponSelect());
     }
   }
 
-  // Sobreviveu até RUN_WIN_SECONDS: mesmo "fim de run" da morte (trava
-  _triggerWin() {
-    this.isGameOver = true;
-    this.hasWon = true;
-    this.spawnDirector.stop();
-    this.scoreManager.finalize(true, { finalLevel: this.runState.level });
-    EventBus.emit('player-won');
-  }
-
-  // Fim de run: morreu -> reinicia a mesma run (mesma arma, ver
-  // Multiplayer: morri, mas a partida do grupo ainda está rolando.
+  // Multiplayer: quem morreu aguarda o resultado da partida do grupo.
   isWaitingForGroup() {
     const multiplayer = this.multiplayer;
     return Boolean(multiplayer?.isMultiplayer && multiplayer.mqtt &&
@@ -667,6 +663,7 @@ export default class GameScene extends Phaser.Scene {
     EventBus.on('network-enemy-died', (death) => this._handleEnemyDeath(death, false));
 
     EventBus.on('player-died', () => {
+      if (this.groupWon) return;
       this.isGameOver = true;
       this.runManager.discardPendingLevelUps();
       this.multiplayer?.cancelPendingLevelUps();

@@ -105,6 +105,10 @@ export default class ResultUI {
     this.root.setVisible(false);
   }
 
+  dismissForGroupVictory() {
+    this._reset();
+  }
+
   _start() {
     if (this._started) return;
     this._started = true;

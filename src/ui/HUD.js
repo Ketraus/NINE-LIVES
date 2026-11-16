@@ -1593,6 +1593,26 @@ export default class HUD {
     this.deathWash.setAlpha(0);
   }
 
+  dismissForGroupVictory() {
+    const scene = this.scene;
+    scene.tweens.killTweensOf([
+      this.deathCurtainTop, this.deathCurtainBottom, this.deathCollapseLine,
+      this.deathAfterglow, this.deathOverlay, this._criticalFxProxy, this._gameOverFxProxy,
+      this._musicDuckProxy
+    ]);
+    this._resetDeathMessage();
+    this.gameOverGroup.setVisible(false);
+    this.deathOverlayGroup.setVisible(false);
+    this.deathCurtainTop.setScale(1, 0);
+    this.deathCurtainBottom.setScale(1, 0);
+    this.deathCollapseLine.setScale(1, 1).setAlpha(0);
+    this.deathAfterglow.setScale(1).setAlpha(0);
+    this.deathOverlay.setAlpha(0);
+    this._resetCameraFx();
+    this._stopDeathNoise();
+    scene.cameras.main.resetFX();
+  }
+
   _bindEvents() {
     EventBus.on('player-health-changed', ({ current, max }) => {
       const ratio = Phaser.Math.Clamp(current / max, 0, 1);
@@ -1632,6 +1652,7 @@ export default class HUD {
     });
 
     EventBus.on('player-died', () => {
+      if (this.scene.groupWon) return;
       // congela o pulso de vida baixa exatamente como estava — sem resetar
       // alpha, então o corte pro preto não dá aquele "flash" de volta ao normal
       this.scene.tweens.killTweensOf(this.lowHpVignette);
@@ -1709,7 +1730,9 @@ export default class HUD {
       // sozinho, sai por completo — só então o relatório (ResultUI) começa
       // a entrar (ver _playBigMessage/'gameover-shown').
       this.scene.time.delayedCall(DEATH_SOUND_MS, () => {
+        if (this.scene.groupWon) return;
         this.scene.time.delayedCall(DEATH_SILENCE_MS, () => {
+          if (this.scene.groupWon) return;
           this._startGameOverFx();
           this._playDeathMessage(() => EventBus.emit('gameover-shown'));
         });
