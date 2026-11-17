@@ -41,9 +41,9 @@ const FEAR = 0.2; // estremecer de fundo dos corpos parados (era 0,12 após a 1�
 
 // luz
 const COLD_RAMP_MS = 9000; // "adquire gradualmente um aspecto mais frio"
-const COLD_MAX_START = 0.75; // sobe na travessia (as sombras se aprofundam) e deixa folga pra luz oscilar nos golpes
+const COLD_MAX_START = 0.5; // sobe na travessia (as sombras se aprofundam) e deixa folga pra luz oscilar nos golpes
 const DEPARTURE_DELAY_MS = 7000; // ~10:10 -> ~10:17: a câmera começa a se modificar (VictoryDeparture)
-const COLD_KICK = 0.35; // a luz oscila (escurece e esfria mais) a cada golpe
+const COLD_KICK = 0.2; // a luz oscila (escurece e esfria mais) a cada golpe
 
 // partículas: "agora em maior quantidade"
 const PARTICLE_SURGE_MULT = 1.2;

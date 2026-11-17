@@ -172,12 +172,12 @@ const VICTORY_MSG_RISE_PX = 12;
 // tremor forte (até ~10% da tela) um retângulo "W+8" deixava a borda à mostra
 // (o quadrado azulado balançando). Maiores que a tela, a borda nunca aparece.
 const VICTORY_OVERLAY_BLEED = 1.6;
-const VICTORY_DARK_MAX_ALPHA = 0.55;
-const VICTORY_DARK_CAP_ALPHA = 0.82; // teto com o overdrive
-const VICTORY_DARK_KICK_ALPHA = 0.16; // escurecimento extra no instante de cada baque (× level)
-const VICTORY_DARK_COLOR_START = 0x05070c;
-const COLD_GRADE_COLOR = 0xe2e8f5; // multiplicador final da Cena 03: quase neutro, só um respiro frio (era 0x5a7cc4, forte demais: abafava as cores dos efeitos)
-const VICTORY_DARK_COLOR_END = 0x041224; // azul profundo (roteiro) — nada de vermelho/vinho
+const VICTORY_DARK_MAX_ALPHA = 0.3; // véu mais leve: a cena mantém detalhe e nitidez (era 0,55)
+const VICTORY_DARK_CAP_ALPHA = 0.46; // teto com o overdrive (era 0,82: engolia os detalhes)
+const VICTORY_DARK_KICK_ALPHA = 0.1; // escurecimento extra no instante de cada baque (× level)
+const VICTORY_DARK_COLOR_START = 0x07080b;
+const COLD_GRADE_COLOR = 0xf2f4f8; // multiplicador final da Cena 03: quase neutro, só um respiro frio (era 0x5a7cc4, forte demais: abafava as cores dos efeitos)
+const VICTORY_DARK_COLOR_END = 0x0a0d14; // quase neutro, só um fundo azulado (era 0x041224: azul saturado demais) — nada de vermelho/vinho
 const BIG_MESSAGE_FADE_IN_MS = 650;
 const BIG_MESSAGE_START_SCALE = 0.85;
 const BIG_MESSAGE_HOLD_MS = 1500;

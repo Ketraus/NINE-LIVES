@@ -59,6 +59,7 @@ export default class VictoryParticles {
     this.elapsedMs = 0;
     this.intensity = 0; // 0..1, só leitura
     this.densityMultiplier = 1;
+    this.fadeMul = 1; // 1 -> 0 em fadeOut()
     this.speedMultiplier = 1;
     this.trailChance = 0; // 0..1: fração das novas partículas que deixam rastro (Cena 04, a travessia)
     this._live = [];
@@ -195,7 +196,7 @@ export default class VictoryParticles {
         continue;
       }
       const a = smooth(k / FADE_IN) * (1 - smooth((k - FADE_OUT_FROM) / (1 - FADE_OUT_FROM)));
-      p.img.setPosition(p.x + sway, p.y).setAlpha(p.peak * a);
+      p.img.setPosition(p.x + sway, p.y).setAlpha(p.peak * a * this.fadeMul);
     }
   }
 
@@ -228,6 +229,12 @@ export default class VictoryParticles {
   surgeDensity(multiplier, ms) {
     this.scene.tweens.killTweensOf(this);
     this.scene.tweens.add({ targets: this, densityMultiplier: multiplier, duration: ms, ease: 'Sine.easeInOut' });
+  }
+
+  // Dissolve as partículas: param de nascer e as que estão na tela somem suave.
+  fadeOut(ms = 2600) {
+    this.scene.tweens.killTweensOf(this);
+    this.scene.tweens.add({ targets: this, densityMultiplier: 0, fadeMul: 0, duration: ms, ease: 'Sine.easeInOut' });
   }
 
   stop() {

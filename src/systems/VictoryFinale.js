@@ -26,7 +26,11 @@ const MESSAGE_FADE_OUT_MS = 3000;
 const DRONE_FADE_IN_MS = 5000;
 
 const AWAKENING_PLACEHOLDER_HOLD_MS = 3500; // trocar pela cena do Leviatã
-const SILENCE_BEFORE_IMPACT_MS = 1500; // tudo cala; só a primeira linha na tela
+const DISSOLVE_MS = 2600; // chegada ao mar: explosões, energia, partículas e tremor se dissolvem (nada some de repente)
+const DISSOLVE_SHAKE_PEAK = 0.03; // tremor da câmera no instante do silêncio; míngua até zero junto com o resto
+const SHAKE_PULSE_MS = 140;
+const SHAKE_REFRESH_MS = 90;
+const SILENCE_BEFORE_IMPACT_MS = 1000; // depois da dissolução: silêncio limpo; só a primeira linha na tela
 const SNCT_HOLD_ON_MESSAGE_MS = 4000; // 'snct': a frase fica sozinha no silêncio antes do preto
 const IMPACT_SHAKE_MS = 1000;
 const IMPACT_SHAKE_INTENSITY = 0.05;
@@ -90,11 +94,14 @@ export default class VictoryFinale {
     const scene = this.scene;
     const hud = scene.hud;
 
-    // corte seco: tremor, drone e baques param — e a primeira linha volta
+    // silêncio: tremor, drone e baques param e a primeira linha volta — mas o
+    // que está visível (crateras, colunas de energia, fagulhas, partículas
+    // azuis, vibração da câmera) se DISSOLVE em vez de sumir de uma vez
     scene.victoryTremor?.stop();
-    scene.victoryCracks?.clear();
     VictoryAudio.stopDrone(80);
-    scene.cameras.main.resetFX();
+    scene.victoryCracks?.fadeOut(DISSOLVE_MS);
+    scene.victoryParticles?.fadeOut(DISSOLVE_MS);
+    this._taperShake(DISSOLVE_MS);
     hud?.showVictoryLineInstant();
 
     // SNCT: sem Leviatã e sem "MAS NÃO A GUERRA." — só a frase, o silêncio e o preto
@@ -103,13 +110,39 @@ export default class VictoryFinale {
       return;
     }
 
-    scene.time.delayedCall(SILENCE_BEFORE_IMPACT_MS, () => {
+    scene.time.delayedCall(DISSOLVE_MS + SILENCE_BEFORE_IMPACT_MS, () => {
       if (this._aborted()) return;
       VictoryAudio.playImpact(scene);
       scene.cameras.main.shake(IMPACT_SHAKE_MS, IMPACT_SHAKE_INTENSITY, true);
       hud?.playVictoryContinuation();
 
       scene.time.delayedCall(HOLD_AFTER_IMPACT_MS, () => this._cutToBlackThenCredits());
+    });
+  }
+
+  // A vibração da câmera míngua até zero em `ms` (curva quadrática: cai rápido no
+  // começo e se arrasta no fim) e só então o FX da câmera é resetado.
+  _taperShake(ms) {
+    const scene = this.scene;
+    let elapsed = 0;
+    const timer = scene.time.addEvent({
+      delay: SHAKE_REFRESH_MS,
+      loop: true,
+      callback: () => {
+        if (this._aborted()) {
+          timer.remove(false);
+          return;
+        }
+        elapsed += SHAKE_REFRESH_MS;
+        const p = Math.min(1, elapsed / ms);
+        if (p >= 1) {
+          timer.remove(false);
+          scene.cameras.main.resetFX();
+          return;
+        }
+        const k = 1 - p;
+        scene.cameras.main.shake(SHAKE_PULSE_MS, DISSOLVE_SHAKE_PEAK * k * k, true);
+      }
     });
   }
 

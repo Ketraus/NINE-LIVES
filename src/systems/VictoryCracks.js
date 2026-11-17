@@ -75,6 +75,13 @@ const CRATER_FISSURES_MAX = 2;
 const CRATER_HIT = { peak: 0.024, tau: 560, kick: 0.6 };
 
 // ---------------------------------------------------------------- energia
+// ---------------------------------------------------------------- praia e mar
+// Nada de fenda, cratera ou energia na praia/mar: o chão só racha em terra firme.
+const SHORE_LAYERS = ['Mar', 'Costa']; // layers do Tiled que contam como praia/água
+const SHORE_PAD_PX = 192; // folga (3 tiles) entre qualquer rachadura e a praia
+const SHORE_SAMPLE_STEP = 32;
+const MIN_FISSURE_SEGMENTS = 4;
+
 const CAP_DESKTOP = 260;
 const CAP_TOUCH = 160;
 
@@ -130,6 +137,9 @@ export default class VictoryCracks {
     this._clock = 0;
     this._live = [];
     this._pool = [];
+    this._fade = 1; // 1 -> 0 na dissolução final (fadeOut)
+    this._fading = false;
+    this._emitScale = 1;
     const touch = !!scene.sys?.game?.device?.input?.touch;
     this._cap = touch ? CAP_TOUCH : CAP_DESKTOP;
     this._density = touch ? 0.6 : 1;
@@ -151,6 +161,11 @@ export default class VictoryCracks {
     this._pathLen = Math.max(1, Math.hypot(dx, dy));
     this._u = { x: dx / this._pathLen, y: dy / this._pathLen };
     this._n = { x: -this._u.y, y: this._u.x };
+    this._fade = 1;
+    this._fading = false;
+    this._emitScale = 1;
+    this._shoreLayers = this._findShoreLayers();
+    this._landLen = this._computeLandLength(start);
 
     const add = Phaser.BlendModes.ADD;
     this.gfxScorch = scene.add.graphics().setDepth(DEPTH_SCORCH);
@@ -168,7 +183,7 @@ export default class VictoryCracks {
 
   // 4ª pancada: as próximas fendas soltas (e uma cratera já à vista) saltam antes da hora
   surge() {
-    if (!this.active) return;
+    if (!this.active || this._fading) return;
     let n = 0;
     for (const f of this.fissures) {
       if (f.startedAt == null && !f.branchOf && !f.crater && n < SURGE_STARTS) {
@@ -198,15 +213,25 @@ export default class VictoryCracks {
     const travelled = (mid.x - this._start.x) * this._u.x + (mid.y - this._start.y) * this._u.y;
     const kick = this.scene.victoryTremorKick || 0;
 
+    // dissolução final: nada novo nasce, a emissão míngua e tudo some suave
+    let fadeDone = false;
+    if (this._fading) {
+      this._fadeAt += dt;
+      const p = Math.min(1, this._fadeAt / this._fadeMs);
+      this._fade = 1 - smooth(p);
+      this._emitScale = (1 - p) * (1 - p);
+      fadeDone = p >= 1;
+    }
+
     // crateras: nascem quando entram na tela
     for (const c of this.craters) {
-      if (c.startedAt == null && this._craterInView(c, view)) this._launchCrater(c);
+      if (c.startedAt == null && !this._fading && this._craterInView(c, view)) this._launchCrater(c);
       if (c.startedAt != null) this._updateCrater(c, dt, view, kick);
     }
 
     // fendas
     for (const f of this.fissures) {
-      if (f.startedAt == null) {
+      if (f.startedAt == null && !this._fading) {
         if (f.crater) {
           if (f.crater.startedAt != null && this._clock >= f.crater.startedAt + f.delay) this._launch(f);
         } else if (f.branchOf) {
@@ -225,9 +250,27 @@ export default class VictoryCracks {
     // a luz do abismo acompanha o peso do tremor
     const soft = this._reduced ? 0.5 : 1;
     const flicker = Math.sin(this._clock / 260) * 0.06 * soft;
-    this.gfxInner.setAlpha(Phaser.Math.Clamp(0.85 + kick * 0.3 * soft + flicker, 0, 1));
-    this.gfxSpill.setAlpha(Phaser.Math.Clamp(0.8 + kick * 0.4 * soft + flicker, 0, 1));
-    this.gfxBloom.setAlpha(Phaser.Math.Clamp(0.7 + kick * 0.5 * soft + flicker, 0, 1));
+    const fade = this._fade;
+    this.gfxInner.setAlpha(Phaser.Math.Clamp(0.85 + kick * 0.3 * soft + flicker, 0, 1) * fade);
+    this.gfxSpill.setAlpha(Phaser.Math.Clamp(0.8 + kick * 0.4 * soft + flicker, 0, 1) * fade);
+    this.gfxBloom.setAlpha(Phaser.Math.Clamp(0.7 + kick * 0.5 * soft + flicker, 0, 1) * fade);
+    if (this._fading) {
+      this.gfxScorch.setAlpha(fade);
+      this.gfxLip.setAlpha(fade);
+      this.gfxChasm.setAlpha(fade);
+      this.gfxRubble.setAlpha(fade);
+      if (fadeDone) this.clear();
+    }
+  }
+
+  // Dissolve tudo (fendas, crateras, colunas de energia, fagulhas) em `ms` em vez
+  // de cortar de uma vez: a emissão míngua e o que já está na tela some suave.
+  // No fim chama clear().
+  fadeOut(ms = 2600) {
+    if (!this.active || this._fading) return;
+    this._fading = true;
+    this._fadeMs = Math.max(1, ms);
+    this._fadeAt = 0;
   }
 
   clear() {
@@ -262,6 +305,41 @@ export default class VictoryCracks {
 
   // ---------------------------------------------------------------- geração
 
+  // ---------------------------------------------------------------- praia / mar
+
+  _findShoreLayers() {
+    const layers = this.scene.mapManager?.visualLayers || [];
+    return layers.filter((l) => SHORE_LAYERS.includes(l?.layer?.name));
+  }
+
+  // true se o ponto está sobre tile de praia/água
+  _onShoreTile(x, y) {
+    return this._shoreLayers.some((l) => l.hasTileAtWorldXY(x, y));
+  }
+
+  // true se o ponto (ou um anel de raio `pad` em volta) toca praia/água
+  _nearShore(x, y, pad = SHORE_PAD_PX) {
+    if (!this._shoreLayers.length) return false;
+    if (this._onShoreTile(x, y)) return true;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      if (this._onShoreTile(x + Math.cos(a) * pad, y + Math.sin(a) * pad)) return true;
+    }
+    return false;
+  }
+
+  // até onde (em px, contado do início) o trajeto ainda é terra firme
+  _computeLandLength(start) {
+    const total = this._pathLen;
+    if (!this._shoreLayers.length) return total;
+    for (let d = 0; d <= total; d += SHORE_SAMPLE_STEP) {
+      const x = start.x + this._u.x * d;
+      const y = start.y + this._u.y * d;
+      if (this._nearShore(x, y)) return Math.max(total * 0.25, d - SHORE_PAD_PX * 0.5);
+    }
+    return total;
+  }
+
   _build(target) {
     const U = this._unit;
     const bounds = this.scene.mapManager?.getWorldBounds?.();
@@ -278,6 +356,7 @@ export default class VictoryCracks {
         const length = rand(0.45, 1.1) * U;
         const width = rand(WIDTH_MIN, WIDTH_MAX) * U * (1 + c.f * WIDTH_NEAR_TARGET_BOOST);
         const main = this._makeFissure(root, angle, length, width, SEGMENTS_MAIN, bounds);
+        if (!main) continue; // ficou presa na praia: descarta
         main.crater = c;
         main.delay = rand(60, 260);
         this.fissures.push(main);
@@ -289,7 +368,7 @@ export default class VictoryCracks {
     // fendas soltas ao longo do trajeto, disparando em direção à câmera
     for (let k = 0; k < MAIN_COUNT; k++) {
       const f = k / (MAIN_COUNT - 1);
-      const along = Phaser.Math.Linear(0.1, 1, f) * this._pathLen + rand(-0.04, 0.04) * this._pathLen;
+      const along = Phaser.Math.Linear(0.1, 1, f) * this._landLen + rand(-0.04, 0.04) * this._landLen;
       const lateral = rand(-LATERAL_SPREAD, LATERAL_SPREAD) * U * (1 - f * 0.4);
       const root = {
         x: this._start.x + this._u.x * along + this._n.x * lateral,
@@ -304,6 +383,7 @@ export default class VictoryCracks {
       };
       const segments = Math.ceil(SEGMENTS_MAIN * length / (U * 2.4));
       const main = this._makeFissure(start, baseAngle, length, width, segments, null);
+      if (!main) continue;
       main.rootDist = along;
       this.fissures.push(main);
       this._addVents(main);
@@ -314,16 +394,18 @@ export default class VictoryCracks {
   _buildCraters(bounds) {
     const U = this._unit;
     const player = this.scene.player;
-    const count = Phaser.Math.Clamp(Math.round(this._pathLen / (U * 0.85)), 3, 6);
+    const land = this._landLen;
+    const count = Phaser.Math.Clamp(Math.round(land / (U * 0.85)), 3, 6);
     for (let k = 0; k < count; k++) {
       const f = count > 1 ? k / (count - 1) : 1;
       for (let attempt = 0; attempt < 10; attempt++) {
-        const along = (Phaser.Math.Linear(0.16, 0.97, f) + rand(-0.025, 0.025)) * this._pathLen;
+        const along = (Phaser.Math.Linear(0.16, 0.97, f) + rand(-0.025, 0.025)) * land;
         const lateral = rand(-0.3, 0.3) * U * (1 - f * 0.35);
         const x = this._start.x + this._u.x * along + this._n.x * lateral;
         const y = this._start.y + this._u.y * along + this._n.y * lateral;
         const R = rand(CRATER_RADIUS_MIN, CRATER_RADIUS_MAX) * U * Phaser.Math.Linear(1, 1.4, f);
         if (bounds && (x < R * 1.4 || y < R * 1.4 || x > bounds.width - R * 1.4 || y > bounds.height - R * 1.4)) continue;
+        if (this._nearShore(x, y, R * 1.3 + SHORE_PAD_PX * 0.5)) continue; // nunca na praia/mar
         if (player && Math.hypot(x - player.x, y - player.y) < U * 0.45 + R) continue; // longe do gato
         if (this.craters.some((o) => Math.hypot(o.x - x, o.y - y) < (o.R + R) * 1.5)) continue;
         this.craters.push({
@@ -360,6 +442,7 @@ export default class VictoryCracks {
       const side = Math.random() < 0.5 ? -1 : 1;
       const angle = main.angles[idx] + side * rand(0.45, 0.95);
       const br = this._makeFissure({ x: p.x, y: p.y }, angle, length * rand(0.3, 0.5), (p.wl + p.wr) * 0.55, Math.round(SEGMENTS_MAIN * 0.55), bounds);
+      if (!br) continue;
       br.branchOf = main;
       br.branchAt = at;
       this.fissures.push(br);
@@ -392,8 +475,14 @@ export default class VictoryCracks {
     let x1 = x;
     let y0 = y;
     let y1 = y;
+    const fullSegments = segments;
     for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
+      // a fenda morre antes de tocar a praia/água
+      if (i > 0 && this._nearShore(x, y, SHORE_PAD_PX * 0.5)) {
+        segments = i - 1;
+        break;
+      }
+      const t = i / fullSegments;
       const base = Math.max(2.4, width * Math.pow(1 - t, 0.7));
       const pinch = Phaser.Math.Clamp(0.68 + 0.32 * Math.sin(i * 0.55 + phase) + rand(-0.12, 0.12), 0.35, 1.25);
       hot = Phaser.Math.Clamp(hot + rand(-0.35, 0.35), 0, 1);
@@ -420,6 +509,7 @@ export default class VictoryCracks {
         y = Phaser.Math.Clamp(y, 8, bounds.height - 8);
       }
     }
+    if (segments < MIN_FISSURE_SEGMENTS) return null;
     // normais suavizadas por vértice
     for (let i = 0; i <= segments; i++) {
       const p0 = pts[Math.max(0, i - 1)];
@@ -631,7 +721,7 @@ export default class VictoryCracks {
     const dtS = dt / 1000;
     const soft = this._reduced ? 0.5 : 1;
     const e = expoOut(Math.min(1, c.age / CRATER_INTRO_MS));
-    const fadeIn = Math.min(1, c.age / 180);
+    const fadeIn = Math.min(1, c.age / 180) * this._fade;
     const flick = Math.sin(this._clock / 230 + c.phase) * 0.5 + Math.sin(this._clock / 97 + c.phase * 2.3) * 0.5; // -1..1
     const power = 0.55 + 0.45 * Math.exp(-c.age / 6000); // jorra mais forte no começo e segue forte depois
 
@@ -650,7 +740,7 @@ export default class VictoryCracks {
     const near = c.x > view.x - c.R * 2 && c.x < view.right + c.R * 2 && c.y > view.y - c.R && c.y < view.bottom + view.height * 0.7;
     if (!near) return;
     const burst = c.age < 1500 ? 1 + 1.6 * (1 - c.age / 1500) : 1;
-    const k = power * burst * (1 + kick * 0.6) * dtS * this._density;
+    const k = power * burst * (1 + kick * 0.6) * dtS * this._density * this._emitScale;
     c.dPlume += 7 * k;
     c.dMote += 36 * k;
     c.dSpark += 9 * k;
@@ -681,7 +771,7 @@ export default class VictoryCracks {
     const bb = f.bb;
     const pad = 140;
     if (bb.x1 < view.x - pad || bb.x0 > view.right + pad || bb.y1 < view.y - pad || bb.y0 > view.bottom + view.height * 0.7) return;
-    const k = (1 + kick * 0.8) * this._density * dtS;
+    const k = (1 + kick * 0.8) * this._density * this._emitScale * dtS;
 
     // pontinhos luminosos soltos ao longo de toda a fenda aberta
     f.dMote += f.shown * 0.2 * k;
@@ -906,7 +996,7 @@ export default class VictoryCracks {
       const r = Math.round(p.c0[0] + (p.c1[0] - p.c0[0]) * k);
       const g = Math.round(p.c0[1] + (p.c1[1] - p.c0[1]) * k);
       const b = Math.round(p.c0[2] + (p.c1[2] - p.c0[2]) * k);
-      p.img.setPosition(p.x + sway, p.y).setScale(size / p.base).setAlpha(p.a0 * fadeIn * fadeOut).setTint((r << 16) | (g << 8) | b);
+      p.img.setPosition(p.x + sway, p.y).setScale(size / p.base).setAlpha(p.a0 * fadeIn * fadeOut * this._fade).setTint((r << 16) | (g << 8) | b);
       if (p.vr) p.img.rotation += p.vr * dtS;
     }
   }

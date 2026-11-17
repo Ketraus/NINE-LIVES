@@ -23,7 +23,7 @@ const SHAKE_MAX = 0.016;
 // passa do pico — mais forte, baques mais rápidos e altos, escuridão maior.
 const SHAKE_PEAK = 0.032;
 const RUMBLE_INTERVAL_PEAK_MS = 450;
-const OVERDRIVE_ATMOSPHERE_BOOST = 0.4;
+const OVERDRIVE_ATMOSPHERE_BOOST = 0.2;
 const OVERDRIVE_DRONE_BOOST = 0.5;
 const SHAKE_REFRESH_MS = 90; // cam.shake é reaplicado em pulsos curtos pra a intensidade acompanhar o level
 const SHAKE_PULSE_MS = 140;
