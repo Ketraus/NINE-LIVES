@@ -1308,6 +1308,25 @@ export default class HUD {
     this.victoryMessage.setAlpha(1).setY(this.scene.scale.height / 2);
   }
 
+  // A primeira linha volta devagar, por cima do mar parado (Cena 05).
+  fadeInVictoryLine(durationMs = 2200) {
+    const scene = this.scene;
+    scene.tweens.killTweensOf(this.victoryMessage);
+    this.victoryGroup.setVisible(true);
+    this.victoryText.setLetterSpacing(VICTORY_MSG_SPACING_END);
+    this.victoryMessage.setAlpha(0).setY(scene.scale.height / 2);
+    scene.tweens.add({ targets: this.victoryMessage, alpha: 1, duration: durationMs, ease: 'Sine.easeInOut' });
+  }
+
+  // O véu escuro da cinemática vai até `alpha` em `durationMs`. A atmosfera por
+  // nível (setVictoryAtmosphere) já parou de comandá-lo quando o tremor acaba.
+  tweenVictoryDark(alpha, durationMs, ease = 'Sine.easeInOut') {
+    if (!this.victoryDark) return;
+    this.scene.tweens.killTweensOf(this.victoryDark);
+    this.victoryDarkGroup.setVisible(true);
+    this.scene.tweens.add({ targets: this.victoryDark, alpha, duration: durationMs, ease });
+  }
+
   // "MAS NÃO A GUERRA." — o impacto visual: slam de escala, clarão branco que
   // decai, cópias RGB separadas que convergem e um tremor de câmera brutal
   // (o tremor e o som ficam por conta do VictoryFinale).

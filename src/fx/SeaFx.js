@@ -5,6 +5,7 @@ const MASK_KEY = 'sea_mask';
 const SHADER_KEY = 'sea_water_shader';
 const NOISE_PERIOD = 688128; // MMC das escalas de ruído (512*64, 192*64, 56*64...); 16384 quebrava a água/costa após x=16384
 const SHORE_CAP_TILES = 8;
+const RING_SLOTS = 6;
 
 const VERT = `
 precision mediump float;
@@ -41,6 +42,16 @@ uniform vec3 uMid;
 uniform vec3 uLight;
 uniform vec3 uShallow;
 uniform vec3 uFoam;
+uniform float uDark;
+uniform vec2 uDarkCenter;
+uniform float uDarkRadius;
+uniform float uDarkTime;
+uniform vec4 uRing0;
+uniform vec4 uRing1;
+uniform vec4 uRing2;
+uniform vec4 uRing3;
+uniform vec4 uRing4;
+uniform vec4 uRing5;
 varying vec2 vLocal;
 
 float hash(vec2 p) {
@@ -59,6 +70,16 @@ float vnoise(vec2 p) {
   float c = hash(i + vec2(0.0, 1.0));
   float d = hash(i + vec2(1.0, 1.0));
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// onda circular (x,y = centro no mundo, z = raio, w = força): uma faixa de
+// espuma quebrada, na grade do pixel art. Vive no shader pra nunca passar da costa.
+vec2 ringMask(vec4 R, vec2 p) {
+  if (R.w <= 0.001 || R.z <= 0.0) return vec2(0.0);
+  float d = abs(length(p - R.xy) - R.z);
+  float wd = 4.0 + R.z * 0.02;
+  float br = step(0.28, vnoise(p / 36.0 + R.z * 0.013));
+  return vec2(step(d, wd), step(d, wd * 2.6)) * br * R.w;
 }
 
 void main () {
@@ -124,6 +145,19 @@ void main () {
   float cs = vnoise(vec2(w.x / 256.0 - t * 0.012, w.y / 256.0 + t * 0.008) + 41.0);
   col *= 0.88 + 0.14 * smoothstep(0.35, 0.65, cs);
 
+  // algo imenso sob a superfície (cena do Leviatã): a água escurece em faixas de
+  // pixel art, com a borda irregular e à deriva. Vem ANTES da espuma e dos brilhos,
+  // que continuam acesos por cima (a superfície ainda pega luz)
+  if (uDark > 0.001) {
+    vec2 dv = (w - uDarkCenter) * vec2(0.8, 1.0);
+    float wob = vnoise(w / 110.0 + vec2(uDarkTime * 0.07, -uDarkTime * 0.05)) - 0.5;
+    float wob2 = vnoise(w / 48.0 - vec2(uDarkTime * 0.11, 0.0) + 7.0) - 0.5;
+    float rr = uDarkRadius * (1.0 + wob * 0.34 + wob2 * 0.12);
+    float m = 1.0 - smoothstep(rr * 0.12, rr, length(dv));
+    m = floor(m * 7.0 + 0.5) / 7.0;
+    col = mix(col, vec3(0.008, 0.02, 0.035), clamp(m * uDark, 0.0, 1.0));
+  }
+
   // espuma: ondas que chegam na costa e espuma colada na borda
   float nz = vnoise(w / 64.0 + vec2(t * 0.05, 0.0));
   float foam = 0.0;
@@ -140,6 +174,12 @@ void main () {
   float edge = (1.0 - step(12.0 + eb * 12.0, dpx + (nz - 0.5) * 12.0)) * step(0.32, eb);
   foam = clamp(foam + edge * 0.9, 0.0, 1.0) * uFoamAmount;
   col = mix(col, uFoam, foam * 0.75);
+
+  // ondas circulares da cena do Leviatã (por cima de tudo na água)
+  vec2 rg = ringMask(uRing0, w) + ringMask(uRing1, w) + ringMask(uRing2, w)
+          + ringMask(uRing3, w) + ringMask(uRing4, w) + ringMask(uRing5, w);
+  col = mix(col, uLight * 1.45, clamp(rg.y, 0.0, 1.0) * 0.38);
+  col = mix(col, uFoam, clamp(rg.x, 0.0, 1.0) * 0.85);
 
   // brilhos pontuais
   vec2 cell = floor(w / 32.0);
@@ -186,6 +226,10 @@ export default class SeaFx {
     this.ok = false;
     this.shader = null;
     this.agitation = 0; // 0..1: mar agitado (as ondas aceleram); usado pelo despertar do Leviatã
+    this.stillness = 0; // 0..1: mar vidrado (as ondas quase param); usado pela cena do Leviatã
+    this.dark = { amount: 0, radius: 0, x: 0, y: 0 }; // sombra sob a água: 0..1, raio e centro em px de mundo
+    this.rings = []; // até 6 ondas circulares { x, y, r, a } em px de mundo (cena do Leviatã)
+    this._darkClock = 0; // relógio da borda da sombra: para junto com o mar vidrado
 
     const map = mapManager.map;
     const layerData = map.getLayer(config.waterLayer)?.data;
@@ -223,8 +267,13 @@ export default class SeaFx {
       uMid: { type: '3f', value: vec3(c.mid) },
       uLight: { type: '3f', value: vec3(c.light) },
       uShallow: { type: '3f', value: vec3(c.shallow) },
-      uFoam: { type: '3f', value: vec3(c.foam) }
+      uFoam: { type: '3f', value: vec3(c.foam) },
+      uDark: { type: '1f', value: 0 },
+      uDarkCenter: { type: '2f', value: { x: 0, y: 0 } },
+      uDarkRadius: { type: '1f', value: 1 },
+      uDarkTime: { type: '1f', value: 0 }
     };
+    for (let i = 0; i < RING_SLOTS; i++) uniforms[`uRing${i}`] = { type: '4f', value: { x: 0, y: 0, z: 0, w: 0 } };
 
     const base = new Phaser.Display.BaseShader(SHADER_KEY, FRAG, VERT, uniforms);
     this.shader = scene.add
@@ -317,9 +366,11 @@ export default class SeaFx {
     sh.setSize(x1 - x0, y1 - y0);
 
     const reduced = SettingsManager.getReducedMotion();
-    const speed = config.motion * (reduced ? config.reducedMotionFactor : 1) * (1 + this.agitation * 2.4);
+    const speed = config.motion * (reduced ? config.reducedMotionFactor : 1) * (1 + this.agitation * 2.4) * (1 - this.stillness * 0.97);
     // relógio real: o mar continua vivo mesmo com o jogo pausado
-    this._clock = (this._clock || 0) + (this.scene.game.loop.delta / 1000) * speed;
+    const dtReal = this.scene.game.loop.delta / 1000;
+    this._clock = (this._clock || 0) + dtReal * speed;
+    this._darkClock += dtReal * (1 - this.stillness);
 
     const u = sh.uniforms;
     u.uTime.value = this._clock;
@@ -328,6 +379,20 @@ export default class SeaFx {
     u.uMaskOrigin.value.x = (x0 - r.x) / r.w;
     u.uMaskOrigin.value.y = (y0 - r.y) / r.h;
     u.uSparkleAmount.value = reduced ? 0 : config.sparkleAmount;
+
+    u.uDark.value = this.dark.amount;
+    u.uDarkCenter.value.x = this.dark.x % NOISE_PERIOD;
+    u.uDarkCenter.value.y = this.dark.y;
+    u.uDarkRadius.value = Math.max(1, this.dark.radius);
+    u.uDarkTime.value = this._darkClock;
+    for (let i = 0; i < RING_SLOTS; i++) {
+      const ring = this.rings[i];
+      const v = u[`uRing${i}`].value;
+      v.x = ring ? ring.x % NOISE_PERIOD : 0;
+      v.y = ring ? ring.y : 0;
+      v.z = ring ? ring.r : 0;
+      v.w = ring ? ring.a : 0;
+    }
   }
 
   destroy() {

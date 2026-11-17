@@ -22,6 +22,8 @@ let quakeBus = null;
 let secondQuakeBus = null;
 let extraBuses = []; // pancadas da Cena 04 (cortáveis de uma vez em silenceAll)
 let texture = null;
+let seaAir = null; // ar do mar parado (Cena 05)
+let seaBreath = null; // o "respirar" sob a água (Cena 05)
 
 const TEXTURE_BASE_GAIN = 0.4;
 const TEXTURE_FREQ_CARRIER = 58;
@@ -702,10 +704,239 @@ const VictoryAudio = {
     bus.gain.setTargetAtTime(0, bus.context.currentTime, 0.008);
   },
 
+  // ---------------------------------------------------------------- Cena 05: o mar
+
+  // Cama de ar do mar: ruído filtrado, quase abaixo do que se percebe. Dá ao
+  // silêncio da chegada uma textura — e dá ao corte final algo pra cortar.
+  startSeaAir(scene, fadeInMs = 2500) {
+    const sm = manager(scene);
+    if (!sm || seaAir) return;
+    const ctx = sm.context;
+    const out = ctx.createGain();
+    out.gain.value = 0;
+    out.connect(sm.masterVolumeNode);
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuffer(ctx, 3);
+    noise.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 520;
+    band.Q.value = 0.6;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.13;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 140;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(band.frequency);
+    noise.connect(band);
+    band.connect(out);
+    noise.start();
+    lfo.start();
+    out.gain.setTargetAtTime(0.06 * SettingsManager.getSfx(), ctx.currentTime, Math.max(0.05, fadeInMs / 3000));
+    seaAir = { ctx, out, nodes: [noise, lfo] };
+  },
+
+  stopSeaAir(fadeMs = 60) {
+    if (!seaAir) return;
+    const d = seaAir;
+    seaAir = null;
+    d.out.gain.cancelScheduledValues(d.ctx.currentTime);
+    d.out.gain.setTargetAtTime(0, d.ctx.currentTime, Math.max(0.005, fadeMs / 3000));
+    setTimeout(() => {
+      d.nodes.forEach((o) => { try { o.stop(); } catch (e) { /* já parado */ } });
+      try { d.out.disconnect(); } catch (e) { /* já solto */ }
+    }, fadeMs + 250);
+  },
+
+  // Uma bolha estourando sob a água: "blup" curto e grave, de tom ascendente.
+  playBubble(scene, strength = 1, pitch = 1) {
+    const sm = manager(scene);
+    if (!sm) return;
+    const ctx = sm.context;
+    const t0 = ctx.currentTime;
+    const vol = ctx.createGain();
+    vol.gain.value = Math.min(1, strength) * SettingsManager.getSfx();
+    vol.connect(sm.masterVolumeNode);
+    const f0 = 150 * pitch * (0.85 + Math.random() * 0.3);
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(f0, t0);
+    osc.frequency.exponentialRampToValueAtTime(f0 * 1.9, t0 + 0.07);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.exponentialRampToValueAtTime(0.5, t0 + 0.012);
+    env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
+    osc.connect(env);
+    env.connect(vol);
+    osc.start(t0);
+    osc.stop(t0 + 0.16);
+  },
+
+  // Um batimento fundo, sentido mais que ouvido (sem estalo, sem ataque seco).
+  playSeaPulse(scene, strength = 0.5) {
+    const sm = manager(scene);
+    if (!sm) return;
+    const ctx = sm.context;
+    const t0 = ctx.currentTime;
+    const vol = ctx.createGain();
+    vol.gain.value = (0.25 + 0.75 * Math.min(1, strength)) * SettingsManager.getSfx();
+    vol.connect(sm.masterVolumeNode);
+    const thud = ctx.createOscillator();
+    thud.type = 'sine';
+    thud.frequency.setValueAtTime(68, t0);
+    thud.frequency.exponentialRampToValueAtTime(38, t0 + 0.3);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.exponentialRampToValueAtTime(0.7, t0 + 0.03);
+    env.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+    thud.connect(env);
+    env.connect(vol);
+    thud.start(t0);
+    thud.stop(t0 + 0.55);
+    // harmônico fechado, pro batimento existir também em alto-falante de celular
+    const body = ctx.createOscillator();
+    body.type = 'triangle';
+    body.frequency.setValueAtTime(112, t0);
+    body.frequency.exponentialRampToValueAtTime(64, t0 + 0.22);
+    const bodyEnv = ctx.createGain();
+    bodyEnv.gain.setValueAtTime(0.0001, t0);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.22, t0 + 0.03);
+    bodyEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+    body.connect(bodyEnv);
+    bodyEnv.connect(vol);
+    body.start(t0);
+    body.stop(t0 + 0.35);
+  },
+
+  // A subida: algo imenso respirando sob a água. O volume cresce em dB linear
+  // por `riseMs` (parece mais constante ao ouvido), a afinação desce devagar
+  // (mais grande, mais perto) e uma ondulação lenta faz inspirar/expirar.
+  // Só o cutSeaBreath() encerra — de uma vez, no silêncio que antecede a quebra.
+  startSeaBreath(scene, riseMs = 9000) {
+    const sm = manager(scene);
+    if (!sm || seaBreath) return;
+    const ctx = sm.context;
+    const t0 = ctx.currentTime;
+    const D = Math.max(1, riseMs / 1000);
+
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -14;
+    compressor.ratio.value = 10;
+    const level = ctx.createGain();
+    level.gain.value = 0.95 * SettingsManager.getSfx();
+    compressor.connect(level);
+    level.connect(sm.masterVolumeNode);
+
+    const swell = ctx.createGain(); // ondulação "inspira/expira"
+    swell.gain.value = 0.8;
+    swell.connect(compressor);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.17;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.2;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(swell.gain);
+
+    const rise = ctx.createGain(); // a subida
+    rise.gain.setValueAtTime(0.0001, t0);
+    rise.gain.exponentialRampToValueAtTime(1, t0 + D);
+    rise.connect(swell);
+
+    const glide = (osc, from, to) => {
+      osc.frequency.setValueAtTime(from, t0);
+      osc.frequency.linearRampToValueAtTime(to, t0 + D);
+    };
+    const voice = (type, from, to, gainValue) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      glide(o, from, to);
+      const g = ctx.createGain();
+      g.gain.value = gainValue;
+      o.connect(g);
+      g.connect(rise);
+      return { o, g };
+    };
+    const a = voice('sine', 36, 27, 0.55);
+    const b = voice('sine', 54, 41, 0.22);
+
+    // dente-de-serra grave que vai se abrindo (dá corpo audível no celular)
+    const saw = ctx.createOscillator();
+    saw.type = 'sawtooth';
+    glide(saw, 72, 54);
+    const sawFilter = ctx.createBiquadFilter();
+    sawFilter.type = 'lowpass';
+    sawFilter.frequency.setValueAtTime(110, t0);
+    sawFilter.frequency.exponentialRampToValueAtTime(320, t0 + D);
+    const sawGain = ctx.createGain();
+    sawGain.gain.value = 0.14;
+    saw.connect(sawFilter);
+    sawFilter.connect(sawGain);
+    sawGain.connect(rise);
+
+    // água sendo deslocada: ruído grave que ganha corpo
+    const water = ctx.createBufferSource();
+    water.buffer = noiseBuffer(ctx, 3);
+    water.loop = true;
+    const waterFilter = ctx.createBiquadFilter();
+    waterFilter.type = 'lowpass';
+    waterFilter.frequency.setValueAtTime(90, t0);
+    waterFilter.frequency.exponentialRampToValueAtTime(280, t0 + D);
+    const waterGain = ctx.createGain();
+    waterGain.gain.value = 0.2;
+    water.connect(waterFilter);
+    waterFilter.connect(waterGain);
+    waterGain.connect(rise);
+
+    const nodes = [a.o, b.o, saw, water, lfo];
+    nodes.forEach((n) => n.start(t0));
+    seaBreath = { ctx, level, nodes };
+  },
+
+  cutSeaBreath(fadeMs = 40) {
+    if (!seaBreath) return;
+    const d = seaBreath;
+    seaBreath = null;
+    d.level.gain.cancelScheduledValues(d.ctx.currentTime);
+    d.level.gain.setTargetAtTime(0, d.ctx.currentTime, Math.max(0.004, fadeMs / 3000));
+    setTimeout(() => {
+      d.nodes.forEach((o) => { try { o.stop(); } catch (e) { /* já parado */ } });
+      try { d.level.disconnect(); } catch (e) { /* já solto */ }
+    }, fadeMs + 250);
+  },
+
+  // A onda da quebra se espalhando pela água: um sopro de ruído que fecha.
+  playSeaWash(scene) {
+    const sm = manager(scene);
+    if (!sm) return;
+    const ctx = sm.context;
+    const t0 = ctx.currentTime;
+    const out = ctx.createGain();
+    out.gain.value = 0.9 * SettingsManager.getSfx();
+    out.connect(sm.masterVolumeNode);
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer(ctx, 3.2);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 0.7;
+    filter.frequency.setValueAtTime(1800, t0);
+    filter.frequency.exponentialRampToValueAtTime(420, t0 + 2.8);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.exponentialRampToValueAtTime(0.5, t0 + 0.3);
+    env.gain.exponentialRampToValueAtTime(0.0001, t0 + 3);
+    src.connect(filter);
+    filter.connect(env);
+    env.connect(out);
+    src.start(t0);
+    extraBuses.push(out);
+  },
+
   // Corta tudo que a cinemática ainda esteja tocando (drone + cauda do impacto).
   silenceAll(scene) {
     this.stopDrone(50);
     this.stopTexture(50);
+    this.stopSeaAir(50);
+    this.cutSeaBreath(50);
     this.cutQuake();
     extraBuses.forEach((bus) => {
       bus.gain.cancelScheduledValues(bus.context.currentTime);

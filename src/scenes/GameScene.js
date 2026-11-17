@@ -8,6 +8,7 @@ import VictorySecondThump from '../systems/VictorySecondThump.js';
 import VictoryDeparture from '../systems/VictoryDeparture.js';
 import VictoryCracks from '../systems/VictoryCracks.js';
 import VictoryLeviathan from '../systems/VictoryLeviathan.js';
+import VictorySea from '../systems/VictorySea.js';
 import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
 import Player, { BASE_VISUAL_SCALE } from '../entities/Player.js';
@@ -360,6 +361,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.victorySequenceStarted) return;
     this.victorySequenceStarted = true; // RunManager.collectXp para de dar XP/level-up
     this.spawnDirector.stop(); // só corta as levas: getElapsedMs() continua contando
+    this._ambientSfxEvent?.remove(false); // o urro ambiente sorteado nunca cai no meio da cinemática
     // HUD some com fade (nada de sumir seco, parece bug) e a pausa fica travada
     // até o fim da cinemática (ESC, botão, auto-pausa por blur)
     this.hud?.fadeOutForVictory(HUD_VICTORY_FADE_OUT_MS);
@@ -484,7 +486,8 @@ export default class GameScene extends Phaser.Scene {
     this.victoryParticles = new VictoryParticles(this); // Cena 02: partículas azuis subindo (começam no silêncio pós-pancada)
     this.victorySecondThump = new VictorySecondThump(this); // Cena 03: a segunda pancada (~10:10), luz fria e corrupção pulsando
     this.victoryCracks = new VictoryCracks(this); // fissuras imensas do Leviatã abrindo no chão durante a travessia
-    this.victoryLeviathan = new VictoryLeviathan(this); // o despertar: silhueta sob a água e mar agitado (a criatura nunca aparece)
+    this.victoryLeviathan = new VictoryLeviathan(this); // sinais sob a água: bolhas, ondas, sombra (a criatura nunca aparece)
+    this.victorySea = new VictorySea(this); // Cena 05: a direção do mar (chegada, bolhas, batimentos, fôlego, quebra)
     this.victoryDeparture = new VictoryDeparture(this); // Cena 04: a câmera se abre, 3ª pancada e a travessia até o mar
     this.victoryShakeFloor = 0; // vibração mínima da câmera deixada pela 2ª pancada (lida pelo VictoryTremor)
     this.playerFrozen = false; // true na cinemática: protagonista parado (ver Player.update)
