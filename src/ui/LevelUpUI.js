@@ -25,6 +25,7 @@ const RESTOCK_BTN_W = 300;
 const RESTOCK_BTN_H = 54;
 const RESTOCK_BTN_GAP = 14; // espaço entre as cartas e o botão
 const RESTOCK_ACCENT = 0x4fd1ff;
+const TOUCH_SELECTION_GUARD_MS = 500; // evita selecionar uma carta com o toque que abriu o overlay
 
 // Cabeçalho fixo (independe do encolhimento das cartas): margem do topo
 // até o título + o próprio título + uma faixa exclusiva reservada só pro
@@ -333,9 +334,9 @@ export default class LevelUpUI {
 
   // Comum a show() e showEvolution(): limpa a tela anterior e pausa o jog…
   _openOverlay() {
-    // Reject touches that began before the overlay without delaying new taps.
+    // Reject stale touches and give the opening touch a short time to clear.
     this._selectionUnlockAt = this.scene.sys.game.device.input.touch
-      ? performance.now() : null;
+      ? performance.now() + TOUCH_SELECTION_GUARD_MS : null;
     this._applyZoomCompensation(this.container); // zoom pode ter mudado desde o construtor
     this.container.removeAll(true);
     this.scene.physics.pause();

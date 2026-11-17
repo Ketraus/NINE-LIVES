@@ -23,11 +23,15 @@ function makeUI(touch) {
 }
 const mobile = makeUI(true);
 assert.equal(mobile.scene.time.timeScale, 0);
-assert.equal(mobile._canSelect({ downTime: now }), true, 'Immediate intentional touch is accepted');
+assert.equal(mobile._canSelect({ downTime: now }), false, 'Opening touch is ignored during the guard window');
+now += 500;
+assert.equal(mobile._canSelect({ downTime: now }), true, 'Touch is accepted after the guard window');
 now = 4000;
 mobile._openOverlay();
 assert.equal(mobile._canSelect({ downTime: 900 }), false, 'Touch from gameplay');
 assert.equal(mobile._canSelect({ downTime: 3999 }), false, 'Queued touch from before overlay');
+assert.equal(mobile._canSelect({ downTime: timeOrigin + now }), false, 'Opening touch is still guarded');
+now += 500;
 assert.equal(mobile._canSelect({ downTime: timeOrigin + now }), true);
 assert.equal(mobile._canSelect(), false);
 // All three actions must return before applying changes or playing sound.
@@ -35,6 +39,7 @@ mobile._choose({ id: 'test' }, { downTime: 900 });
 mobile._chooseEvolution({ id: 'test' }, { downTime: 900 });
 mobile._restock({ downTime: 900 });
 mobile._openOverlay();
+now += 500;
 assert.equal(mobile._canSelect({ downTime: now }), true, 'Next level accepts an immediate new touch');
 const desktop = makeUI(false);
 assert.equal(desktop._canSelect({ downTime: now }), true, 'Desktop has no delay');
