@@ -7,6 +7,7 @@ import VictoryParticles from '../systems/VictoryParticles.js';
 import VictorySecondThump from '../systems/VictorySecondThump.js';
 import VictoryDeparture from '../systems/VictoryDeparture.js';
 import VictoryCracks from '../systems/VictoryCracks.js';
+import VictoryLeviathan from '../systems/VictoryLeviathan.js';
 import MusicManager from '../systems/MusicManager.js';
 import MapManager from '../maps/MapManager.js';
 import Player, { BASE_VISUAL_SCALE } from '../entities/Player.js';
@@ -222,6 +223,7 @@ export default class GameScene extends Phaser.Scene {
     this.victorySecondThump?.update(delta);
     this.victoryDeparture?.update(delta);
     this.victoryCracks?.update(delta);
+    this.victoryLeviathan?.update(delta);
     this.hud?.update(time, delta);
     this._updateXpOrbMagnet(time);
     this._updateXpGlows();
@@ -482,6 +484,7 @@ export default class GameScene extends Phaser.Scene {
     this.victoryParticles = new VictoryParticles(this); // Cena 02: partículas azuis subindo (começam no silêncio pós-pancada)
     this.victorySecondThump = new VictorySecondThump(this); // Cena 03: a segunda pancada (~10:10), luz fria e corrupção pulsando
     this.victoryCracks = new VictoryCracks(this); // fissuras imensas do Leviatã abrindo no chão durante a travessia
+    this.victoryLeviathan = new VictoryLeviathan(this); // o despertar: silhueta sob a água e mar agitado (a criatura nunca aparece)
     this.victoryDeparture = new VictoryDeparture(this); // Cena 04: a câmera se abre, 3ª pancada e a travessia até o mar
     this.victoryShakeFloor = 0; // vibração mínima da câmera deixada pela 2ª pancada (lida pelo VictoryTremor)
     this.playerFrozen = false; // true na cinemática: protagonista parado (ver Player.update)

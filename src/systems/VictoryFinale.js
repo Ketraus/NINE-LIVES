@@ -9,8 +9,9 @@ import gameVersion from '../../data/gameVersion.js';
 //      até o ponto FinalCameraTarget do Tiled (mar ao norte; cai em
 //      NorthCoastCenter se faltar). A mensagem some, entra o drone grave e o
 //      tremor passa do pico ("overdrive").
-//   2) O DESPERTAR — GANCHO VAZIO (_playAwakening): o Leviatã vai aqui. Hoje
-//      só segura o olhar no oceano por AWAKENING_PLACEHOLDER_HOLD_MS.
+//   2) O DESPERTAR (_playAwakening) — o Leviatã NÃO aparece: o mar se agita e
+//      uma silhueta colossal sobe sob a água (VictoryLeviathan) por
+//      AWAKENING_HOLD_MS, com a câmera tremendo sobre o oceano.
 //   3) A VERDADEIRA MENSAGEM — o mundo corta pro silêncio, a primeira linha
 //      volta sozinha e, SÓ NA VERSÃO 'feira' (data/gameVersion.js), uma pausa
 //      e "MAS NÃO A GUERRA." chega com impacto. Na 'snct' ela fica sozinha.
@@ -25,12 +26,13 @@ const PAN_EASE = 'Sine.easeInOut';
 const MESSAGE_FADE_OUT_MS = 3000;
 const DRONE_FADE_IN_MS = 5000;
 
-const AWAKENING_PLACEHOLDER_HOLD_MS = 3500; // trocar pela cena do Leviatã
+const AWAKENING_HOLD_MS = 7500; // o mar agita e a silhueta do Leviatã sobe sob a água (VictoryLeviathan)
 const DISSOLVE_MS = 2600; // chegada ao mar: explosões, energia, partículas e tremor se dissolvem (nada some de repente)
 const DISSOLVE_SHAKE_PEAK = 0.03; // tremor da câmera no instante do silêncio; míngua até zero junto com o resto
 const SHAKE_PULSE_MS = 140;
 const SHAKE_REFRESH_MS = 90;
-const SILENCE_BEFORE_IMPACT_MS = 1000; // depois da dissolução: silêncio limpo; só a primeira linha na tela
+const CALM_BEFORE_BUBBLES_MS = 1200; // depois da dissolução: mar parado, silêncio limpo; só a primeira linha na tela
+const BUBBLES_MS = 5200; // bolhas e espuma crescendo no mar calmo (VictoryLeviathan.beginBubbles) até o impacto final
 const SNCT_HOLD_ON_MESSAGE_MS = 4000; // 'snct': a frase fica sozinha no silêncio antes do preto
 const IMPACT_SHAKE_MS = 1000;
 const IMPACT_SHAKE_INTENSITY = 0.05;
@@ -55,6 +57,7 @@ export default class VictoryFinale {
     VictoryAudio.startDrone(scene, DRONE_FADE_IN_MS);
 
     const target = this._resolveTarget();
+    this._target = target;
     scene.victoryCracks?.begin(cam.midPoint, target); // fissuras do Leviatã ao longo do trajeto
 
     cam.pan(target.x, target.y, TRAVEL_MS, PAN_EASE, true, (camera, progress) => {
@@ -81,12 +84,13 @@ export default class VictoryFinale {
     this._playAwakening(() => this._playClosing());
   }
 
-  // GANCHO: aqui entra o despertar do Leviatã (mapManager.getLeviathanSpawn()
-  // dá o ponto de nascimento). Chame done() quando a criatura terminar de
-  // emergir. Por enquanto a câmera só segura o olhar no oceano tremendo.
+  // O DESPERTAR: o Leviatã não aparece. A câmera segura o olhar no oceano
+  // tremendo enquanto o mar se agita e uma silhueta colossal sobe sob a água
+  // (VictoryLeviathan) — o que causava os tremores estava aqui o tempo todo.
   _playAwakening(done) {
     EventBus.emit('victory-awakening');
-    this.scene.time.delayedCall(AWAKENING_PLACEHOLDER_HOLD_MS, done);
+    this.scene.victoryLeviathan?.start(this._target || this._resolveTarget());
+    this.scene.time.delayedCall(AWAKENING_HOLD_MS, done);
   }
 
   _playClosing() {
@@ -100,6 +104,7 @@ export default class VictoryFinale {
     scene.victoryTremor?.stop();
     VictoryAudio.stopDrone(80);
     scene.victoryCracks?.fadeOut(DISSOLVE_MS);
+    scene.victoryLeviathan?.fadeOut(DISSOLVE_MS); // a silhueta e as ondas somem e o mar volta a acalmar (bolhas só depois)
     scene.victoryParticles?.fadeOut(DISSOLVE_MS);
     this._taperShake(DISSOLVE_MS);
     hud?.showVictoryLineInstant();
@@ -110,7 +115,14 @@ export default class VictoryFinale {
       return;
     }
 
-    scene.time.delayedCall(DISSOLVE_MS + SILENCE_BEFORE_IMPACT_MS, () => {
+    // mar calmo e em silêncio -> começam a surgir bolhas, como se algo fosse emergir
+    scene.time.delayedCall(DISSOLVE_MS + CALM_BEFORE_BUBBLES_MS, () => {
+      if (this._aborted()) return;
+      scene.victoryLeviathan?.beginBubbles(BUBBLES_MS);
+    });
+
+    // o impacto corta no auge das bolhas: a criatura nunca chega a emergir
+    scene.time.delayedCall(DISSOLVE_MS + CALM_BEFORE_BUBBLES_MS + BUBBLES_MS, () => {
       if (this._aborted()) return;
       VictoryAudio.playImpact(scene);
       scene.cameras.main.shake(IMPACT_SHAKE_MS, IMPACT_SHAKE_INTENSITY, true);

@@ -185,6 +185,7 @@ export default class SeaFx {
     this.scene = scene;
     this.ok = false;
     this.shader = null;
+    this.agitation = 0; // 0..1: mar agitado (as ondas aceleram); usado pelo despertar do Leviatã
 
     const map = mapManager.map;
     const layerData = map.getLayer(config.waterLayer)?.data;
@@ -316,7 +317,7 @@ export default class SeaFx {
     sh.setSize(x1 - x0, y1 - y0);
 
     const reduced = SettingsManager.getReducedMotion();
-    const speed = config.motion * (reduced ? config.reducedMotionFactor : 1);
+    const speed = config.motion * (reduced ? config.reducedMotionFactor : 1) * (1 + this.agitation * 2.4);
     // relógio real: o mar continua vivo mesmo com o jogo pausado
     this._clock = (this._clock || 0) + (this.scene.game.loop.delta / 1000) * speed;
 
