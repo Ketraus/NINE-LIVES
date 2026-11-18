@@ -2,7 +2,7 @@
 // Nada aqui é segredo: o client_id do Google é público por natureza.
 export const FEIRA_CONFIG = {
   // PREENCHER com o client_id fornecido pela plataforma. Vazio = integração desligada.
-  GOOGLE_CLIENT_ID: '',
+  GOOGLE_CLIENT_ID: '331191695151-ku8mdhd76pc2k36itas8lm722krn0u64.apps.googleusercontent.com',
   PRODUCT_ID: 88,
   CREDIT_URL: 'https://feira-de-jogos.dev.br/api/v2/credit',
   REQUEST_TIMEOUT_MS: 10000,
