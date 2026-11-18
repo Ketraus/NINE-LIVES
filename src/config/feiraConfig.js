@@ -6,8 +6,8 @@ export const FEIRA_CONFIG = {
   PRODUCT_ID: 88,
   CREDIT_URL: 'https://feira-de-jogos.dev.br/api/v2/credit',
   REQUEST_TIMEOUT_MS: 10000,
-  // Recompensas por marco, em tijolinhos. null = NÃO concede (valores ainda não definidos).
-  // Defina um inteiro positivo para ativar cada marco.
+  // TOTAL de tijolinhos por marco (não soma): chegou ao Minotauro = 500, derrotou = 550, zerou = 600.
+  // O jogo envia só a diferença do que a conta já recebeu. null = NÃO concede.
   REWARDS: {
     boss_reached: 500,
     boss_defeated: 550,

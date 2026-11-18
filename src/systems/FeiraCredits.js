@@ -3,7 +3,7 @@
 // Falhas nunca lançam exceção nem afetam o jogo. O token vive só em memória.
 import { FEIRA_CONFIG as CFG } from '../config/feiraConfig.js';
 
-const state = { credential: null, expMs: 0, sub: null, started: false, done: new Set(), inflight: new Set() };
+const state = { credential: null, expMs: 0, sub: null, started: false, done: new Set(), inflight: new Set(), granted: {} };
 
 function parseJwt(jwt) {
   try {
@@ -109,11 +109,16 @@ const FeiraCredits = {
     });
   },
 
-  // Marco de progressão. Só concede se REWARDS[name] for um inteiro positivo.
-  reportMilestone(name) {
-    const value = CFG.REWARDS[name];
-    if (!Number.isInteger(value) || value <= 0) return Promise.resolve({ ok: false, reason: 'reward-not-defined' });
-    return this.grantCredits(name, value);
+  // Marco de progressão. REWARDS guarda o TOTAL do marco (não soma): envia só a
+  // diferença para o que a conta já recebeu nesta sessão (ex.: 500 -> 550 envia 50).
+  async reportMilestone(name) {
+    const total = CFG.REWARDS[name];
+    if (!Number.isInteger(total) || total <= 0) return { ok: false, reason: 'reward-not-defined' };
+    const delta = total - (state.granted[state.sub] || 0);
+    if (delta <= 0) return { ok: false, reason: 'already-covered' };
+    const result = await this.grantCredits(name, delta);
+    if (result.ok) state.granted[state.sub] = Math.max(state.granted[state.sub] || 0, total);
+    return result;
   },
 
   // Envio centralizado. `key` evita duplicar o mesmo marco na sessão da página.
