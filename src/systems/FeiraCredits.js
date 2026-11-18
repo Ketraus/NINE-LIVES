@@ -25,11 +25,48 @@ function onCredential(res) {
   state.credential = res.credential;
   state.expMs = expMs;
   state.sub = sub;
+  hideGate();
 }
 
-function whenGoogleReady(cb, tries = 100) {
+function whenGoogleReady(cb, onFail, tries = 100) {
   if (globalThis.google?.accounts?.id) return cb();
-  if (tries > 0) setTimeout(() => whenGoogleReady(cb, tries - 1), 100);
+  if (tries > 0) return setTimeout(() => whenGoogleReady(cb, onFail, tries - 1), 100);
+  if (onFail) onFail();
+}
+
+// Tela de login obrigatória: cobre o jogo até o Google devolver a credencial.
+let gateEl = null;
+
+function showGate(message, withButton) {
+  if (!gateEl) {
+    gateEl = document.createElement('div');
+    gateEl.style.cssText = 'position:fixed;inset:0;z-index:2000;background:#050608;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;text-align:center;font-family:"Press Start 2P",monospace;';
+    document.body.appendChild(gateEl);
+  }
+  gateEl.innerHTML = '';
+  const title = document.createElement('div');
+  title.textContent = 'NINE LIVES';
+  title.style.cssText = 'font-size:28px;letter-spacing:4px;';
+  const text = document.createElement('div');
+  text.textContent = message;
+  text.style.cssText = 'font-size:12px;line-height:1.8;max-width:560px;color:#c8ccd4;';
+  gateEl.append(title, text);
+  if (withButton) {
+    const box = document.createElement('div');
+    gateEl.appendChild(box);
+    globalThis.google.accounts.id.renderButton(box, { theme: 'filled_black', size: 'large', text: 'signin_with', locale: 'pt-BR' });
+  } else {
+    const btn = document.createElement('button');
+    btn.textContent = 'RECARREGAR';
+    btn.style.cssText = 'font-family:inherit;font-size:12px;padding:12px 20px;cursor:pointer;';
+    btn.onclick = () => location.reload();
+    gateEl.appendChild(btn);
+  }
+}
+
+function hideGate() {
+  gateEl?.remove();
+  gateEl = null;
 }
 
 const FeiraCredits = {
@@ -45,6 +82,9 @@ const FeiraCredits = {
   init() {
     if (state.started || !this.isEnabled()) return;
     state.started = true;
+    const fail = () => showGate('Não foi possível carregar o login do Google. Verifique a conexão e recarregue a página.', false);
+    showGate('Carregando login...', false);
+    gateEl.lastChild.remove(); // sem botão enquanto carrega
     whenGoogleReady(() => {
       try {
         globalThis.google.accounts.id.initialize({
@@ -52,11 +92,13 @@ const FeiraCredits = {
           callback: onCredential,
           auto_select: true
         });
+        showGate('Entre com sua conta Google para jogar e receber seus tijolinhos.', true);
         globalThis.google.accounts.id.prompt();
       } catch (e) {
         console.warn('[FeiraCredits] falha ao iniciar o login Google', e);
+        fail();
       }
-    });
+    }, fail);
   },
 
   // Pede novo login (token expirado ou usuário recusou o prompt).
