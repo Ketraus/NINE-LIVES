@@ -1,6 +1,7 @@
 import credits from '../../data/credits.js';
 import gameVersion from '../../data/gameVersion.js';
 import GameProgress from '../systems/GameProgress.js';
+import FeiraCredits from '../systems/FeiraCredits.js';
 import { EVALUATION_FORM_URL } from '../config/links.js';
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
@@ -28,6 +29,7 @@ export default class CreditsScene extends Phaser.Scene {
     // menu faz a transição "a energia chegou" (corruptionReveal).
     this._firstCompletion = !GameProgress.hasCompletedGame();
     GameProgress.markGameCompleted();
+    if (!this._customCards) FeiraCredits.reportMilestone('game_completed'); // inerte enquanto a recompensa for null
   }
 
   create() {

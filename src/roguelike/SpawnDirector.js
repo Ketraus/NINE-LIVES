@@ -4,6 +4,7 @@ import { playBossTremor } from '../fx/MinotaurTremorFx.js';
 import { startBossEntranceBuildup } from '../fx/MinotaurEntranceFx.js';
 import { playSnctEnding } from '../systems/SnctEnding.js';
 import gameVersion from '../../data/gameVersion.js';
+import FeiraCredits from '../systems/FeiraCredits.js';
 import BossCinematicCamera, { BOSS_CAMERA_TRAVEL_MS } from '../systems/BossCinematicCamera.js';
 
 // Dono do "quando", "quantos" e "de que tipo" da sobrevivência por temp…
@@ -512,6 +513,7 @@ export default class SpawnDirector {
   // Fim do silêncio: corta o escurecimento na hora (contraste forte com
   _triggerBossEntrance(generation = this.authorityGeneration) {
     if (!this.authorityActive || generation !== this.authorityGeneration) return;
+    FeiraCredits.reportMilestone('boss_reached'); // inerte enquanto a recompensa for null
     this._announceCinematic('boss-impact', this._bossEpicenter);
     this.bossOverlay?.destroy();
     this.bossOverlay = null;

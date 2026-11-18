@@ -1,4 +1,5 @@
 import EventBus from '../systems/EventBus.js';
+import FeiraCredits from '../systems/FeiraCredits.js';
 import VictoryTremor from '../systems/VictoryTremor.js';
 import VictoryFinale from '../systems/VictoryFinale.js';
 import VictoryImpact from '../systems/VictoryImpact.js';
@@ -715,6 +716,7 @@ export default class GameScene extends Phaser.Scene {
   // clientes só executam o que veio (nada de Math.random por cliente).
   _handleEnemyDeath(death, isAuthority) {
     const { enemyId, x, y, xpReward, color } = death;
+    if (enemyId === 'minotaur') FeiraCredits.reportMilestone('boss_defeated'); // inerte enquanto a recompensa for null
     let event = death;
     if (isAuthority) {
       event = { ...death, drops: this._rollDrops(death) };
